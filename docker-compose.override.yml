@@ -1,0 +1,16 @@
+version: "3.8"
+# This file defines frontend-specific configurations for development.
+
+services:
+  backend:
+    environment:
+      APP_ENV: development
+    ports:
+      - "8000:8000"
+
+  frontend:
+    environment:
+      - VITE_API_URL=http://backend:8000
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"

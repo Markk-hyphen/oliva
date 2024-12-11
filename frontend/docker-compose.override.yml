@@ -1,0 +1,13 @@
+version: "3.8"
+# This file defines high-level environment variables for the stack.
+
+services:
+  frontend:
+    build:
+      context: .
+      target: development
+    volumes:
+      - ./src:/usr/src/app
+      - ./public:/usr/src/app/public
+      - ./vite.config.js:/usr/src/app/vite.config.js
+    tty: true
