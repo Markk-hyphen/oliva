@@ -5,6 +5,7 @@ services:
   frontend:
     build:
       context: .
+      dockerfile: Dockerfile
       target: development
     volumes:
       - ./src:/usr/src/app

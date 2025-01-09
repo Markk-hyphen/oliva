@@ -3,6 +3,7 @@ services:
   php:
     build:
       context: .
+      dockerfile: Dockerfile
       target: frankenphp_prod
     environment:
       APP_SECRET: ${APP_SECRET}

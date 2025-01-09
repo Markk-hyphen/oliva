@@ -4,6 +4,7 @@ services:
   frontend:
     build:
       context: .
+      dockerfile: Dockerfile
       target: production
     environment:
       - NODE_ENV=production
