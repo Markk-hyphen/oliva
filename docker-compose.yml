@@ -21,11 +21,13 @@ services:
       timeout: 5s
 
   backend:
+    image: app-backend:1.0
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: app-backend:1.0
     restart: unless-stopped
+    environment:
+      - JWT_PASSPHRASE=${JWT_PASSPHRASE}
     env_file:
       - .env
     depends_on:

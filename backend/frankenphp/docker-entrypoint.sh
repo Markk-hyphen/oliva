@@ -21,6 +21,32 @@ if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 			echo 'To finish the installation please press Ctrl+C to stop Docker Compose and run: docker compose up --build -d --wait'
 			sleep infinity
 		fi
+
+	if [ -n "$JWT_PASSPHRASE" ]; then
+		echo "Using JWT passphrase: $JWT_PASSPHRASE"
+
+		JWT_DIR="$PROJECT_DIR/config/jwt"
+		JWT_CONFIG="$PROJECT_DIR/config/packages/lexik_jwt_authentication.yaml"
+
+		mkdir -p "$JWT_DIR" "$(dirname "$JWT_CONFIG")"
+
+        if [ ! -f "$JWT_DIR/private.pem" ]; then
+            openssl genrsa -out "$JWT_DIR/private.pem" -aes256 4096 --passout pass:"$JWT_PASSPHRASE"
+            openssl rsa -pubout -in "$JWT_DIR/private.pem" -out "$JWT_DIR/public.pem" --passin pass:"$JWT_PASSPHRASE"
+            echo "JWT keys generated."
+        fi
+
+        if [ ! -f "$JWT_CONFIG" ]; then
+            cat <<EOF > "$JWT_CONFIG"
+        lexik_jwt_authentication:
+            secret_key: '%kernel.project_dir%/config/jwt/private.pem'
+            public_key: '%kernel.project_dir%/config/jwt/public.pem'
+            pass_phrase: '${JWT_PASSPHRASE}'
+            token_ttl: 3600
+EOF
+            echo "Lexik JWT configuration created."
+        fi
+
 	fi
 
 	if [ -z "$(ls -A 'vendor/' 2>/dev/null)" ]; then

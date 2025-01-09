@@ -13,6 +13,8 @@ FROM frankenphp_upstream AS frankenphp_base
 
 WORKDIR /app
 
+ENV PROJECT_DIR=/app
+
 VOLUME /app/var/
 
 # persistent / runtime deps
