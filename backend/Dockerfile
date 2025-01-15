@@ -15,6 +15,9 @@ WORKDIR /app
 
 ENV PROJECT_DIR=/app
 
+ARG SYMFONY_VERSION
+ARG STABILITY
+
 VOLUME /app/var/
 
 # persistent / runtime deps
@@ -46,6 +49,14 @@ ENV PHP_INI_SCAN_DIR=":$PHP_INI_DIR/app.conf.d"
 COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
 COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
+
+RUN composer create-project "symfony/skeleton $SYMFONY_VERSION" tmp --stability="$STABILITY" --prefer-dist --no-progress --no-interaction --no-install \
+    && cp -Rp tmp/* . \
+    && rm -Rf tmp \
+    && composer require "php:>=$PHP_VERSION" runtime/frankenphp-symfony \
+    && composer config --json extra.symfony.docker 'true' \
+    && composer require lexik/jwt-authentication-bundle
+
 
 ENTRYPOINT ["docker-entrypoint"]
 
@@ -83,6 +94,7 @@ COPY --link frankenphp/worker.Caddyfile /etc/caddy/worker.Caddyfile
 
 # prevent the reinstallation of vendors at every changes in the source code
 COPY --link composer.* symfony.* ./
+
 RUN set -eux; \
 	composer install --no-cache --prefer-dist --no-dev --no-autoloader --no-scripts --no-progress
 

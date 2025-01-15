@@ -3,14 +3,19 @@ version: "3.8"
 
 services:
   backend:
+    image: app-backend-dev:1.0
     environment:
       APP_ENV: development
+    env_file:
+      - .env
     ports:
       - "8000:8000"
 
   frontend:
+    image: app-frontend-dev:1.0
     environment:
       - VITE_API_URL=http://backend:8000
-      - NODE_ENV=development
+    env_file:
+      - .env
     ports:
       - "3000:3000"

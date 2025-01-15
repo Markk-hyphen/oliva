@@ -1,11 +1,22 @@
 import { defineConfig } from 'vite';
 
-const BACKEND_URL = import.meta.env.VITE_API_URL;
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://backend:8000';
 export default defineConfig({
-    root: 'frontend',
+    root: '.',
     build: {
+        minify: "terser",
         outDir: 'dist',
         emptyOutDir: true,
+        terserOptions: {
+            compress: {
+                drop_console: true
+            },
+            mangle: true
+        },
+        rollupOptions: {
+            input: '/setup.js',
+
+        }
     },
     server: {
         proxy: {

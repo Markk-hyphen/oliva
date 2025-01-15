@@ -1,10 +1,14 @@
 # Development environment override
 services:
   php:
+    image: app-backend-dev:1.0
     build:
       context: .
       dockerfile: Dockerfile
       target: frankenphp_dev
+      args:
+        SYMFONY_VERSION: ${SYMFONY_VERSION}
+        STABILITY: ${STABILITY}
     volumes:
       - ./:/app
       - ./frankenphp/Caddyfile:/etc/caddy/Caddyfile:ro
@@ -16,6 +20,7 @@ services:
       MERCURE_EXTRA_DIRECTIVES: demo
       # See https://xdebug.org/docs/all_settings#mode
       XDEBUG_MODE: "${XDEBUG_MODE:-off}"
+      APP_ENV: development
     extra_hosts:
       # Ensure that host.docker.internal is correctly defined on Linux
       - host.docker.internal:host-gateway

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.env
+docker-compose.override.yml
+docker-compose.prod.yml
+Dockerfile
+.git/
+vite.config.js
+*.log
+*.tmp

@@ -21,10 +21,7 @@ services:
       timeout: 5s
 
   backend:
-    image: app-backend:1.0
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: app-backend-prod:1.0
     restart: unless-stopped
     environment:
       - JWT_PASSPHRASE=${JWT_PASSPHRASE}
@@ -39,10 +36,7 @@ services:
       - app_network
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: app-frontend:1.0
+    image: app-frontend-prod:1.0
     env_file:
       - .env
     expose:
