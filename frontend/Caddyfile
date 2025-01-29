@@ -1,6 +1,10 @@
 {$SERVER_NAME:localhost} {
 
-    handle /api/* /.well-known/mercure* {
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /.well-known/mercure* {
         reverse_proxy backend:8000
     }
 
@@ -13,7 +17,7 @@
         }
     }
 
-    encode zstd br gzip
+    encode zstd gzip
 
     # Caching for static files (by MIME type)
     @cacheable {

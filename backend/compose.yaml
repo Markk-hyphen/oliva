@@ -1,9 +1,8 @@
 services:
-  php:
+  backend:
     restart: unless-stopped
     env_file:
         - .env
-        -   ../.env
     environment:
       - FRANKENPHP_CONFIG=${FRANKENPHP_CONFIG:-import worker.Caddyfile}
     volumes:

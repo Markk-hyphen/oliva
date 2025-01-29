@@ -10,8 +10,6 @@ services:
       target: development
       args:
         NODE_ENV: development
-    env_file:
-      - .env
     environment:
       - NODE_ENV=development
     volumes:
@@ -20,4 +18,10 @@ services:
       - ./vite.config.js:/usr/src/app/vite.config.js
       - ./index.html:/usr/src/app/public/index.html
       - ./package.json:/usr/src/app/package.json
+      - caddy_data:/data
+      - caddy_config:/config
     tty: true
+
+volumes:
+  caddy_data:
+  caddy_config:

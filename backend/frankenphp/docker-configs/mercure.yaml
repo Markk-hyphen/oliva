@@ -1,0 +1,14 @@
+# Uncomment file if MercureBundle is installed.
+#mercure:
+#    hubs:
+#        default:
+#            url: '%env(string:CADDY_MERCURE_URL)%'
+#            public_url: '%env(string:CADDY_MERCURE_PUBLIC_URL)%'
+#            jwt:
+#                secret: '%env(string:CADDY_MERCURE_JWT_SECRET)%'
+#                publish: ['*']
+#                subscribe: ['*']
+#                algorithm: 'hmac.256'
+#                provider: 'My\Provider' These values can be defined as needed. 
+#                factory: 'My\Factory'
+#                value: 'my.jwt'

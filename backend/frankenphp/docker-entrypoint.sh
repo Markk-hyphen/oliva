@@ -1,6 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 trap 'echo "Error on line $LINENO: $BASH_COMMAND"' ERR
+
+MERCURE_KEYS_DIR="$PROJECT_DIR/config/mercure"
+MERCURE_JWT_KEY="$MERCURE_KEYS_DIR/mercure.key"
+
+
 
 if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 	# Install the project the first time PHP is started
@@ -14,23 +19,25 @@ if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 		echo "Creating JWT configuration file at $JWT_CONFIG..."
 
     	mkdir -p "$JWT_DIR" "$(dirname "$JWT_CONFIG")"
-
-        openssl genrsa -out "$JWT_DIR/private.pem" -aes256 4096 --passout pass:"$JWT_PASSPHRASE"
+		openssl genrsa -aes256 -passout pass:"$JWT_PASSPHRASE" -out "$JWT_DIR/private.pem" 2048
         openssl rsa -pubout -in "$JWT_DIR/private.pem" -out "$JWT_DIR/public.pem" --passin pass:"$JWT_PASSPHRASE"
         echo "JWT keys generated."
 
-        if [ ! -f "$JWT_CONFIG" ]; then
-             cat <<EOF > "$JWT_CONFIG"
-           lexik_jwt_authentication:
-               secret_key: '%kernel.project_dir%/config/jwt/private.pem'
-               public_key: '%kernel.project_dir%/config/jwt/public.pem'
-               pass_phrase: '${JWT_PASSPHRASE}'
-               token_ttl: 3600
-EOF
-           echo "Lexik JWT configuration created."
-        fi
-
     fi
+
+	if [ ! -f "$MERCURE_JWT_KEY" ] || [ ! -s "$MERCURE_JWT_KEY" ]; then
+    	echo "Generating Caddy Mercure JWT key.."
+  		mkdir -p "$(dirname "$MERCURE_JWT_KEY")"
+
+    	openssl rand -base64 -out "$MERCURE_JWT_KEY" 2048 || {
+        	echo "Error: Failed to generate Caddy Mercure key."
+        	exit 1
+    	}
+
+    	echo "Mercure key generated successfully."
+	else
+    	echo "Mercure keys already exists. Skipping generation."
+	fi
 
 	if grep -q ^DATABASE_URL= .env; then
     	echo 'To finish the installation please press Ctrl+C to stop Docker Compose and run: docker compose up --build -d --wait'
@@ -73,5 +80,9 @@ EOF
 
 	echo 'PHP app ready!'
 fi
+
+export CADDY_MERCURE_JWT_SECRET=$(cat "$MERCURE_JWT_KEY")
+
+echo "CADDY_MERCURE_JWT_KEY Key: ${CADDY_MERCURE_JWT_SECRET}"
 
 exec docker-php-entrypoint "$@"

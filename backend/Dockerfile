@@ -57,6 +57,8 @@ RUN composer create-project "symfony/skeleton $SYMFONY_VERSION" tmp --stability=
     && composer config --json extra.symfony.docker 'true' \
     && composer require lexik/jwt-authentication-bundle
 
+COPY --link frankenphp/docker-configs/lexik_jwt_authentication.yaml ./config/packages/lexik_jwt_authentication.yaml
+#COPY --link frankenphp/docker-configs/mercure.yaml ./config/packages/mercure.yaml Uncomment if MercureBundle is installed.
 
 ENTRYPOINT ["docker-entrypoint"]
 

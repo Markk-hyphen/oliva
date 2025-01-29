@@ -3,8 +3,6 @@ WORKDIR /usr/src/app
 RUN command -v yarn || npm install --global yarn
 COPY package.json ./
 ARG NODE_ENV
-RUN echo "podes printear algo la concha de tu madre?"
-RUN pwd && echo "por el amor a dios"
 RUN yarn install --production=false
 
 # Development Stage
@@ -20,6 +18,6 @@ RUN yarn run build
 FROM caddy:2.8.4 AS production
 WORKDIR /usr/share/caddy
 COPY --from=builder /usr/src/app/dist /usr/share/caddy
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY --link Caddyfile /etc/caddy/Caddyfile
 CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
 

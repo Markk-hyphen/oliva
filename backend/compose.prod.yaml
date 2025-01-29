@@ -1,6 +1,6 @@
 # Production environment override
 services:
-  php:
+  backend:
     image: app-backend-prod:1.0
     build:
       context: .
@@ -12,9 +12,4 @@ services:
     env_file:
       - .env
     environment:
-      APP_SECRET: ${APP_SECRET}
-      MERCURE_PUBLISHER_JWT_KEY: ${CADDY_MERCURE_JWT_SECRET}
-      MERCURE_SUBSCRIBER_JWT_KEY: ${CADDY_MERCURE_JWT_SECRET}
-      APP_ENV: production
-      
-      
+      - APP_ENV=production

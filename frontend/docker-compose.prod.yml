@@ -11,9 +11,14 @@ services:
         NODE_ENV: production
     environment:
       NODE_ENV: production
-    env_file:
-      - .env
     ports:
       - "80:80"
       - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
     tty: false
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -23,22 +23,24 @@ services:
   backend:
     image: app-backend-prod:1.0
     restart: unless-stopped
-    environment:
-      - JWT_PASSPHRASE=${JWT_PASSPHRASE}
     env_file:
       - .env
+      - .env.backend
     depends_on:
       database:
         condition: service_healthy
     expose:
       - 8000
     networks:
-      - app_network
+      app_network:
+        aliases:
+          - backend.${SERVER_NAME}
 
   frontend:
     image: app-frontend-prod:1.0
     env_file:
       - .env
+      - .env.frontend
     expose:
       - 3000
     depends_on:

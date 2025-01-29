@@ -1,6 +1,6 @@
 # Development environment override
 services:
-  php:
+  backend:
     image: app-backend-dev:1.0
     build:
       context: .
@@ -13,6 +13,9 @@ services:
       - ./:/app
       - ./frankenphp/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro
+      - ./config/jwt:/app/config/jwt
+      - ./config/packages:/app/config/packages
+#      - ./config/mercure:/app/config/mercure Uncomment if MercureBundle is installed.
       # If you develop on Mac or Windows you can remove the vendor/ directory
       #  from the bind-mount for better performance by enabling the next line:
       #- /app/vendor
