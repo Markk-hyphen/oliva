@@ -17,8 +17,9 @@ services:
         NODE_ENV: production
     environment:
       NODE_ENV: production
+      SERVER_NAME: "http://localhost"
     ports:
-      - "443:443"
+      - "80:80"
     volumes:
       - frontend_caddy_data:/data
       - frontend_caddy_config:/config

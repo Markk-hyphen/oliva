@@ -2,6 +2,10 @@ version: "3.8"
 # This file defines frontend-specific configurations for development.
 
 services:
+  database:
+    ports:
+      - "5432:5432"
+
   backend:
     image: app-backend-dev:1.0
     build:

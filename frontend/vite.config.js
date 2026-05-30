@@ -17,10 +17,6 @@ export default defineConfig(({ mode }) => {
                 },
                 mangle: true
             },
-            rollupOptions: {
-                input: '/setup.js',
-
-            }
         },
         server: {
             host: '0.0.0.0',
