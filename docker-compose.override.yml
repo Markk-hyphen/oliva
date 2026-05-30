@@ -41,7 +41,7 @@ services:
       - ./frontend/src:/usr/src/app
       - ./frontend/public:/usr/src/app/public
       - ./frontend/vite.config.js:/usr/src/app/vite.config.js
-      - ./frontend/index.html:/usr/src/app/public/index.html
+      - ./frontend/index.html:/usr/src/app/index.html
       - ./frontend/package.json:/usr/src/app/package.json
       - /usr/src/app/node_modules
     tty: true
