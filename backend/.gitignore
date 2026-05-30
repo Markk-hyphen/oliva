@@ -1,3 +1,4 @@
 vendor/
 ./config/packages
 ./config/mercure
+config/jwt/

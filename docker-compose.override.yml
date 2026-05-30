@@ -1,6 +1,4 @@
-version: "3.8"
-# This file defines frontend-specific configurations for development.
-
+# Development overrides
 services:
   database:
     ports:
@@ -17,16 +15,10 @@ services:
       - ./backend/frankenphp/Caddyfile:/etc/caddy/Caddyfile
       - ./backend/frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro
       - ./backend/config:/app/config
-      #      - ./backend/config/mercure:/app/config/mercure Uncomment if MercureBundle is installed.
-      # If you develop on Mac or Windows you can remove the vendor/ directory
-      #  from the bind-mount for better performance by enabling the next line:
-      #- /app/vendor
     environment:
-      # See https://xdebug.org/docs/all_settings#mode
       XDEBUG_MODE: "${XDEBUG_MODE:-off}"
       APP_ENV: development
     extra_hosts:
-      # Ensure that host.docker.internal is correctly defined on Linux
       - host.docker.internal:host-gateway
     tty: true
 
@@ -42,10 +34,6 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend/src:/usr/src/app
-      - ./frontend/public:/usr/src/app/public
-      - ./frontend/vite.config.js:/usr/src/app/vite.config.js
-      - ./frontend/index.html:/usr/src/app/index.html
-      - ./frontend/package.json:/usr/src/app/package.json
+      - ./frontend:/usr/src/app
       - /usr/src/app/node_modules
     tty: true

@@ -3,7 +3,5 @@ dist/
 *.env
 Dockerfile
 .git/
-vite.config.js
 *.log
 *.tmp
-**/node_modules/dev/
