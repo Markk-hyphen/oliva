@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  backend:
+    image: app-backend-prod:1.0
+    build:
+      target: frankenphp_prod
+    restart: unless-stopped
+    environment:
+      - APP_ENV=production
+
+  frontend:
+    image: app-frontend-prod:1.0
+    build:
+      target: production
+      args:
+        NODE_ENV: production
+    environment:
+      NODE_ENV: production
+    ports:
+      - "443:443"
+    volumes:
+      - frontend_caddy_data:/data
+      - frontend_caddy_config:/config
+
+volumes:
+  frontend_caddy_data:
+  frontend_caddy_config:

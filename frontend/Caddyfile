@@ -1,15 +1,12 @@
 {$SERVER_NAME:localhost} {
 
     handle /api/* {
-        reverse_proxy backend:8000
-    }
-
-    handle /.well-known/mercure* {
-        reverse_proxy backend:8000
+        # CA should be configured in production for HTTPS connections.
+        reverse_proxy http://backend:80
     }
 
     log {
-        level INFO # Use INFO or DEBUG during development; ERROR for production
+        level DEBUG # Use INFO or DEBUG during development; ERROR for production
         output file /var/log/caddy/frontend.log {
             roll_size 5mb
             roll_keep 5

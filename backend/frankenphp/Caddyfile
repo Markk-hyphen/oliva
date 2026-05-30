@@ -8,9 +8,9 @@
 
 {$CADDY_EXTRA_CONFIG}
 
-backend.localhost {
+http://:80 {
 	log {
-		level ERROR
+		level DEBUG
 		{$CADDY_SERVER_LOG_OPTIONS}
 		# Redact the authorization query parameter that can be set by Mercure
 		format filter {
@@ -19,24 +19,9 @@ backend.localhost {
 			}
 		}
 	}
-
-    reverse_proxy backend:8000
+	bind 0.0.0.0
+	root /app/public
 	encode zstd gzip
-
-	mercure {
-		# Transport to use (default to Bolt)
-		transport_url {$MERCURE_TRANSPORT_URL:bolt:///data/mercure.db}
-		# Publisher JWT key
-		publisher_jwt {env.CADDY_MERCURE_JWT_SECRET} {env.MERCURE_PUBLISHER_JWT_ALG}
-		# Subscriber JWT key
-		subscriber_jwt {env.CADDY_MERCURE_JWT_SECRET} {env.MERCURE_SUBSCRIBER_JWT_ALG}
-		# Allow anonymous subscribers (double-check that it's what you want)
-		# anonymous CAUTION. Uncomment for testing / development purposes only
-		# Enable the subscription API (double-check that it's what you want)
-		subscriptions
-		# Extra directives
-		{$MERCURE_EXTRA_DIRECTIVES}
-	}
 
 	# vulcain Enbale when hypermedia (JSON-LD, HAL) is needed.
 
@@ -44,6 +29,12 @@ backend.localhost {
 
 	# Disable Topics tracking if not enabled explicitly: https://github.com/jkarlin/topics
 	header ?Permissions-Policy "browsing-topics=()"
+
+	@phpRoute {
+		not path /.well-known/mercure* # Ignore Mercure
+		not file {path} # Ignore if the file exists
+	}
+	rewrite @phpRoute index.php
 
 	php_server {
 		file_server off # We serve static files in the frontend.

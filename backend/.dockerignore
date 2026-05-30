@@ -21,6 +21,7 @@
 **/docker-compose.yml
 **/Dockerfile
 **/Thumbs.db
+**/vendor/dev/
 .github/
 docs/
 public/bundles/

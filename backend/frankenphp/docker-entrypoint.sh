@@ -2,11 +2,6 @@
 set -e
 trap 'echo "Error on line $LINENO: $BASH_COMMAND"' ERR
 
-MERCURE_KEYS_DIR="$PROJECT_DIR/config/mercure"
-MERCURE_JWT_KEY="$MERCURE_KEYS_DIR/mercure.key"
-
-
-
 if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 	# Install the project the first time PHP is started
 	# After the installation, the following block can be deleted
@@ -24,20 +19,6 @@ if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
         echo "JWT keys generated."
 
     fi
-
-	if [ ! -f "$MERCURE_JWT_KEY" ] || [ ! -s "$MERCURE_JWT_KEY" ]; then
-    	echo "Generating Caddy Mercure JWT key.."
-  		mkdir -p "$(dirname "$MERCURE_JWT_KEY")"
-
-    	openssl rand -base64 -out "$MERCURE_JWT_KEY" 2048 || {
-        	echo "Error: Failed to generate Caddy Mercure key."
-        	exit 1
-    	}
-
-    	echo "Mercure key generated successfully."
-	else
-    	echo "Mercure keys already exists. Skipping generation."
-	fi
 
 	if grep -q ^DATABASE_URL= .env; then
     	echo 'To finish the installation please press Ctrl+C to stop Docker Compose and run: docker compose up --build -d --wait'
@@ -80,9 +61,5 @@ if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 
 	echo 'PHP app ready!'
 fi
-
-export CADDY_MERCURE_JWT_SECRET=$(cat "$MERCURE_JWT_KEY")
-
-echo "CADDY_MERCURE_JWT_KEY Key: ${CADDY_MERCURE_JWT_SECRET}"
 
 exec docker-php-entrypoint "$@"

@@ -14,6 +14,7 @@ FROM frankenphp_upstream AS frankenphp_base
 WORKDIR /app
 
 ENV PROJECT_DIR=/app
+ENV HTTP_PORT=80
 
 ARG SYMFONY_VERSION
 ARG STABILITY
@@ -57,18 +58,19 @@ RUN composer create-project "symfony/skeleton $SYMFONY_VERSION" tmp --stability=
     && composer config --json extra.symfony.docker 'true' \
     && composer require lexik/jwt-authentication-bundle
 
-COPY --link frankenphp/docker-configs/lexik_jwt_authentication.yaml ./config/packages/lexik_jwt_authentication.yaml
+COPY --link frankenphp/docker-configs/lexik_jwt_authentication.yaml /app/config/packages/lexik_jwt_authentication.yaml
 #COPY --link frankenphp/docker-configs/mercure.yaml ./config/packages/mercure.yaml Uncomment if MercureBundle is installed.
 
 ENTRYPOINT ["docker-entrypoint"]
 
 HEALTHCHECK --start-period=60s CMD curl -f http://localhost:2019/metrics || exit 1
-CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile" ]
+CMD [ "sh", "-c", "sleep 3 && frankenphp run --config /etc/caddy/Caddyfile" ]
 
 # Dev FrankenPHP image
 FROM frankenphp_base AS frankenphp_dev
 
 ENV APP_ENV=dev XDEBUG_MODE=off
+ENV FRANKENPHP_CONFIG=""
 
 RUN mv "$PHP_INI_DIR/php.ini-development" "$PHP_INI_DIR/php.ini"
 
@@ -78,8 +80,6 @@ RUN set -eux; \
 	;
 
 COPY --link frankenphp/conf.d/20-app.dev.ini $PHP_INI_DIR/app.conf.d/
-
-EXPOSE 8000
 
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--watch" ]
 
@@ -110,5 +110,3 @@ RUN set -eux; \
 	composer dump-env prod; \
 	composer run-script --no-dev post-install-cmd; \
 	chmod +x bin/console; sync;
-
-EXPOSE 8000

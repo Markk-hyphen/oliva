@@ -1,7 +1,7 @@
 FROM node:18-slim AS base
 WORKDIR /usr/src/app
 RUN command -v yarn || npm install --global yarn
-COPY package.json ./
+COPY package.json yarn.lock* ./
 ARG NODE_ENV
 RUN yarn install --production=false
 

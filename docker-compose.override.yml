@@ -4,12 +4,44 @@ version: "3.8"
 services:
   backend:
     image: app-backend-dev:1.0
+    build:
+      target: frankenphp_dev
     ports:
-      - "8000:8000"
+      - "80:80"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/frankenphp/Caddyfile:/etc/caddy/Caddyfile
+      - ./backend/frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro
+      - ./backend/config:/app/config
+      #      - ./backend/config/mercure:/app/config/mercure Uncomment if MercureBundle is installed.
+      # If you develop on Mac or Windows you can remove the vendor/ directory
+      #  from the bind-mount for better performance by enabling the next line:
+      #- /app/vendor
+    environment:
+      # See https://xdebug.org/docs/all_settings#mode
+      XDEBUG_MODE: "${XDEBUG_MODE:-off}"
+      APP_ENV: development
+    extra_hosts:
+      # Ensure that host.docker.internal is correctly defined on Linux
+      - host.docker.internal:host-gateway
+    tty: true
 
   frontend:
     image: app-frontend-dev:1.0
+    build:
+      target: development
+      args:
+        NODE_ENV: development
     environment:
-      - VITE_API_URL=http://backend:8000
+      - VITE_API_URL=http://backend:80
+      - NODE_ENV=development
     ports:
       - "3000:3000"
+    volumes:
+      - ./frontend/src:/usr/src/app
+      - ./frontend/public:/usr/src/app/public
+      - ./frontend/vite.config.js:/usr/src/app/vite.config.js
+      - ./frontend/index.html:/usr/src/app/public/index.html
+      - ./frontend/package.json:/usr/src/app/package.json
+      - /usr/src/app/node_modules
+    tty: true
