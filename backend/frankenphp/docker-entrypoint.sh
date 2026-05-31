@@ -3,31 +3,16 @@ set -e
 trap 'echo "Error on line $LINENO: $BASH_COMMAND"' ERR
 
 if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
-	# Install the project the first time PHP is started
-	# After the installation, the following block can be deleted
+	# Generate JWT keys if they don't exist (first deploy or fresh environment)
     JWT_DIR="$PROJECT_DIR/config/jwt"
-    JWT_CONFIG="$PROJECT_DIR/config/packages/lexik_jwt_authentication.yaml"
 
     if [ -n "$JWT_PASSPHRASE" ] && [ ! -f "$JWT_DIR/private.pem" ]; then
-    	echo "Using JWT passphrase: $JWT_PASSPHRASE"
-		echo "Generating JWT keys in $JWT_DIR..."
-		echo "Creating JWT configuration file at $JWT_CONFIG..."
-
-    	mkdir -p "$JWT_DIR" "$(dirname "$JWT_CONFIG")"
+    	echo "Generating JWT keys in $JWT_DIR..."
+    	mkdir -p "$JWT_DIR"
 		openssl genrsa -aes256 -passout pass:"$JWT_PASSPHRASE" -out "$JWT_DIR/private.pem" 2048
         openssl rsa -pubout -in "$JWT_DIR/private.pem" -out "$JWT_DIR/public.pem" --passin pass:"$JWT_PASSPHRASE"
         echo "JWT keys generated."
-
     fi
-
-	if [ ! -f .env ]; then
-    	echo 'To finish the installation please press Ctrl+C to stop Docker Compose and run: docker compose up --build -d --wait'
-    	sleep infinity
-    fi
-
-	if [ -z "$(ls -A 'vendor/' 2>/dev/null)" ]; then
-		composer install --prefer-dist --no-progress --no-interaction
-	fi
 
 	if grep -q ^DATABASE_URL= .env; then
 		echo 'Waiting for database to be ready...'

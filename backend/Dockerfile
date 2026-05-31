@@ -16,9 +16,6 @@ WORKDIR /app
 ENV PROJECT_DIR=/app
 ENV HTTP_PORT=80
 
-ARG SYMFONY_VERSION
-ARG STABILITY
-
 VOLUME /app/var/
 
 # persistent / runtime deps
@@ -52,15 +49,17 @@ COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
 COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
 
-RUN composer create-project "symfony/skeleton $SYMFONY_VERSION" tmp --stability="$STABILITY" --prefer-dist --no-progress --no-interaction --no-install \
-    && cp -Rp tmp/* . \
-    && rm -Rf tmp \
-    && composer require "php:>=$PHP_VERSION" runtime/frankenphp-symfony \
-    && composer config --json extra.symfony.docker 'true' \
-    && composer require lexik/jwt-authentication-bundle
+# Install dependencies from versioned composer.json
+COPY --link composer.json composer.lock symfony.lock ./
+RUN composer install --prefer-dist --no-progress --no-interaction --no-scripts --no-autoloader
 
-COPY --link frankenphp/docker-configs/lexik_jwt_authentication.yaml /app/config/packages/lexik_jwt_authentication.yaml
-#COPY --link frankenphp/docker-configs/mercure.yaml ./config/packages/mercure.yaml Uncomment if MercureBundle is installed.
+# Copy application source
+COPY --link bin bin/
+COPY --link config config/
+COPY --link public public/
+COPY --link src src/
+
+RUN composer dump-autoload --optimize
 
 ENTRYPOINT ["docker-entrypoint"]
 
