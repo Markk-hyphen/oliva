@@ -31,12 +31,41 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 Las variables se definen en `.env` (compartidas), `.env.backend` y `.env.frontend`. Ver `.env.example` como referencia.
 
 ## Estado actual vs. proyecto en curso
-**La codebase Oliva es hoy un boilerplate** (Symfony se genera en build vía `composer create-project`; `backend/src/` está vacío y `composer.json` no está versionado). Mercure **sí funciona** (hub activo en `backend/frankenphp/Caddyfile`; demo de canvas en `public/live.php` + `frontend/src/js/live.js`).
+El backend está **graduado de boilerplate a app versionada** (paso 0.1 completado: `backend/src/`, `composer.json/lock`, `symfony.lock` en git; Dockerfile usa `composer install` sobre el repo). Mercure **sí funciona** (hub activo en `backend/frankenphp/Caddyfile`; demo de canvas en `public/live.php` + `frontend/src/js/live.js`).
 
 Se está construyendo **encima** un proyecto-vidriera: **"Crypto Pulse"** — plataforma de inteligencia de mercado cripto en tiempo real (ingesta de fuentes públicas → enriquecimiento con IA → dashboard en vivo vía Mercure). El headline es **DevOps × IA**; cripto es el dominio de datos, no el producto.
 
 - **Plan completo y runbook ejecutable:** `PLAN-MARKET-PULSE.md` (leer §11 "convenciones de ejecución" antes de implementar).
+- **Log de commits del agente:** `agent-commits.md` (detalle de cada cambio con justificación).
 - **Rama de trabajo:** `release/plan-market-pulse` (no tocar `main`).
 - **Decisiones cerradas:** broker **RabbitMQ**, scheduler **contenedor cron (supercronic)**, LLM **Anthropic** (Haiku volumen / Sonnet agregados), vector **pgvector**, dominio **cripto** (RSS CoinDesk/Cointelegraph + CoinGecko; CryptoPanic en Fase 2).
-- **Primer paso estructural:** versionar `backend/src/` y quitar `create-project` del Dockerfile (§3.1 / paso 0.1 del plan).
+- **Próximo paso:** 0.2 — Doctrine ORM + Migrations.
 - **Modelo:** planificado con Opus; **ejecutar con Sonnet** (Haiku solo para pasos mecánicos).
+
+## Protocolo de commits del agente
+
+**Cada commit que realice el agente debe registrarse en `agent-commits.md`** antes o junto con el commit de git. El registro es parte del entregable, no opcional.
+
+### Formato obligatorio
+
+```markdown
+## [PASO X.Y] <título del commit>
+**Hash:** `<hash completo>`
+**Rama:** `<rama>`
+**Fecha:** <fecha>
+
+### Cambios
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| path/archivo | nuevo/modificado/eliminado | qué hace |
+
+### Justificación
+<por qué se tomaron estas decisiones, qué problema resuelven, qué alternativas se descartaron>
+```
+
+### Reglas
+- Registrar **todos** los archivos modificados, no solo los principales.
+- La justificación debe responder **por qué**, no solo describir el qué (eso ya lo hace la tabla).
+- Si un cambio resuelve un problema encontrado durante la ejecución (no previsto en el plan), documentarlo explícitamente.
+- El commit de git y la entrada en `agent-commits.md` van en el **mismo commit**.
+- `agent-commits.md` se agrega al staging junto con los demás archivos del paso.
