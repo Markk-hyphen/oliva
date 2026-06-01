@@ -258,3 +258,142 @@ La forma de diagnosticarlo fue comparar las métricas del exchange vs la queue e
 ### Regla para recordar
 
 > En un exchange `direct` de RabbitMQ, el mensaje solo llega a la queue si `routing_key del mensaje == binding_key del binding`. Symfony Messenger usa routing key vacío por defecto. Siempre configurar `default_publish_routing_key` cuando el exchange es `direct`.
+
+---
+
+## Embeddings
+
+### Qué son
+
+Un **embedding** es una representación numérica de texto (u otro contenido) como un vector de números decimales. Por ejemplo, el texto "Bitcoin cayó 5%" podría representarse como un vector de 1024 números como `[0.12, -0.87, 0.34, ...]`.
+
+La idea central: **textos con significados similares tienen vectores cercanos en el espacio geométrico**. "Bitcoin cayó" y "BTC baja" estarían cerca entre sí. "Bitcoin cayó" y "una receta de pasta" estarían muy lejos.
+
+### Por qué los usamos
+
+En el proyecto, cada noticia que pasa por el pipeline de IA recibe un embedding. Esto nos permite:
+
+1. **Búsqueda semántica**: un usuario busca "regulación cripto" y recibe noticias relevantes aunque no contengan esas palabras exactas — porque sus vectores están cerca del vector de la query.
+2. **Clustering / deduplicación**: noticias que cuentan el mismo evento tendrán vectores muy cercanos, sin importar de qué fuente vengan o cómo estén redactadas.
+3. **Contexto para el LLM**: al generar resúmenes agregados ("Market Now"), podemos recuperar las noticias más relevantes de las últimas horas por similitud vectorial.
+
+### Cómo se generan
+
+Se le envía el texto a un **modelo de embeddings** (un modelo de ML especializado, diferente al modelo de chat) y éste devuelve el vector. En este proyecto usamos **Voyage AI** (el proveedor de embeddings recomendado por Anthropic) a través de la interfaz `EmbeddingProvider`. El modelo `voyage-3` produce vectores de **1024 dimensiones**.
+
+### Dónde se guardan
+
+Los vectores se guardan en la columna `embedding` de la tabla `enrichment` usando el tipo de dato `vector(1024)` de **pgvector** (extensión de PostgreSQL). Esto permite hacer búsquedas de similitud directamente con SQL.
+
+---
+
+## Búsqueda por similitud vectorial (kNN)
+
+### El problema
+
+Una búsqueda de texto tradicional busca coincidencias exactas de palabras (LIKE, full-text search). No entiende que "ETF de Bitcoin" y "fondo indexado de BTC" hablan de lo mismo.
+
+### La solución: kNN
+
+**kNN** (k-Nearest Neighbors, k vecinos más cercanos) es el algoritmo que responde la pregunta: "dado un vector de query, ¿cuáles son los N vectores más cercanos en mi base de datos?"
+
+El proceso en el proyecto es:
+1. El usuario escribe una query: `"regulación cripto en Europa"`
+2. Se le calcula el embedding a esa query (el mismo modelo que usamos para las noticias)
+3. Se buscan los N embeddings de noticias más cercanos en la DB
+4. Se devuelven esas noticias como resultado
+
+### Métrica de distancia: similitud coseno
+
+Hay varias formas de medir "cercanía" entre vectores. Usamos **similitud coseno**, que mide el ángulo entre dos vectores (no su magnitud). Es la más usada para texto porque captura "dirección semántica" independientemente del largo del texto.
+
+En pgvector, el operador es `<=>` (distancia coseno). Menor distancia = mayor similitud.
+
+```sql
+-- Las 5 noticias más similares a un embedding de query
+SELECT * FROM enrichment
+ORDER BY embedding <=> '[0.12, -0.87, ...]'
+LIMIT 5;
+```
+
+---
+
+## Índice HNSW
+
+### El problema de performance
+
+Sin índice, una búsqueda kNN es un **full scan**: compara el vector de query contra TODOS los vectores de la tabla. Con 10.000 noticias es manejable. Con 1.000.000 es inaceptablemente lento.
+
+### HNSW: Hierarchical Navigable Small World
+
+**HNSW** es un algoritmo de indexación aproximada (ANN — Approximate Nearest Neighbor). Construye una estructura de grafo jerárquica que permite encontrar los vecinos más cercanos en tiempo **logarítmico** en lugar de lineal, con una pequeña pérdida de precisión (configurable).
+
+```
+Sin índice:  O(n) — escanea todos los vectores
+Con HNSW:   O(log n) — navega el grafo
+```
+
+La "pérdida de precisión" es que HNSW devuelve los vecinos *aproximadamente* más cercanos, no los *exactamente* más cercanos. En la práctica, con los parámetros por defecto, la precisión (recall) es >95%, lo que es más que suficiente para búsqueda semántica.
+
+### Cómo se crea en el proyecto
+
+```sql
+CREATE INDEX hnsw_enrichment_embedding
+ON enrichment USING hnsw (embedding vector_cosine_ops)
+WHERE embedding IS NOT NULL;
+```
+
+- `USING hnsw`: tipo de índice
+- `vector_cosine_ops`: operaciones de distancia coseno (coincide con el operador `<=>` que usamos en las queries)
+- `WHERE embedding IS NOT NULL`: índice parcial — solo indexa filas que ya tienen embedding calculado
+
+**Nota importante**: Doctrine ORM no sabe administrar índices HNSW (es específico de pgvector). Por eso el índice vive en una migración Doctrine y el validador `doctrine:schema:validate` se corre con `--skip-sync`.
+
+---
+
+## Content Hash y deduplicación
+
+### El problema
+
+El scheduler corre cada 5 minutos y fetchea los mismos feeds RSS. Un artículo publicado a las 10:00 va a aparecer en el fetch de las 10:00, 10:05, 10:10... Si no hay protección, se insertaría decenas de veces y se enriquecería con IA decenas de veces (costo innecesario).
+
+### La solución: hash de la URL
+
+Cada artículo lleva un **contentHash**: el SHA-256 de su URL. La URL de un artículo es permanente y única — es el identificador natural de una pieza de contenido en la web.
+
+```php
+$contentHash = hash('sha256', $url); // 64 chars hex
+```
+
+La columna `content_hash` en `news_item` tiene un índice UNIQUE. Si intentamos insertar un artículo ya existente, la DB lanza una `UniqueConstraintViolationException`. El handler de ingesta atrapa esa excepción y descarta el mensaje silenciosamente — comportamiento correcto.
+
+### Por qué SHA-256 y no simplemente la URL
+
+- La URL puede tener hasta 2048 chars — ineficiente como clave única
+- SHA-256 siempre produce 64 chars hexadecimales — tamaño fijo, índice eficiente
+- Collision probability negligible para URLs
+
+---
+
+## Pipeline State Machine (NewsItemStatus)
+
+### Qué es
+
+El campo `status` de `NewsItem` es una **máquina de estados** que representa en qué etapa del pipeline está cada noticia:
+
+```
+pending → enriched
+pending → failed
+```
+
+| Estado | Significado |
+|--------|-------------|
+| `pending` | Recién ingresada, esperando ser procesada por el worker de enriquecimiento |
+| `enriched` | Procesada por IA: tiene resumen, sentiment, tickers, embedding |
+| `failed` | El enriquecimiento falló después de varios reintentos (fue al DLX) |
+
+### Por qué importa
+
+1. **Idempotencia**: antes de enriquecer, el handler verifica que `status == pending`. Si es `enriched` o `failed`, no llama a la API de IA. Esto evita costos duplicados si un mensaje se reencola o se reprocesa.
+2. **Observabilidad**: un `SELECT COUNT(*) GROUP BY status` te dice instantáneamente cuántas noticias están esperando enriquecimiento, cuántas están listas y cuántas fallaron.
+3. **Filtros del dashboard**: el front puede pedir solo noticias `enriched` para mostrar.

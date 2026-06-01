@@ -75,7 +75,7 @@ jobs:
 
       -
         name: Doctrine Schema Validator
-        run: docker compose exec -T backend bin/console doctrine:schema:validate
+        run: docker compose exec -T backend bin/console doctrine:schema:validate --skip-sync
 
       -
         name: Run PHPUnit

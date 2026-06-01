@@ -24,6 +24,40 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 1.1] feat: modelo de dominio — entidades NewsItem y Enrichment
+
+**Hash:** `<pendiente>`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/src/Entity/NewsItemStatus.php` | nuevo | PHP backed enum `pending \| enriched \| failed` — pipeline state machine |
+| `backend/src/Entity/NewsItem.php` | nuevo | Entidad principal: source, externalId, title, url, body, publishedAt, contentHash (unique), status |
+| `backend/src/Entity/Enrichment.php` | nuevo | Entidad de enriquecimiento: summary, sentiment, assetClass, tickers, entities, embedding vector(1024), model, tokens, costUsd |
+| `backend/src/Repository/NewsItemRepository.php` | nuevo | Repository ServiceEntityRepository vacío (requerido por Doctrine) |
+| `backend/src/Repository/EnrichmentRepository.php` | nuevo | Repository ServiceEntityRepository vacío |
+| `backend/migrations/Version20260601054114.php` | nuevo | Migración: CREATE TABLE news_item + enrichment; índices status/publishedAt; UNIQUE content_hash; HNSW vector_cosine_ops |
+| `backend/config/packages/doctrine.yaml` | modificado | Agrega `mapping_types: vector: vector` para que doctrine:schema:validate resuelva el tipo de la DB |
+| `.github/workflows/ci.yml` | modificado | `doctrine:schema:validate --skip-sync` — el índice HNSW no es manejado por Doctrine ORM |
+| `concepts.md` | modificado | Agrega secciones: Embeddings, Búsqueda kNN, Índice HNSW, Content Hash, Pipeline State Machine |
+
+### Justificación
+
+**Dimensiones del embedding = 1024:** coincide con Voyage-3 (el proveedor de embeddings recomendado por Anthropic para producción). Centralizado en `Enrichment::EMBEDDING_DIMENSIONS` para cambiar en un solo lugar si se migra de proveedor.
+
+**Índice HNSW manual en la migración:** Doctrine no genera índices HNSW (son específicos de pgvector). El índice se agrega directamente en el SQL de la migración con `WHERE embedding IS NOT NULL` (índice parcial — no indexa filas sin embedding todavía calculado, que son la mayoría al insertar).
+
+**`mapping_types: vector: vector`:** sin esto, `doctrine:schema:validate` falla al intentar leer el tipo `vector` de PostgreSQL durante la introspección inversa (DB → PHP). Con `mapping_types`, DBAL mapea la columna `vector` de la DB al tipo Doctrine `vector` que ya está registrado.
+
+**`--skip-sync` en el CI:** usamos Migrations, no `schema:update`. El índice HNSW existe en la DB pero no en el modelo Doctrine → el sync siempre reportaría out-of-sync. La validación relevante es solo el mapeo ORM (`--skip-sync` omite la comparación con la DB).
+
+**Verificación:** migraciones aplicadas; `doctrine:schema:validate --skip-sync` OK; PHPUnit 2/2 verde.
+
+---
+
 ## [fix] fix: FRANKENPHP_CONFIG crasheaba Caddy en CI
 
 **Hash:** `be0662e`

@@ -6,6 +6,8 @@ doctrine:
         use_savepoints: true
         types:
             vector: Pgvector\Doctrine\VectorType
+        mapping_types:
+            vector: vector
     orm:
         auto_generate_proxy_classes: true
         enable_lazy_ghost_objects: true
