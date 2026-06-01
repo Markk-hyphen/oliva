@@ -40,7 +40,7 @@ Se está construyendo **encima** un proyecto-vidriera: **"Crypto Pulse"** — pl
 - **Glosario de conceptos técnicos:** `concepts.md` (explicaciones teóricas agregadas a pedido).
 - **Rama de trabajo:** `release/plan-market-pulse` (no tocar `main`).
 - **Decisiones cerradas:** broker **RabbitMQ**, scheduler **contenedor cron (supercronic)**, LLM **Anthropic** (Haiku volumen / Sonnet agregados), vector **pgvector**, dominio **cripto** (RSS CoinDesk/Cointelegraph + CoinGecko; CryptoPanic en Fase 2).
-- **Próximo paso:** 0.8 — PHPUnit base.
+- **Próximo paso:** 1.1 — Modelo de dominio (entidades `NewsItem` y `Enrichment` + migraciones).
 - **Modelo:** planificado con Opus; **ejecutar con Sonnet** (Haiku solo para pasos mecánicos).
 
 ## Chequeos de sanidad (inicio y cierre de sesión)

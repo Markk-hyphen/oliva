@@ -68,6 +68,8 @@ COPY --link config config/
 COPY --link migrations migrations/
 COPY --link public public/
 COPY --link src src/
+COPY --link tests tests/
+COPY --link phpunit.dist.xml ./
 
 RUN composer dump-autoload --optimize
 

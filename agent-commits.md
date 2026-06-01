@@ -24,6 +24,42 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 0.8] feat: PHPUnit base — instalar, configurar y habilitar en CI
+
+**Hash:** `<pendiente>`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/composer.json` | modificado | Agrega `phpunit/phpunit ^12.5` y test-pack (browser-kit, css-selector) en require-dev |
+| `backend/composer.lock` | modificado | Lock actualizado con PHPUnit 12.5.28 y dependencias |
+| `backend/symfony.lock` | modificado | Recipe de phpunit/phpunit registrada |
+| `backend/phpunit.dist.xml` | nuevo | Configuración PHPUnit generada por la recipe de Flex; habilita deprecation/notice/warning como errores |
+| `backend/tests/bootstrap.php` | nuevo | Bootstrap de PHPUnit + Symfony generado por la recipe |
+| `backend/tests/Unit/Message/IngestSourceMessageTest.php` | nuevo | Primer test unitario: verifica `IngestSourceMessage` (inmutabilidad del sourceId) |
+| `backend/.dockerignore` | modificado | Elimina la exclusión de `tests/`; sin esto el build fallaba con "not found" |
+| `backend/Dockerfile` | modificado | Agrega `COPY --link tests tests/` y `COPY --link phpunit.dist.xml ./` al stage base |
+| `docker-compose.override.yml` | modificado | Agrega mount `./backend/tests:/app/tests` en el servicio `backend` para hot-reload de tests en dev |
+| `.github/workflows/ci.yml` | modificado | Quita `if: false` del paso PHPUnit; usa `php vendor/bin/phpunit` (bin/phpunit ya no es generado por la recipe en PHPUnit 12) |
+| `CLAUDE.md` | modificado | Actualiza "Próximo paso" a 1.1 |
+
+### Justificación
+
+**PHPUnit 12 no genera `bin/phpunit`:** la Symfony recipe de PHPUnit ≥11.1 ya no crea el wrapper `bin/phpunit` (solía descargar el phar de PHPUnit bridge). En PHPUnit 12 el binario canónico es `vendor/bin/phpunit`. El CI y la documentación se actualizan para usarlo directamente.
+
+**`tests/` estaba excluido del build context:** el `.dockerignore` original del template excluye `tests/` y `vendor/` (correcto para el caso de uso original). Al incorporar tests en el repo, `tests/` debe estar disponible en el contexto para que `COPY --link tests tests/` funcione en CI/prod.
+
+**Mount de `tests/` en dev:** sin el mount, los archivos de test creados en el host no son visibles en el contenedor (que solo monta `src/`, `config/`, `migrations/`). Con el mount, el ciclo edit-run-test en dev es inmediato sin rebuild.
+
+**Test elegido — `IngestSourceMessage`:** el DTO es el artefacto más simple del dominio (solo constructor + propiedad readonly), no requiere kernel ni base de datos, y valida que el autoloading y la config de PHPUnit están correctos. El GATE del paso exige un test que pase, no un test sofisticado.
+
+**Verificación:** `php vendor/bin/phpunit` → `OK (2 tests, 2 assertions)` en el contenedor de dev.
+
+---
+
 ## [PASO 0.7] feat: corregir CI y agregar health endpoint
 
 **Hash:** `a1942d4`

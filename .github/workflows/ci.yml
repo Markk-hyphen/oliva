@@ -74,8 +74,7 @@ jobs:
 
       -
         name: Run PHPUnit
-        if: false # Enable in step 0.8 when PHPUnit is installed
-        run: docker compose exec -T backend bin/phpunit
+        run: docker compose exec -T backend php vendor/bin/phpunit
 
   lint:
     name: Docker Lint
