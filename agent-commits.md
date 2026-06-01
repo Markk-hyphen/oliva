@@ -26,7 +26,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 0.5] feat: add RabbitMQ, Symfony Messenger, worker service (step 0.5)
 
-**Hash:** *(pendiente)*
+**Hash:** `b6c53f1`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
