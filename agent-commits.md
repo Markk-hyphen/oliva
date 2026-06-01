@@ -116,7 +116,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 1.5] feat: publish Mercure + NullEnrichmentProvider dev
 
-**Hash:** `(pendiente)`
+**Hash:** `c15bc35`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
