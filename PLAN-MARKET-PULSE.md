@@ -187,7 +187,7 @@ El **hub ya funciona**. Solo falta el publisher: instalar `symfony/mercure-bundl
 
 ### FASE 1 — Producto end-to-end (1 fuente, 1 tarea IA) — "que ande y dé orgullo"
 
-**1.1 — Modelo de dominio**
+**✅ 1.1 — Modelo de dominio**
 - *Acciones:* entidades `NewsItem` (source, externalId, title, url, body, publishedAt, contentHash único, status enum) y `Enrichment` (summary, sentiment, assetClass/tickers, entities JSON, embedding `vector`, model, tokens, costUsd, createdAt). Migraciones. Índice único por `contentHash`. Índice vectorial.
 - *Verificación:* migraciones aplican; fixtures de prueba persisten.
 
