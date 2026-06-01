@@ -164,3 +164,97 @@ Para este proyecto la elección es pragmática:
 - **RabbitMQ** tiene UI de management (`localhost:15672`) que facilita debug en desarrollo.
 
 La decisión está cerrada; RabbitMQ es el broker del proyecto.
+
+---
+
+## AMQP Routing y el bug de `default_publish_routing_key`
+
+### El problema en una línea
+
+Publicamos 18 mensajes al exchange `ingest`. La queue `ingest` quedó en 0. Los mensajes desaparecieron en silencio.
+
+### Cómo funciona el routing en AMQP (tipo `direct`)
+
+Un exchange `direct` es como un clasificador postal con reglas exactas:
+
+```
+Producer publica mensaje con routing_key="ingest"
+         │
+         ▼
+   [Exchange "ingest" — tipo direct]
+         │
+         │  ¿hay algún binding cuya binding_key == routing_key del mensaje?
+         │
+    ─────┴─────────────────────────────────────
+    SÍ: "ingest" == "ingest"        NO: descarta el mensaje (silencio)
+         │
+         ▼
+   [Queue "ingest"]
+```
+
+El **binding** es el cable que conecta exchange con queue. Se define con una `binding_key`. Cuando llega un mensaje, el exchange compara el `routing_key` del mensaje contra la `binding_key` del binding. Si hay match exacto → entrega. Si no hay match → el mensaje se descarta **sin error, sin log, sin excepción**.
+
+Esto es importante: **AMQP no falla ruidosamente cuando un mensaje no rutea. Lo descarta silenciosamente.** El producer recibe un "OK" del broker igualmente.
+
+### Por qué pasó el bug
+
+La configuración de Symfony Messenger era:
+
+```yaml
+transports:
+    ingest:
+        dsn: '%env(RABBITMQ_DSN)%'
+        options:
+            exchange:
+                name: ingest
+                type: direct
+            queues:
+                ingest:
+                    binding_keys: [ingest]
+```
+
+Los `binding_keys: [ingest]` crean el binding `exchange → queue` con binding_key `"ingest"`. Eso es correcto.
+
+El problema estaba en **qué routing_key usa Symfony al publicar**. El comportamiento de Symfony Messenger al publicar un mensaje a AMQP es:
+
+```
+routing_key = AmqpRoutingKeyStamp (si está presente en el envelope)
+           ?? default_publish_routing_key (si está configurado en el exchange)
+           ?? "" (string vacío — el default si no hay nada)
+```
+
+En nuestro caso, no había stamp ni `default_publish_routing_key`. Entonces Symfony publicó todos los mensajes con `routing_key = ""`.
+
+El exchange recibió los mensajes (por eso `publish_in: 18`), buscó un binding con `binding_key == ""`, no encontró ninguno, y los descartó. La queue quedó en 0. Sin error.
+
+### El fix
+
+Agregar `default_publish_routing_key` al exchange:
+
+```yaml
+exchange:
+    name: ingest
+    type: direct
+    default_publish_routing_key: ingest   # ← esto faltaba
+```
+
+Ahora Symfony publica con `routing_key = "ingest"`, que matchea `binding_key = "ingest"`, y el mensaje llega a la queue.
+
+### Cómo se detectó
+
+No hay ningún error en el lado del producer. El `$bus->dispatch(...)` retorna éxito. El exchange recibe el mensaje. El único indicio es que la queue permanece vacía aunque se publique.
+
+La forma de diagnosticarlo fue comparar las métricas del exchange vs la queue en la management UI de RabbitMQ (`localhost:15672`):
+
+- Exchange `ingest` → `publish_in: 18`, `publish_out: 0`
+- Queue `ingest` → `deliver_get: 0`
+
+`publish_out: 0` significa que el exchange no envió nada a ninguna queue (ni a otro exchange). Ahí se confirmó que el problema era de routing, no de consumo.
+
+### Cuándo `publish_out` es 0 y cuándo no
+
+`publish_out` en un exchange cuenta únicamente los mensajes que el exchange reenvió a **otro exchange** (exchange-to-exchange routing). NO cuenta los mensajes entregados a queues. Así que `publish_out: 0` con `publish_in: 18` no necesariamente es un bug — solo significa que no hay exchange-to-exchange routing. El indicador real es `deliver_get` en la queue.
+
+### Regla para recordar
+
+> En un exchange `direct` de RabbitMQ, el mensaje solo llega a la queue si `routing_key del mensaje == binding_key del binding`. Symfony Messenger usa routing key vacío por defecto. Siempre configurar `default_publish_routing_key` cuando el exchange es `direct`.
