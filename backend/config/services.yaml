@@ -39,3 +39,7 @@ services:
     App\MessageHandler\IngestSourceHandler:
         arguments:
             $adapters: !tagged_iterator app.source_adapter
+
+    App\Command\SourcesPollCommand:
+        arguments:
+            $adapters: !tagged_iterator app.source_adapter

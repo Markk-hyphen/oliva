@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use App\Adapter\SourceAdapterInterface;
 use App\Message\IngestSourceMessage;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -12,19 +13,19 @@ use Symfony\Component\Messenger\MessageBusInterface;
 #[AsCommand(name: 'app:sources:poll', description: 'Poll configured sources and enqueue ingestion jobs')]
 class SourcesPollCommand extends Command
 {
-    // Stub source list — real adapters arrive in Phase 1
-    private const SOURCES = ['coindesk-rss', 'cointelegraph-rss', 'coingecko-top'];
-
-    public function __construct(private readonly MessageBusInterface $bus)
-    {
+    /** @param iterable<SourceAdapterInterface> $adapters */
+    public function __construct(
+        private readonly MessageBusInterface $bus,
+        private readonly iterable $adapters,
+    ) {
         parent::__construct();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        foreach (self::SOURCES as $sourceId) {
-            $this->bus->dispatch(new IngestSourceMessage($sourceId));
-            $output->writeln(sprintf('[%s] Enqueued: %s', date('Y-m-d H:i:s'), $sourceId));
+        foreach ($this->adapters as $adapter) {
+            $this->bus->dispatch(new IngestSourceMessage($adapter->getId()));
+            $output->writeln(sprintf('[%s] Enqueued: %s', date('Y-m-d H:i:s'), $adapter->getId()));
         }
 
         return Command::SUCCESS;

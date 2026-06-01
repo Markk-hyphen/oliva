@@ -89,6 +89,31 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 1.3] feat: poll programado — SourcesPollCommand itera adapters registrados
+
+**Hash:** `<pendiente>`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/src/Command/SourcesPollCommand.php` | modificado | Reemplaza lista hardcodeada por `iterable<SourceAdapterInterface>` inyectado con `tagged_iterator app.source_adapter`. |
+| `backend/config/services.yaml` | modificado | Wire `$adapters` del comando con `tagged_iterator app.source_adapter`. |
+
+### Justificación
+
+**Eliminar la lista hardcodeada:** la lista `['coindesk-rss', 'cointelegraph-rss', 'coingecko-top']` estaba desacoplada de los adapters reales: incluía `coingecko-top` que no tiene adapter, y requería editar el comando cada vez que se agrega una fuente. Ahora el comando es un thin dispatcher — solo itera lo que el contenedor sabe que existe.
+
+**Mismo tagged_iterator que el handler:** reusar el tag `app.source_adapter` garantiza que agregar un nuevo adapter en `services.yaml` lo hace disponible automáticamente tanto en el handler (procesamiento) como en el comando (poll), sin tocar código PHP.
+
+**No se cambia el crontab ni el compose:** el scheduler ya ejecuta `app:sources:poll -v` cada 5 minutos. El cambio es transparente para la infraestructura.
+
+**Verificación:** `bin/console app:sources:poll -v` en backend y en scheduler emite solo coindesk-rss + cointelegraph-rss; scheduler confirmado con cache limpia.
+
+---
+
 ## [fix] fix: FRANKENPHP_CONFIG crasheaba Caddy en CI
 
 **Hash:** `be0662e`

@@ -195,7 +195,7 @@ El **hub ya funciona**. Solo falta el publisher: instalar `symfony/mercure-bundl
 - *Acciones:* interfaz `SourceAdapter`; `RssAdapter` para los 2 feeds; `IngestMessage` + handler: fetch → parse → normaliza → dedup por `contentHash` → persiste `NewsItem(status=pending)` → despacha `EnrichMessage`.
 - *Verificación:* corriendo el poll, aparecen `NewsItem` reales en la DB sin duplicados.
 
-**1.3 — Poll programado**
+**✅ 1.3 — Poll programado**
 - *Acciones:* implementar `app:sources:poll` real (recorre adapters, despacha `IngestMessage`); cron del scheduler lo dispara.
 - *Verificación:* sin intervención manual, entran items nuevos periódicamente.
 
