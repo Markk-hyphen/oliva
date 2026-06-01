@@ -116,7 +116,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 1.4] feat: enriquecimiento IA — AnthropicEnrichmentProvider, VoyageEmbeddingProvider, EnrichItemHandler
 
-**Hash:** `<pendiente>`
+**Hash:** `5d19a32`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
