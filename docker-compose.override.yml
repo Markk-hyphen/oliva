@@ -13,6 +13,7 @@ services:
     volumes:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
+      - ./backend/migrations:/app/migrations
       - ./backend/public:/app/public
       - ./backend/frankenphp/Caddyfile:/etc/caddy/Caddyfile
       - ./backend/frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro

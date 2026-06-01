@@ -34,6 +34,7 @@ RUN set -eux; \
 		apcu \
 		intl \
 		opcache \
+		pdo_pgsql \
 		zip \
 	;
 
@@ -56,6 +57,7 @@ RUN composer install --prefer-dist --no-progress --no-interaction --no-scripts -
 # Copy application source
 COPY --link bin bin/
 COPY --link config config/
+COPY --link migrations migrations/
 COPY --link public public/
 COPY --link src src/
 
