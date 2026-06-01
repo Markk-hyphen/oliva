@@ -26,7 +26,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 0.4] feat: install MercureBundle, configure publisher (step 0.4)
 
-**Hash:** *(pendiente)*
+**Hash:** `88f4a93`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
