@@ -24,6 +24,37 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 0.3] feat: add pgvector — extension, migration, Doctrine type
+
+**Hash:** *(pendiente)*
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `docker-compose.yml` | modificado | Cambia imagen `database` de `postgres:15` a `pgvector/pgvector:pg15` |
+| `backend/migrations/Version20260601001301.php` | nuevo | Migración que habilita la extensión `vector` en Postgres (`CREATE EXTENSION IF NOT EXISTS vector`) |
+| `backend/composer.json` | modificado | Agrega `pgvector/pgvector ^0.2.2` |
+| `backend/composer.lock` | modificado | Lock actualizado |
+| `backend/symfony.lock` | modificado | Recipe registrada |
+| `backend/config/packages/doctrine.yaml` | modificado | Registra el tipo Doctrine `vector` → `Pgvector\Doctrine\VectorType`; fija `server_version: '15'` |
+
+### Justificación
+
+**`pgvector/pgvector:pg15` es compatible con el volumen existente:** la imagen es `postgres:15` + la extensión preinstalada. El formato del directorio de datos es idéntico, por lo que el volumen `db_data` no se pierde ni hay que reinicializarlo.
+
+**La extensión se habilita con una migración, no en `initdb`:** esto la mantiene versionada junto con el esquema de la app. Si se destruye y recrea la DB, la migración la reinstala automáticamente. Alternativa descartada: script de init de Postgres (`docker-entrypoint-initdb.d`) — funciona, pero es una pieza de infra separada que no está bajo control de Migrations.
+
+**`server_version: '15'` en doctrine.yaml:** el comentario original del template decía `server_version: '16'`; fijar `15` evita que Doctrine use features de PG16 (ej: generación de identidad con nueva sintaxis) que no están disponibles en el servidor en uso.
+
+**Tipo Doctrine `vector`:** sin este registro, `#[ORM\Column(type: 'vector')]` en una entidad lanza `UnknownColumnType`. El paquete `pgvector/pgvector` provee `VectorType` que convierte entre `float[]` PHP y el literal `[x,y,z]` que espera el tipo SQL `vector(n)`.
+
+**Verificación:** `pgvector 0.8.2` instalada en la DB; operación de similitud coseno (`<=>`) funciona; `doctrine:schema:validate` verde.
+
+---
+
 ## [PASO 0.2] feat: install Doctrine ORM + Migrations, add pdo_pgsql extension
 
 **Hash:** `0d607537` (ver `git show 0d60753`)

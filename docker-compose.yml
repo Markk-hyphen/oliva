@@ -1,6 +1,6 @@
 services:
   database:
-    image: postgres:${POSTGRES_VERSION:-15}
+    image: pgvector/pgvector:pg${POSTGRES_VERSION:-15}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
