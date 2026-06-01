@@ -24,6 +24,43 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 0.5] feat: add RabbitMQ, Symfony Messenger, worker service (step 0.5)
+
+**Hash:** *(pendiente)*
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `docker-compose.yml` | modificado | Agrega servicio `rabbitmq` (imagen `3-management`, volumen `rabbitmq_data`, healthcheck); backend `depends_on` rabbitmq healthy; agrega volumen `rabbitmq_data` |
+| `docker-compose.override.yml` | modificado | Expone puertos `5672` y `15672` de RabbitMQ en dev; agrega servicio `worker` con `messenger:consume ingest enrich` |
+| `backend/Dockerfile` | modificado | Agrega extensión PHP `amqp` a `install-php-extensions` |
+| `backend/composer.json` | modificado | Agrega `symfony/messenger` y `symfony/amqp-messenger` |
+| `backend/composer.lock` | modificado | Lock actualizado |
+| `backend/symfony.lock` | modificado | Recipe Flex de messenger registrada |
+| `backend/config/packages/messenger.yaml` | modificado | Configuración completa: transportes `ingest` + `enrich` + `failed` con DSN AMQP, DLX (`x-dead-letter-exchange`), retry strategy (3 intentos, backoff exponencial) |
+| `backend/.env` | modificado | Agrega `RABBITMQ_DSN` placeholder |
+| `.env.backend` (raíz) | modificado | Agrega `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_DSN` con valores de dev |
+| `.env.example` | modificado | Documenta variables de RabbitMQ y Mercure |
+
+### Justificación
+
+**`ext-amqp` no estaba en el Dockerfile:** igual que `pdo_pgsql` en el paso 0.2, el template no incluye extensiones específicas. Sin `ext-amqp`, Composer rechaza `symfony/amqp-messenger` por falta de plataforma. Solución: agregar al Dockerfile y rebuildar.
+
+**Tres transportes desde el inicio (ingest / enrich / failed):** diseño deliberado. `ingest` y `enrich` son los dos stages del pipeline. `failed` es el dead-letter — los mensajes que agotan los reintentos van ahí en lugar de perderse. Permite inspeccionarlos y reprocesarlos con `messenger:failed:retry`.
+
+**DLX via `x-dead-letter-exchange` en las queue arguments:** configura el DLX a nivel de RabbitMQ, no solo a nivel Symfony. Si el worker muere sin hacer ACK, Rabbit mueve el mensaje al exchange `failed` sin necesidad de que Symfony intervenga. Más robusto que depender solo del retry de Messenger.
+
+**Retry strategy diferenciada:** `ingest` usa delay 1s (errores de red cortos); `enrich` usa 2s (LLM puede tardar en responder). Multiplicador x2 en ambos para backoff exponencial. 3 reintentos máximos antes de DLX.
+
+**Worker con `--time-limit=3600`:** el worker reinicia cada hora para liberar memoria y recibir código actualizado (en dev). `restart: unless-stopped` lo relanza automáticamente.
+
+**Verificación:** `messenger:stats` muestra los 3 transportes conectados con 0 mensajes; management UI en `:15672` muestra las colas `ingest`, `enrich`, `failed`.
+
+---
+
 ## [PASO 0.4] feat: install MercureBundle, configure publisher (step 0.4)
 
 **Hash:** `88f4a93`

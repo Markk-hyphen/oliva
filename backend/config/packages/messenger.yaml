@@ -1,0 +1,60 @@
+framework:
+    messenger:
+        failure_transport: failed
+
+        transports:
+            ingest:
+                dsn: '%env(RABBITMQ_DSN)%'
+                options:
+                    exchange:
+                        name: ingest
+                        type: direct
+                    queues:
+                        ingest:
+                            binding_keys: [ingest]
+                            arguments:
+                                x-dead-letter-exchange: failed
+                                x-dead-letter-routing-key: failed
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000
+                    multiplier: 2
+
+            enrich:
+                dsn: '%env(RABBITMQ_DSN)%'
+                options:
+                    exchange:
+                        name: enrich
+                        type: direct
+                    queues:
+                        enrich:
+                            binding_keys: [enrich]
+                            arguments:
+                                x-dead-letter-exchange: failed
+                                x-dead-letter-routing-key: failed
+                retry_strategy:
+                    max_retries: 3
+                    delay: 2000
+                    multiplier: 2
+
+            failed:
+                dsn: '%env(RABBITMQ_DSN)%'
+                options:
+                    exchange:
+                        name: failed
+                        type: direct
+                    queues:
+                        failed:
+                            binding_keys: [failed]
+
+        routing:
+            # Will be filled in Phase 1 when message classes are created
+            # 'App\Message\IngestSourceMessage': ingest
+            # 'App\Message\EnrichItemMessage': enrich
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                ingest: 'in-memory://'
+                enrich: 'in-memory://'

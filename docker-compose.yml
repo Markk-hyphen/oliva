@@ -16,6 +16,22 @@ services:
       retries: 5
       timeout: 5s
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-app}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-app}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
   backend:
     build:
       context: ./backend
@@ -26,6 +42,8 @@ services:
       - .env.backend
     depends_on:
       database:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     expose:
       - "80/tcp"
@@ -55,3 +73,4 @@ networks:
 
 volumes:
   db_data:
+  rabbitmq_data:

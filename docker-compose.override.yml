@@ -4,6 +4,38 @@ services:
     ports:
       - "5432:5432"
 
+  rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  worker:
+    image: app-backend-dev:1.0
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: frankenphp_dev
+    command: ["bin/console", "messenger:consume", "ingest", "enrich", "--time-limit=3600", "-vv"]
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.backend
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./backend/.env:/app/.env:ro
+      - ./backend/src:/app/src
+      - ./backend/migrations:/app/migrations
+      - ./backend/config:/app/config
+    environment:
+      APP_ENV: development
+    networks:
+      - app_network
+    tty: true
+
   backend:
     image: app-backend-dev:1.0
     build:
