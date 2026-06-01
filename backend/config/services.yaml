@@ -21,3 +21,21 @@ services:
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+
+    app.adapter.coindesk_rss:
+        class: App\Adapter\RssAdapter
+        arguments:
+            $sourceId: 'coindesk-rss'
+            $feedUrl: 'https://www.coindesk.com/arc/outboundfeeds/rss/'
+        tags: ['app.source_adapter']
+
+    app.adapter.cointelegraph_rss:
+        class: App\Adapter\RssAdapter
+        arguments:
+            $sourceId: 'cointelegraph-rss'
+            $feedUrl: 'https://cointelegraph.com/rss'
+        tags: ['app.source_adapter']
+
+    App\MessageHandler\IngestSourceHandler:
+        arguments:
+            $adapters: !tagged_iterator app.source_adapter

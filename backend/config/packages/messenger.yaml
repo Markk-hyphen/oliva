@@ -51,7 +51,7 @@ framework:
 
         routing:
             'App\Message\IngestSourceMessage': ingest
-            # 'App\Message\EnrichItemMessage': enrich  — Phase 1
+            'App\Message\EnrichItemMessage': enrich
 
 when@test:
     framework:

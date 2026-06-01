@@ -191,7 +191,7 @@ El **hub ya funciona**. Solo falta el publisher: instalar `symfony/mercure-bundl
 - *Acciones:* entidades `NewsItem` (source, externalId, title, url, body, publishedAt, contentHash único, status enum) y `Enrichment` (summary, sentiment, assetClass/tickers, entities JSON, embedding `vector`, model, tokens, costUsd, createdAt). Migraciones. Índice único por `contentHash`. Índice vectorial.
 - *Verificación:* migraciones aplican; fixtures de prueba persisten.
 
-**1.2 — Ingesta (CoinDesk/Cointelegraph RSS)**
+**✅ 1.2 — Ingesta (CoinDesk/Cointelegraph RSS)**
 - *Acciones:* interfaz `SourceAdapter`; `RssAdapter` para los 2 feeds; `IngestMessage` + handler: fetch → parse → normaliza → dedup por `contentHash` → persiste `NewsItem(status=pending)` → despacha `EnrichMessage`.
 - *Verificación:* corriendo el poll, aparecen `NewsItem` reales en la DB sin duplicados.
 

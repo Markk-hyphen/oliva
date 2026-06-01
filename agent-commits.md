@@ -58,6 +58,37 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 1.2] feat: ingesta RSS — SourceAdapterInterface, RssAdapter, EnrichItemMessage, handler real
+
+**Hash:** `<pendiente>`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/src/Adapter/SourceAdapterInterface.php` | nuevo | Contrato de adaptador de fuente: `getId(): string` + `fetch(): iterable<array>` |
+| `backend/src/Adapter/RssAdapter.php` | nuevo | Implementación RSS genérica (HttpClient + SimpleXML). Soporta `content:encoded` para body completo; fallback a `<description>`. |
+| `backend/src/Message/EnrichItemMessage.php` | nuevo | Mensaje para la cola `enrich`: porta `newsItemId` para que el futuro handler de enriquecimiento sepa qué item procesar. |
+| `backend/src/MessageHandler/IngestSourceHandler.php` | modificado | Implementación real: busca el adapter por sourceId, itera items, computa contentHash (SHA-256 de url), dedup contra DB, persiste `NewsItem(status=pending)`, despacha `EnrichItemMessage`. |
+| `backend/config/packages/messenger.yaml` | modificado | Activa el routing `EnrichItemMessage → enrich` (estaba comentado como Phase 1). |
+| `backend/config/services.yaml` | modificado | Registra dos instancias de `RssAdapter` (coindesk-rss y cointelegraph-rss) con tag `app.source_adapter`; wire `$adapters` del handler con `tagged_iterator`. |
+
+### Justificación
+
+**Una clase `RssAdapter` con dos instancias nombradas en vez de dos subclases:** ambos feeds son RSS 2.0 estándar; la única diferencia es `sourceId` y `feedUrl`. Crear subclases sería abstraer por herencia donde solo hay configuración. Se instancian manualmente en `services.yaml` con `tagged_iterator` para que el handler reciba el conjunto completo sin saber cuántos existen — extensible sin tocar el handler.
+
+**`contentHash = SHA-256(url)` como clave de deduplicación:** la url del artículo es estable entre fetches del mismo feed; el GUID puede variar según implementación del feed. SHA-256 de url garantiza idempotencia incluso si el mismo artículo aparece en ambos feeds con distintos GUIDs. La constraint UNIQUE `content_hash` en la tabla actúa como segunda línea de defensa.
+
+**Flush por item antes de dispatch:** se necesita el `id` del `NewsItem` persistido para armar el `EnrichItemMessage`. Flush por item implica N roundtrips a la DB por poll, lo cual es aceptable dado el volumen (decenas de items); si el feed crece se puede batch-persist y despachar los IDs al final.
+
+**`coingecko-top` sin adapter:** el `SourcesPollCommand` aún lista `coingecko-top` como fuente stub del paso 0.6. El handler recibe `IngestSourceMessage{sourceId: 'coingecko-top'}`, no encuentra adapter y loguea warning — comportamiento correcto, se ignorará hasta el paso 2.1 donde se agrega el adapter de CoinGecko.
+
+**Verificación:** 25 items de coindesk-rss + 30 de cointelegraph-rss persisten en la DB; segundo poll no duplica ninguno; `EnrichItemMessage` llega a la cola `enrich` (sin handler aún — esperado, paso 1.4).
+
+---
+
 ## [fix] fix: FRANKENPHP_CONFIG crasheaba Caddy en CI
 
 **Hash:** `be0662e`
