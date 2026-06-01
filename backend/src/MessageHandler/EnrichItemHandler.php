@@ -10,6 +10,8 @@ use App\Provider\EnrichmentProviderInterface;
 use App\Repository\NewsItemRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Update;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler]
@@ -20,6 +22,7 @@ class EnrichItemHandler
         private readonly EnrichmentProviderInterface $enrichmentProvider,
         private readonly EmbeddingProviderInterface $embeddingProvider,
         private readonly EntityManagerInterface $em,
+        private readonly HubInterface $hub,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -67,7 +70,23 @@ class EnrichItemHandler
         $this->em->persist($enrichment);
         $this->em->flush();
 
-        // Step 1.5 will publish the enriched item to Mercure here.
+        $this->hub->publish(new Update(
+            'crypto/feed',
+            json_encode([
+                'id'          => $item->getId(),
+                'source'      => $item->getSource(),
+                'title'       => $item->getTitle(),
+                'url'         => $item->getUrl(),
+                'publishedAt' => $item->getPublishedAt()->format(\DateTimeInterface::ATOM),
+                'summary'     => $enrichment->getSummary(),
+                'sentiment'   => $enrichment->getSentiment(),
+                'assetClass'  => $enrichment->getAssetClass(),
+                'tickers'     => $enrichment->getTickers(),
+                'entities'    => $enrichment->getEntities(),
+                'model'       => $enrichment->getModel(),
+                'costUsd'     => $enrichment->getCostUsd(),
+            ]),
+        ));
 
         $this->logger->info('EnrichItemHandler: enriched', [
             'id'       => $item->getId(),

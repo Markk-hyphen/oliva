@@ -40,19 +40,18 @@ Se está construyendo **encima** un proyecto-vidriera: **"Crypto Pulse"** — pl
 - **Glosario de conceptos técnicos:** `concepts.md` (explicaciones teóricas agregadas a pedido).
 - **Rama de trabajo:** `release/plan-market-pulse` (no tocar `main`).
 - **Decisiones cerradas:** broker **RabbitMQ**, scheduler **contenedor cron (supercronic)**, LLM **Anthropic** (Haiku volumen / Sonnet agregados), vector **pgvector**, dominio **cripto** (RSS CoinDesk/Cointelegraph + CoinGecko; CryptoPanic en Fase 2).
-- **Próximo paso:** 1.5 — Publish a Mercure (al persistir Enrichment, publicar el item enriquecido al topic `crypto/feed` con `HubInterface`).
+- **Próximo paso:** 1.6 — API REST (`GET /api/feed` paginado + filtros básicos, `GET /api/items/{id}`).
 - **Modelo:** planificado con Opus; **ejecutar con Sonnet** (Haiku solo para pasos mecánicos).
 
-## Deuda conocida antes de 1.5 (revisión de sanidad, 2026-06-01)
+## Deuda técnica conocida (revisión de sanidad 2026-06-01, actualizada en 1.5)
 
-Hallazgos de una revisión de lo hecho en pasos 1.1–1.4. Atender los 🔴/🟡 antes o durante 1.5.
-
-- 🔴 **Falta el mock de `EnrichmentProvider` en dev (viola §11.6 del plan).** `config/services.yaml` cablea `AnthropicEnrichmentProvider` como default en *todos* los entornos. Hoy solo estás protegido por accidente (la key placeholder da 401). Con una key real, el scheduler (`*/5`) gastaría en cada item de cada poll. **Fix:** `NullEnrichmentProvider` (resultado fijo, costo 0) aliaseado por default en `config/services_dev.yaml`; Anthropic solo en prod o detrás de un flag (`ENRICHMENT_PROVIDER`).
-- 🟡 **El prompt caching de Anthropic es un no-op.** El system prompt (~250 tokens) está por debajo del mínimo cacheable de Haiku (2048 tokens) → `cache_control: ephemeral` se ignora; no hay ahorro. El header beta `prompt-caching-2024-07-31` ya es innecesario (GA). El control de costo "(c)" del plan **no está activo**; el ahorro real lo da la capa Symfony Cache por `contentHash`.
+- ✅ **Mock de `EnrichmentProvider` en dev — RESUELTO en 1.5.** `NullEnrichmentProvider` + `services_development.yaml`.
+- ✅ **`MERCURE_URL` worker — RESUELTO en 1.5.** Cambiado a `http://backend/...` (nombre de servicio Docker).
+- 🟡 **El prompt caching de Anthropic es un no-op.** El system prompt (~250 tokens) está por debajo del mínimo cacheable de Haiku (2048 tokens) → `cache_control: ephemeral` se ignora; no hay ahorro. El header beta `prompt-caching-2024-07-31` ya es innecesario (GA). El ahorro real lo da la capa Symfony Cache por `contentHash`.
 - 🟢 **Dual-write DB↔broker → items huérfanos en `pending`.** Si el broker falla tras el `flush()` de ingesta, queda un `NewsItem(pending)` sin mensaje de enrich. Mitigado por `app:enrich:requeue-pending`. Para 1.8: correrlo periódico o documentarlo como recovery path.
-- 🟢 **`contentHash` es un hash de la URL**, no del contenido (`hash('sha256', $raw['url'])`). Dedup por URL es razonable, pero el nombre engaña: ediciones de título/cuerpo no re-ingestan. Renombrar o hashear título+body si se quiere detectar ediciones.
-- 🟢 **`RssAdapter` asume RSS 2.0** (`channel->item`): un feed Atom devuelve vacío en silencio; sin header `User-Agent`. Para el paso 1.8 (robustez).
-- 🟢 **Gap de re-embedding:** items enriquecidos sin key de Voyage quedan con `embedding=null` permanente (requeue saltea los `enriched`). La búsqueda semántica (2.2) los ignora. Hará falta un comando de re-embed o un estado intermedio antes de Fase 2.
+- 🟢 **`contentHash` es un hash de la URL**, no del contenido. Dedup por URL es razonable; ediciones de título/cuerpo no re-ingestan.
+- 🟢 **`RssAdapter` asume RSS 2.0** (`channel->item`): feed Atom → vacío silencioso; sin header `User-Agent`. Para 1.8.
+- 🟢 **Gap de re-embedding:** items enriquecidos sin key de Voyage quedan con `embedding=null` permanente. La búsqueda semántica (2.2) los ignora. Necesitará comando de re-embed antes de Fase 2.
 
 ## Chequeos de sanidad (inicio y cierre de sesión)
 

@@ -114,6 +114,36 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 1.5] feat: publish Mercure + NullEnrichmentProvider dev
+
+**Hash:** `(pendiente)`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/src/MessageHandler/EnrichItemHandler.php` | modificado | Inyecta `HubInterface`; publica a topic `crypto/feed` tras `flush()` con payload JSON del item enriquecido |
+| `backend/src/Provider/NullEnrichmentProvider.php` | nuevo | Provider stub para dev: devuelve `EnrichmentResult` fijo (costo $0); evita llamadas reales a la API durante desarrollo |
+| `backend/config/services_development.yaml` | nuevo | Override del alias `EnrichmentProviderInterface` → `NullEnrichmentProvider` en APP_ENV=development |
+| `.env.backend` | modificado | `MERCURE_URL` cambia de `http://localhost` a `http://backend` (nombre de servicio Docker) para que el worker pueda publicar al hub en otro contenedor |
+| `.env.example` | modificado | Mismo cambio de MERCURE_URL |
+
+### Justificación
+
+**`MERCURE_URL=http://backend/...` en lugar de `localhost`:** el worker corre en un contenedor separado (sin Caddy). Desde ese contenedor, `localhost` es el propio worker. El hub de Mercure vive en el contenedor `backend` (FrankenPHP/Caddy). El nombre de servicio Docker `backend` resuelve correctamente desde todos los contenedores de la red `app_network`, incluyendo el propio `backend` (Docker DNS). Cambiarlo a `http://backend` hace que tanto el backend como el worker puedan publicar sin ningún cambio por contenedor.
+
+**`NullEnrichmentProvider` + `services_development.yaml`:** cierra la deuda 🔴 identificada en la revisión de sanidad post-1.4. El archivo es `services_development.yaml` (no `services_dev.yaml`) porque `APP_ENV=development` — Symfony resuelve el sufijo del env. En producción, `AnthropicEnrichmentProvider` sigue siendo el alias real.
+
+**Publicación después del `flush()`:** garantiza que el item persistido en la DB es el mismo que se difunde por Mercure. Un fallo del hub no revierte la persistencia (Mercure no es transaccional con la DB); lo opuesto — publicar antes del flush — podría difundir un item que luego falla al persistir.
+
+**Payload del evento:** incluye todos los campos visibles al usuario final (id, source, title, url, publishedAt, summary, sentiment, assetClass, tickers, entities, model, costUsd). El embedding se omite del payload (no tiene utilidad en el cliente SSE y aumentaría el tamaño del mensaje en ~8 KB por item).
+
+**Verificación:** `curl` suscrito al topic `crypto/feed` recibe 3 eventos SSE con payload JSON completo inmediatamente después de que el worker procesa los mensajes.
+
+---
+
 ## [PASO 1.4] feat: enriquecimiento IA — AnthropicEnrichmentProvider, VoyageEmbeddingProvider, EnrichItemHandler
 
 **Hash:** `5d19a32`
