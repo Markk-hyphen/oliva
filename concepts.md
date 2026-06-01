@@ -94,3 +94,73 @@ Para la escala de este proyecto (miles/decenas de miles de noticias), `pgvector`
 - **Backup unificado** — un `pg_dump` y tenés todo.
 
 Una DB vectorial dedicada tiene sentido a partir de decenas de millones de vectores o cuando necesitás features muy específicas (multi-tenancy vectorial, filtros complejos a escala masiva). No es el caso acá.
+
+---
+
+## RabbitMQ
+
+### Qué es
+
+RabbitMQ es un **message broker**: un proceso intermediario que recibe mensajes de un productor, los guarda en colas, y los entrega a uno o más consumidores. Es el equivalente a una oficina de correo: el que manda la carta (productor) no necesita saber quién la va a leer ni cuándo; solo la deposita, y el broker se ocupa de la entrega.
+
+El protocolo que usa RabbitMQ se llama **AMQP** (Advanced Message Queuing Protocol).
+
+### Conceptos clave
+
+| Concepto | Qué es |
+|---|---|
+| **Producer** | Quien publica el mensaje (ej: el scheduler que encontró una noticia nueva) |
+| **Exchange** | Punto de entrada. Recibe el mensaje y decide a qué colas mandarlo según reglas de routing |
+| **Queue** | Buffer persistente donde esperan los mensajes hasta ser consumidos |
+| **Consumer** | Quien procesa los mensajes (ej: el worker de Symfony que enriquece con IA) |
+| **Binding** | Regla que conecta un exchange con una queue |
+| **Routing key** | Etiqueta en el mensaje que usa el exchange para decidir el destino |
+
+El flujo es siempre: `Producer → Exchange → Queue → Consumer`.
+
+### Por qué no llamar directamente al worker
+
+La alternativa "simple" sería que el scheduler llame al worker por HTTP o ejecute la lógica directamente. El problema:
+
+- Si el worker se cae, el trabajo se pierde.
+- Si llegan 50 noticias a la vez, el scheduler se bloquea esperando respuesta.
+- No podés escalar consumidores sin cambiar el productor.
+
+Con un broker en el medio:
+- El mensaje **persiste en la cola** aunque el worker esté caído. Cuando vuelve, lo procesa.
+- El scheduler termina en microsegundos (solo publica). El procesamiento es **asíncrono**.
+- Podés levantar 5 workers en paralelo sin tocar el scheduler.
+
+### Cómo se usa en este proyecto
+
+El flujo de Crypto Pulse es:
+
+```
+[cron/scheduler]
+     │ publica mensaje con URL/datos de la noticia
+     ▼
+[RabbitMQ - exchange "articles"]
+     │ routing → queue "ingestion"
+     ▼
+[Symfony Worker - bin/console messenger:consume]
+     │ consume el mensaje
+     │ llama a Anthropic para enriquecer
+     │ guarda en Postgres (con embedding en pgvector)
+     ▼
+[Mercure Hub]
+     │ push SSE al frontend
+     ▼
+[Dashboard en vivo]
+```
+
+Symfony usa su componente **Messenger** para abstraer RabbitMQ: en el código PHP se hace `$bus->dispatch(new IngestArticleMessage(...))` y Messenger se encarga del transporte AMQP. No hay llamadas manuales a la librería de RabbitMQ.
+
+### Por qué RabbitMQ y no Kafka o Redis Streams
+
+Para este proyecto la elección es pragmática:
+
+- **Kafka** es correcto para millones de mensajes/segundo y retención larga. Overkill para miles de noticias/día y agrega complejidad operativa real.
+- **Redis Streams** es válido y más liviano, pero RabbitMQ tiene mejor integración nativa con **Symfony Messenger** (transport oficial, reintentos, dead-letter queues out of the box).
+- **RabbitMQ** tiene UI de management (`localhost:15672`) que facilita debug en desarrollo.
+
+La decisión está cerrada; RabbitMQ es el broker del proyecto.
