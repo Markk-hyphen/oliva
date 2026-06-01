@@ -24,6 +24,36 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 0.7] feat: corregir CI y agregar health endpoint
+
+**Hash:** `a1942d4`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `.github/workflows/ci.yml` | nuevo | CI correcto en la raíz del repo; trigger en `release/plan-market-pulse`; genera env files en CI; usa `docker compose build`; checks HTTP/Mercure/migrations/schema |
+| `backend/.github/workflows/ci.yml` | eliminado | Estaba en ubicación incorrecta; GitHub Actions no lo leía |
+| `backend/src/Controller/HealthController.php` | nuevo | `GET /health` → `{"status":"ok"}` — endpoint para CI y monitoreo |
+
+### Justificación
+
+**`.github/` estaba dentro de `backend/`:** el template symfony-docker asume que el repo root es el backend. En este proyecto el repo root es la app entera (`backend/` + `frontend/`). GitHub Actions solo lee `.github/` en la raíz del repositorio; el CI nunca se ejecutó.
+
+**`if: false` en pasos de Doctrine:** el template pone `if: false` en los pasos de ORM/migraciones para que el CI verde de base. Se quitó ahora que Doctrine, Migrations y pgvector están instalados y el schema está en sync.
+
+**PHPUnit sigue con `if: false`:** PHPUnit se instala en el paso 0.8. Habilitarlo ahora haría el CI rojo.
+
+**Endpoint `/health` en lugar de chequear `http://localhost`:** sin rutas definidas el root devuelve 404 y `curl --fail-with-body` falla. El health endpoint es la práctica correcta (liveness probe para CI y para Kubernetes/Docker en producción).
+
+**`docker compose build` en lugar de `bake-action`:** el bake-action de Docker usa GHA cache pero necesita configuración adicional (credenciales de registry, ARGs de build). `docker compose build` es equivalente funcional para CI sin la complejidad del cache de capas en GHA. Se puede agregar caché en una iteración futura.
+
+**Verificación local:** todos los pasos del CI pasaron manualmente: `/health` → 200, Mercure → 200, migrations → "already at latest version", `schema:validate` → "in sync".
+
+---
+
 ## [PASO 0.6] feat: scheduler cron container with supercronic
 
 **Hash:** `fc7cb23`
