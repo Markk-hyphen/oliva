@@ -133,8 +133,9 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 | `backend/src/Command/EnrichRequeueCommand.php` | nuevo | `app:enrich:requeue-pending` — re-despacha EnrichItemMessage para todos los NewsItem con status=pending; útil para recovery de fallos (preparatorio para 1.8) |
 | `backend/config/packages/cache.yaml` | modificado | Pool `enrichment.cache` (filesystem, 24h) — evita re-llamar la API en retries |
 | `backend/config/services.yaml` | modificado | Wire AnthropicEnrichmentProvider (apiKey, enrichmentCache), VoyageEmbeddingProvider (apiKey), aliases de interfaces; default `env(VOYAGE_API_KEY): ''` para ser opcional |
-| `.env.backend` | modificado | Agrega `ANTHROPIC_API_KEY` y `VOYAGE_API_KEY` (vacío por defecto) |
-| `.env.example` | modificado | Mismo |
+| `.env.example` | modificado | Agrega `ANTHROPIC_API_KEY` y `VOYAGE_API_KEY` (vacío por defecto) |
+
+> **Corrección (revisión 2026-06-01):** este commit (`5d19a32`) incluyó **solo** `.env.example`, NO `.env.backend`. El mismo cambio (`ANTHROPIC_API_KEY` / `VOYAGE_API_KEY`) quedó sin commitear en `.env.backend` (working tree con ` M .env.backend`). Reconciliar: commitear el cambio o descartarlo para dejar `git status` limpio.
 
 ### Justificación
 
