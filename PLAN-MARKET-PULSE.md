@@ -199,7 +199,7 @@ El **hub ya funciona**. Solo falta el publisher: instalar `symfony/mercure-bundl
 - *Acciones:* implementar `app:sources:poll` real (recorre adapters, despacha `IngestMessage`); cron del scheduler lo dispara.
 - *Verificación:* sin intervención manual, entran items nuevos periódicamente.
 
-**1.4 — Enriquecimiento IA**
+**✅ 1.4 — Enriquecimiento IA**
 - *Acciones:* `EnrichmentProvider` (Anthropic Haiku vía http-client) → resumen + sentiment + clase de activo + tickers/entidades; `EmbeddingProvider` → embedding (definir proveedor aquí, §3.7); handler de `EnrichMessage`: idempotente, cachea, persiste `Enrichment`, registra tokens/costo, marca `NewsItem(status=enriched)`.
 - *Verificación:* items pasan a `enriched` con resumen y embedding; reintentos no duplican costo; fallo de API → DLX, no se pierde el item.
 

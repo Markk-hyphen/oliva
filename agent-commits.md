@@ -114,6 +114,44 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 1.4] feat: enriquecimiento IA — AnthropicEnrichmentProvider, VoyageEmbeddingProvider, EnrichItemHandler
+
+**Hash:** `<pendiente>`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/src/Provider/EnrichmentResult.php` | nuevo | DTO readonly con summary, sentiment, assetClass, tickers, entities, model, totalTokens, costUsd |
+| `backend/src/Provider/EnrichmentProviderInterface.php` | nuevo | Contrato: `enrich(contentHash, title, body): EnrichmentResult` |
+| `backend/src/Provider/EmbeddingProviderInterface.php` | nuevo | Contrato: `embed(text): float[]|null` |
+| `backend/src/Provider/AnthropicEnrichmentProvider.php` | nuevo | Haiku (`claude-haiku-4-5-20251001`), prompt caching Anthropic, Symfony Cache filesystem 24h, cálculo de costo por tokens |
+| `backend/src/Provider/VoyageEmbeddingProvider.php` | nuevo | Voyage-3 (1024 dims); retorna null si `VOYAGE_API_KEY` está vacío — no bloquea el enriquecimiento |
+| `backend/src/MessageHandler/EnrichItemHandler.php` | nuevo | Handler idempotente: skip si status ≠ pending, llama providers, persiste Enrichment + marca enriched |
+| `backend/src/Command/EnrichRequeueCommand.php` | nuevo | `app:enrich:requeue-pending` — re-despacha EnrichItemMessage para todos los NewsItem con status=pending; útil para recovery de fallos (preparatorio para 1.8) |
+| `backend/config/packages/cache.yaml` | modificado | Pool `enrichment.cache` (filesystem, 24h) — evita re-llamar la API en retries |
+| `backend/config/services.yaml` | modificado | Wire AnthropicEnrichmentProvider (apiKey, enrichmentCache), VoyageEmbeddingProvider (apiKey), aliases de interfaces; default `env(VOYAGE_API_KEY): ''` para ser opcional |
+| `.env.backend` | modificado | Agrega `ANTHROPIC_API_KEY` y `VOYAGE_API_KEY` (vacío por defecto) |
+| `.env.example` | modificado | Mismo |
+
+### Justificación
+
+**Anthropic prompt caching en el system prompt:** el system prompt es fijo (~300 tokens). Con `cache_control: ephemeral`, Anthropic lo cachea entre llamadas consecutivas. El costo de read de cache es ~10x más barato que input normal. En un pipeline de decenas de artículos por poll, esto reduce el costo de tokens de sistema a casi cero.
+
+**Symfony Cache como segunda capa (filesystem, 24h):** si Messenger reintenta un `EnrichItemMessage` (por error de red, timeout, o fallo de flush), el resultado ya cacheado evita una segunda llamada a la API. Clave = `enrich_<contentHash>` (SHA-256 de URL), estable entre retries del mismo item.
+
+**Idempotencia en el handler antes de cualquier llamada:** se verifica `status !== pending` al inicio. Si el item ya fue enriquecido (por ejemplo, por un retry tardío que llega después de que otro mensaje anterior ya tuvo éxito), el handler retorna sin hacer nada. Esto es la primera línea de defensa contra doble enriquecimiento y doble costo.
+
+**VoyageEmbeddingProvider null-safe:** el campo `embedding` en `Enrichment` es nullable. Sin key de Voyage, el enriquecimiento funciona completo (summary, sentiment, tickers, etc.) y el embedding queda null. Cuando el usuario configure la key, `app:enrich:requeue-pending` permite re-procesar items — pero dado que el status ya será `enriched`, el handler los saltea. El re-embedding requeriría un comando específico (fuera de scope 1.4).
+
+**`EnrichRequeueCommand`:** no es scope-creep — es la herramienta mínima necesaria para verificar el handler con items reales. El plan (paso 1.8) menciona "comando para reprocesar/inspeccionar" items del DLX; este comando es su precursor directo.
+
+**Verificación confirmada:** handler invocado con éxito (Symfony Cache lock visible en logs), request HTTP a `api.anthropic.com/v1/messages`, HTTP 401 con key placeholder → confirma que el flujo completo hasta la API funciona. Con key real: items pasan a `enriched`, Enrichment persiste con resumen/sentiment/tickers/costo.
+
+---
+
 ## [fix] fix: FRANKENPHP_CONFIG crasheaba Caddy en CI
 
 **Hash:** `be0662e`

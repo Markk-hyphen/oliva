@@ -7,6 +7,7 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    env(VOYAGE_API_KEY): ''
 
 services:
     # default configuration for services in *this* file
@@ -43,3 +44,15 @@ services:
     App\Command\SourcesPollCommand:
         arguments:
             $adapters: !tagged_iterator app.source_adapter
+
+    App\Provider\AnthropicEnrichmentProvider:
+        arguments:
+            $apiKey: '%env(ANTHROPIC_API_KEY)%'
+            $enrichmentCache: '@enrichment.cache'
+
+    App\Provider\VoyageEmbeddingProvider:
+        arguments:
+            $apiKey: '%env(VOYAGE_API_KEY)%'
+
+    App\Provider\EnrichmentProviderInterface: '@App\Provider\AnthropicEnrichmentProvider'
+    App\Provider\EmbeddingProviderInterface: '@App\Provider\VoyageEmbeddingProvider'
