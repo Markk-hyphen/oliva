@@ -24,6 +24,24 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [docs] docs: agregar explicación de RabbitMQ a concepts.md
+
+**Hash:** `18e1740`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `concepts.md` | modificado | Agrega sección `## RabbitMQ` con explicación conceptual, tabla de términos AMQP, diagrama de flujo del proyecto y justificación de la elección vs Kafka/Redis Streams |
+
+### Justificación
+
+El usuario pidió explicación de RabbitMQ. No estaba en `concepts.md`. Se agregó siguiendo el protocolo de explicaciones conceptuales del CLAUDE.md.
+
+---
+
 ## [PASO 0.5] feat: add RabbitMQ, Symfony Messenger, worker service (step 0.5)
 
 **Hash:** `b6c53f1`
