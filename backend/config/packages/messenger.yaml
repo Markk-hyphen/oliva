@@ -9,6 +9,7 @@ framework:
                     exchange:
                         name: ingest
                         type: direct
+                        default_publish_routing_key: ingest
                     queues:
                         ingest:
                             binding_keys: [ingest]
@@ -26,6 +27,7 @@ framework:
                     exchange:
                         name: enrich
                         type: direct
+                        default_publish_routing_key: enrich
                     queues:
                         enrich:
                             binding_keys: [enrich]
@@ -48,9 +50,8 @@ framework:
                             binding_keys: [failed]
 
         routing:
-            # Will be filled in Phase 1 when message classes are created
-            # 'App\Message\IngestSourceMessage': ingest
-            # 'App\Message\EnrichItemMessage': enrich
+            'App\Message\IngestSourceMessage': ingest
+            # 'App\Message\EnrichItemMessage': enrich  — Phase 1
 
 when@test:
     framework:

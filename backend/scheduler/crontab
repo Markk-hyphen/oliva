@@ -1,0 +1,1 @@
+*/5 * * * * bin/console app:sources:poll -v

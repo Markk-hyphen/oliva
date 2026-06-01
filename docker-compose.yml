@@ -52,6 +52,22 @@ services:
         aliases:
           - backend.${SERVER_NAME}
 
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.backend
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    networks:
+      - app_network
+
   frontend:
     build:
       context: ./frontend

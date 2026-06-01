@@ -39,6 +39,12 @@ RUN set -eux; \
 		zip \
 	;
 
+# supercronic — used by the scheduler service
+ENV SUPERCRONIC_VERSION=v0.2.46
+RUN curl -fsSL "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-amd64" \
+	-o /usr/local/bin/supercronic \
+	&& chmod +x /usr/local/bin/supercronic
+
 # https://getcomposer.org/doc/03-cli.md#composer-allow-superuser
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
@@ -50,6 +56,7 @@ ENV PHP_INI_SCAN_DIR=":$PHP_INI_DIR/app.conf.d"
 COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
 COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
+COPY --link scheduler/crontab /etc/supercronic/crontab
 
 # Install dependencies from versioned composer.json
 COPY --link composer.json composer.lock symfony.lock ./
