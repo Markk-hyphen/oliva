@@ -26,7 +26,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 0.8] feat: PHPUnit base — instalar, configurar y habilitar en CI
 
-**Hash:** `<pendiente>`
+**Hash:** `dc444bc`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
