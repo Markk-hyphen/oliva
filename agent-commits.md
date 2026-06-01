@@ -60,7 +60,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 1.2] feat: ingesta RSS — SourceAdapterInterface, RssAdapter, EnrichItemMessage, handler real
 
-**Hash:** `<pendiente>`
+**Hash:** `2f1e829`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
