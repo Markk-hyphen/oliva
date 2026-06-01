@@ -24,6 +24,25 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [fix] fix: FRANKENPHP_CONFIG crasheaba Caddy en CI
+
+**Hash:** `be0662e`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `.env.example` | modificado | `FRANKENPHP_CONFIG="php:80"` → vacío |
+| `.github/workflows/ci.yml` | modificado | Agrega paso `docker compose logs --tail 80` con `if: failure()` |
+
+### Justificación
+
+`FRANKENPHP_CONFIG="php:80"` era un valor leftover del template symfony-docker. El Caddyfile lo inyecta en el bloque global `frankenphp { {$FRANKENPHP_CONFIG} }`. Localmente la variable nunca estaba seteada (expandía a vacío → bloque válido). En CI, `.env.example` la seteaba a `php:80`, que Caddy intentaba parsear como directivo dentro de `frankenphp {}` → parse error → FrankenPHP no levantaba → healthcheck fallaba. Fix: dejar la variable vacía en el ejemplo. Se agrega dump de logs on-failure para diagnóstico de futuros crashes en CI.
+
+---
+
 ## [PASO 0.8] feat: PHPUnit base — instalar, configurar y habilitar en CI
 
 **Hash:** `dc444bc`
