@@ -37,10 +37,22 @@ Se está construyendo **encima** un proyecto-vidriera: **"Crypto Pulse"** — pl
 
 - **Plan completo y runbook ejecutable:** `PLAN-MARKET-PULSE.md` (leer §11 "convenciones de ejecución" antes de implementar).
 - **Log de commits del agente:** `agent-commits.md` (detalle de cada cambio con justificación).
+- **Glosario de conceptos técnicos:** `concepts.md` (explicaciones teóricas agregadas a pedido).
 - **Rama de trabajo:** `release/plan-market-pulse` (no tocar `main`).
 - **Decisiones cerradas:** broker **RabbitMQ**, scheduler **contenedor cron (supercronic)**, LLM **Anthropic** (Haiku volumen / Sonnet agregados), vector **pgvector**, dominio **cripto** (RSS CoinDesk/Cointelegraph + CoinGecko; CryptoPanic en Fase 2).
-- **Próximo paso:** 0.2 — Doctrine ORM + Migrations.
+- **Próximo paso:** 0.3 — pgvector.
 - **Modelo:** planificado con Opus; **ejecutar con Sonnet** (Haiku solo para pasos mecánicos).
+
+## Protocolo de explicaciones conceptuales
+
+Cuando el usuario pide que se le explique un concepto (`"explicame X"`, `"enseñame X"`), el agente debe:
+1. Agregar la explicación al **final** de `concepts.md` como una nueva sección `## NombreDelConcepto`.
+2. Commitear `concepts.md` junto con el trabajo del paso en curso (o en un commit separado si el usuario lo pide).
+3. No repetir explicaciones ya presentes en el archivo — si el concepto ya está, referenciarlo.
+
+El archivo `concepts.md` es acumulativo: nunca se borra contenido, solo se agrega.
+
+---
 
 ## Protocolo de commits del agente
 
