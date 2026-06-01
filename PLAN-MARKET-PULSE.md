@@ -150,40 +150,40 @@ El **hub ya funciona**. Solo falta el publisher: instalar `symfony/mercure-bundl
 
 ### FASE 0 — Fundaciones (sin features visibles)
 
-**0.1 — Versionar el `src/` del backend** ⭐
+**✅ 0.1 — Versionar el `src/` del backend** ⭐
 - *Objetivo:* dejar el código de la app en git; quitar la regeneración en build.
 - *Acciones:* levantar el backend actual; dentro del contenedor exportar el skeleton generado al host; comitear `composer.json/lock`, `symfony.lock`, `src/`, `config/`, `bin/`, `public/`, `migrations/`; editar `backend/Dockerfile` quitando `composer create-project` y dejando `composer install`; limpiar el bloque "install first time" de `docker-entrypoint.sh`; ajustar `.dockerignore`.
 - *Verificación:* `docker compose build backend && docker compose up backend` levanta sin `create-project`; `git status` muestra el código versionado; `bin/console about` corre dentro del contenedor.
 
-**0.2 — Doctrine ORM + Migrations**
+**✅ 0.2 — Doctrine ORM + Migrations**
 - *Acciones:* `composer require symfony/orm-pack` y `symfony/maker-bundle --dev` (verificar vigente); configurar `DATABASE_URL`; primera migración vacía.
 - *Verificación:* `bin/console doctrine:migrations:migrate` corre contra la DB del compose; `doctrine:schema:validate` ok.
 
-**0.3 — pgvector**
+**✅ 0.3 — pgvector**
 - *Acciones:* cambiar imagen de `database` a `pgvector/pgvector:pg15` en `docker-compose.yml`; migración `CREATE EXTENSION IF NOT EXISTS vector`; instalar integración Doctrine de vectores (verificar paquete).
 - *Verificación:* migración aplica; un insert/select de un `vector` de prueba funciona vía SQL.
 
-**0.4 — MercureBundle (publisher)**
+**✅ 0.4 — MercureBundle (publisher)**
 - *Acciones:* `composer require symfony/mercure-bundle`; descomentar COPY de `mercure.yaml` en Dockerfile; configurar `MERCURE_URL`/`MERCURE_PUBLIC_URL`/JWT en `.env*`.
 - *Verificación:* un comando de prueba publica a un topic y `live.js` (o `curl` al hub) lo recibe.
 
-**0.5 — Messenger + RabbitMQ**
+**✅ 0.5 — Messenger + RabbitMQ**
 - *Acciones:* agregar servicio `rabbitmq:3-management` (puertos 5672/15672, volumen, healthcheck, env user/pass) al compose; `composer require symfony/messenger symfony/amqp-messenger` (verificar vigente); configurar transports `ingest` y `enrich` con DSN AMQP + DLX en `config/packages/messenger.yaml`; añadir servicio `worker` (misma imagen backend, `command: bin/console messenger:consume ingest enrich -vv`, `restart: unless-stopped`, `depends_on` rabbitmq healthy).
 - *Verificación:* UI de Rabbit en `:15672`; un mensaje de prueba viaja por la cola y el worker lo procesa; un fallo va al DLX.
 
-**0.6 — Scheduler (cron container)**
+**✅ 0.6 — Scheduler (cron container)**
 - *Acciones:* servicio `scheduler` con `supercronic` (verificar imagen) ejecutando `bin/console app:sources:poll` cada N min (crontab en repo); comando stub que por ahora solo loguea/encola.
 - *Verificación:* logs del scheduler muestran ejecución periódica; encola en Rabbit.
 
-**0.7 — CI base coherente**
+**✅ 0.7 — CI base coherente**
 - *Acciones:* corregir `ci.yml` para usar `docker-compose.yml` reales; quitar `if: false` de los pasos de ORM/migraciones a medida que existan; agregar healthcheck de servicios nuevos al `up --wait`.
 - *Verificación:* CI verde en push a la rama.
 
-**0.8 — PHPUnit base**
+**✅ 0.8 — PHPUnit base**
 - *Acciones:* `composer require --dev phpunit/phpunit symfony/test-pack` (verificar vigente); 1 test trivial; habilitar el paso PHPUnit del CI.
-- *Verificación:* `bin/phpunit` verde local y en CI.
+- *Verificación:* `php vendor/bin/phpunit` verde local y en CI. (`bin/phpunit` ya no es generado por la recipe en PHPUnit 12; usar `vendor/bin/phpunit` directamente.) `failOnDeprecation/Notice/Warning` relajados intencionalmente hasta paso 3.4.
 
-**GATE Fase 0:** `docker compose up` levanta DB+pgvector, backend, rabbitmq, worker, scheduler; un comando publica a Mercure y se ve en el front; un mensaje recorre Rabbit→worker; CI verde con un test.
+**GATE Fase 0 ✅:** `docker compose up` levanta DB+pgvector, backend, rabbitmq, worker, scheduler; un comando publica a Mercure y se ve en el front; un mensaje recorre Rabbit→worker; CI verde con un test.
 
 ### FASE 1 — Producto end-to-end (1 fuente, 1 tarea IA) — "que ande y dé orgullo"
 
@@ -315,15 +315,15 @@ Arrancar por **0.1 (versionar `src/`)** — cuello de botella estructural. Antes
 9. **Marcar progreso** tildando las cajas `[ ]` de §4 a medida que se cierran (con su verificación cumplida).
 
 ## 12. Checklist maestro "listo para producción"
-- [ ] `src/` versionado; build sin `create-project` (0.1)
-- [ ] Migraciones versionadas y aplicables en deploy (0.2, 3.7)
-- [ ] pgvector + índice vectorial (0.3, 1.1)
-- [ ] Mercure publisher operativo (0.4)
-- [ ] RabbitMQ durable + DLX + UI (0.5)
+- [x] `src/` versionado; build sin `create-project` (0.1)
+- [x] Migraciones versionadas y aplicables en deploy (0.2) — completar en 3.7
+- [x] pgvector habilitado (0.3) — índice vectorial en 1.1
+- [x] Mercure publisher operativo (0.4)
+- [x] RabbitMQ durable + DLX + UI (0.5)
 - [ ] Workers escalables con reintentos/backoff e idempotencia (0.5, 1.8)
-- [ ] Scheduler (cron container) estable (0.6)
+- [x] Scheduler (cron container) estable (0.6)
 - [ ] Healthchecks en TODOS los servicios (3.3)
-- [ ] Tests unitarios + integración; CI verde con todos los pasos (0.8, 3.4)
+- [x] Tests unitarios base + CI verde (0.8) — ampliar cobertura en 3.4
 - [ ] CI/CD con push de imágenes a GHCR (3.5)
 - [ ] Deploy a VPS con HTTPS automático + dominio (3.6)
 - [ ] CD en push a `main` (3.6)
