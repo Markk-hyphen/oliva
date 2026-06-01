@@ -26,7 +26,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 0.2] feat: install Doctrine ORM + Migrations, add pdo_pgsql extension
 
-**Hash:** *(ver git log)*
+**Hash:** `0d607537` (ver `git show 0d60753`)
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-05-31
 
