@@ -30,9 +30,16 @@ http://:80 {
 	# Disable Topics tracking if not enabled explicitly: https://github.com/jkarlin/topics
 	header ?Permissions-Policy "browsing-topics=()"
 
+	handle /.well-known/mercure* {
+		mercure {
+			anonymous
+			publisher_jwt {$MERCURE_PUBLISHER_JWT_KEY:!ChangeThisSecret!} HS256
+		}
+	}
+
 	@phpRoute {
-		not path /.well-known/mercure* # Ignore Mercure
-		not file {path} # Ignore if the file exists
+		not path /.well-known/mercure*
+		not file {path}
 	}
 	rewrite @phpRoute index.php
 

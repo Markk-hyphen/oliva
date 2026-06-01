@@ -145,6 +145,51 @@
     </div>
   </section>
 
+  <!-- LIVE DEMO -->
+  <section id="live" class="section section--dark live-section">
+    <div class="container">
+      <p class="section-eyebrow light">Real-time</p>
+      <h2 class="section-title light">Open two tabs.<br /><em>See the magic.</em></h2>
+
+      <div class="live-status">
+        <span class="live-dot"></span>
+        <span class="live-label">CONNECTING</span>
+        <span class="live-sep">·</span>
+        <span class="live-count">—</span>
+      </div>
+
+      <div class="live-grid">
+
+        <div class="live-panel live-panel--canvas">
+          <div class="live-panel-header">
+            <span>Shared Canvas</span>
+            <button class="live-clear" id="live-clear">Clear</button>
+          </div>
+          <canvas id="live-canvas"></canvas>
+          <p class="live-hint">Draw with your mouse · syncs across all open tabs</p>
+        </div>
+
+        <div class="live-panel live-panel--feed">
+          <div class="live-panel-header">
+            <span>Live Feed</span>
+          </div>
+          <ul class="live-feed" id="live-feed">
+            <li class="live-feed-empty">Waiting for events…</li>
+          </ul>
+          <div class="live-reactions">
+            <button class="live-react" data-emoji="❤️">❤️</button>
+            <button class="live-react" data-emoji="🔥">🔥</button>
+            <button class="live-react" data-emoji="⚡">⚡</button>
+            <button class="live-react" data-emoji="🎉">🎉</button>
+            <button class="live-react" data-emoji="✨">✨</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="live-floats" id="live-floats"></div>
+  </section>
+
   <!-- FOOTER -->
   <footer class="footer">
     <span>Oliva</span>

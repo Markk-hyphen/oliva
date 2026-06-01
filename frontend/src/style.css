@@ -404,6 +404,168 @@ a { text-decoration: none; }
 }
 
 /* ─────────────────────────────────────────
+   Live Demo Section
+───────────────────────────────────────── */
+.live-section { position: relative; overflow: hidden; }
+
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 2.5rem;
+}
+.live-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--leaf);
+  animation: livePulse 2s infinite;
+}
+.live-dot--off { background: #c0392b; animation: none; }
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(140,184,74,.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(140,184,74,0); }
+  100% { box-shadow: 0 0 0 0 rgba(140,184,74,0); }
+}
+.live-label {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  color: var(--leaf);
+}
+.live-sep  { color: var(--leaf-border); }
+.live-count { font-size: .78rem; color: var(--text-muted); }
+
+.live-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.live-panel {
+  background: rgba(28,52,16,.3);
+  border: 1px solid var(--leaf-border);
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+.live-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .6rem 1rem;
+  border-bottom: 1px solid var(--leaf-border);
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.live-clear {
+  background: none;
+  border: 1px solid var(--leaf-border);
+  color: var(--text-muted);
+  font-size: .68rem;
+  padding: .18rem .55rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color .2s, border-color .2s;
+}
+.live-clear:hover { color: var(--cream); border-color: var(--leaf); }
+
+#live-canvas {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+  background: rgba(4,9,2,.65);
+}
+.live-hint {
+  padding: .45rem 1rem;
+  font-size: .68rem;
+  color: var(--text-muted);
+  text-align: center;
+  border-top: 1px solid var(--leaf-border);
+}
+
+.live-panel--feed {
+  display: flex;
+  flex-direction: column;
+}
+.live-feed {
+  flex: 1;
+  list-style: none;
+  padding: .4rem .5rem;
+  overflow-y: auto;
+  min-height: 180px;
+  max-height: 290px;
+}
+.live-feed-empty {
+  padding: 1.2rem;
+  font-size: .78rem;
+  color: var(--text-muted);
+  text-align: center;
+  opacity: .6;
+}
+.live-feed-item {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .32rem .5rem;
+  border-radius: 6px;
+  font-size: .76rem;
+  margin-bottom: .2rem;
+  animation: feedIn .2s ease;
+}
+@keyframes feedIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fi  { font-size: .95rem; flex-shrink: 0; }
+.ft  { flex: 1; color: var(--cream); }
+.fts { font-size: .62rem; color: var(--text-muted); white-space: nowrap; }
+.live-feed-join .ft  { color: var(--leaf); }
+.live-feed-clear .ft { color: var(--text-muted); }
+
+.live-reactions {
+  display: flex;
+  gap: .4rem;
+  padding: .65rem 1rem;
+  border-top: 1px solid var(--leaf-border);
+  justify-content: center;
+}
+.live-react {
+  background: rgba(140,184,74,.07);
+  border: 1px solid var(--leaf-border);
+  border-radius: 8px;
+  padding: .35rem .6rem;
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+  line-height: 1;
+}
+.live-react:hover  { background: rgba(140,184,74,.2); transform: scale(1.12); }
+.live-react:active { transform: scale(.93); }
+
+/* Floating emojis */
+.live-floats {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.live-float {
+  position: absolute;
+  bottom: 12%;
+  font-size: 2.2rem;
+  animation: floatUp 2.2s ease-out forwards;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.4));
+}
+@keyframes floatUp {
+  0%   { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
+  60%  { opacity: 1; }
+  100% { transform: translateY(-320px) scale(1.4) rotate(15deg); opacity: 0; }
+}
+
+/* ─────────────────────────────────────────
    Responsive
 ───────────────────────────────────────── */
 @media (max-width: 640px) {
@@ -411,4 +573,5 @@ a { text-decoration: none; }
   .arch { gap: 0.5rem; }
   .arch-connector { display: none; }
   .arch { flex-direction: column; }
+  .live-grid { grid-template-columns: 1fr; }
 }
