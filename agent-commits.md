@@ -24,6 +24,41 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 0.4] feat: install MercureBundle, configure publisher (step 0.4)
+
+**Hash:** *(pendiente)*
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/composer.json` | modificado | Agrega `symfony/mercure-bundle ^0.4.2` |
+| `backend/composer.lock` | modificado | Lock actualizado con mercure-bundle y dependencias |
+| `backend/symfony.lock` | modificado | Recipe Flex registrada |
+| `backend/config/bundles.php` | modificado | Agrega `MercureBundle::class => ['all' => true]` |
+| `backend/config/packages/mercure.yaml` | nuevo | Config del bundle: `MERCURE_URL`, `MERCURE_PUBLIC_URL`, `MERCURE_JWT_SECRET` |
+| `backend/.env` | modificado | Agrega bloque `symfony/mercure-bundle` con placeholders de las 3 variables |
+| `backend/src/Command/MercurePublishTestCommand.php` | nuevo | Console command `app:mercure:test` para smoke test del publisher |
+| `.env.backend` (raíz) | modificado | Agrega `MERCURE_PUBLISHER_JWT_KEY`, `MERCURE_JWT_SECRET`, `MERCURE_URL`, `MERCURE_PUBLIC_URL` con valores reales de dev |
+
+### Justificación
+
+**`!ChangeThisSecret!` tiene 144 bits — HMAC-SHA256 requiere mínimo 256 bits:** el Caddyfile original usa ese placeholder como default. Al instalar el MercureBundle, la librería JWT fuerza un mínimo de 32 bytes en el secret. Solución: generar un hex de 64 chars (256 bits) y propagarlo a ambos lados. Documentado: `MERCURE_PUBLISHER_JWT_KEY` (Caddy) y `MERCURE_JWT_SECRET` (bundle) deben ser el mismo valor.
+
+**Por qué `MERCURE_URL=http://localhost/.well-known/mercure`:** el hub Mercure está embebido en Caddy, que corre en el mismo contenedor que PHP (arquitectura FrankenPHP). El backend publica al hub por localhost — no hay red entre servicios. En producción esta URL no cambia.
+
+**`MERCURE_PUBLIC_URL` igual a `MERCURE_URL` por ahora:** el bundle usa `public_url` para generar headers `Link` en respuestas API. El frontend (`live.js`) construye la URL de suscripción desde `window.location.origin` (no usa los headers), así que el valor actual es irrelevante hasta que se use esa feature. Se puede sobrescribir por entorno vía `env_file`.
+
+**Rebuild obligatorio al cambiar `composer.lock`:** en dev, el `vendor/` vive dentro de la imagen (no está montado). Al instalar paquetes dentro del contenedor y sincronizar solo `composer.json/lock` al host, la imagen queda desactualizada. La imagen debe rebuildearse para que el nuevo `vendor/` quede baked in.
+
+**`MercurePublishTestCommand`:** permanece como smoke test útil para CI (paso 0.7). No es código temporal — sirve para verificar publisher en cualquier entorno.
+
+**Verificación:** `bin/console app:mercure:test` retorna `Published OK. Message ID: urn:uuid:...`; cliente EventSource en browser recibe el mensaje.
+
+---
+
 ## [PASO 0.3] feat: add pgvector — extension, migration, Doctrine type
 
 **Hash:** `1435f0c`
