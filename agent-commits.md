@@ -24,6 +24,37 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [PASO 0.6] feat: scheduler cron container with supercronic
+
+**Hash:** `fc7cb23`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-01
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `backend/Dockerfile` | modificado | Descarga supercronic v0.2.46 en el stage base; copia `scheduler/crontab` a `/etc/supercronic/crontab` |
+| `backend/scheduler/crontab` | nuevo | Crontab de supercronic: `*/5 * * * *` ejecuta `bin/console app:sources:poll -v` |
+| `backend/src/Command/SourcesPollCommand.php` | nuevo | Comando stub `app:sources:poll`: itera lista hardcodeada de sources y despacha `IngestSourceMessage` por cada uno |
+| `backend/src/Message/IngestSourceMessage.php` | nuevo | DTO de mensaje para el pipeline de ingesta; lleva `sourceId` (string) |
+| `backend/src/MessageHandler/IngestSourceHandler.php` | nuevo | Handler stub: recibe `IngestSourceMessage`, loguea no-op, retorna éxito |
+| `backend/config/packages/messenger.yaml` | modificado | Agrega `default_publish_routing_key` a exchanges `ingest` y `enrich`; habilita routing `IngestSourceMessage → ingest` |
+| `docker-compose.yml` | modificado | Agrega servicio base `scheduler` (imagen backend, depends_on rabbitmq+database) |
+| `docker-compose.override.yml` | modificado | Agrega override `scheduler` con comando `supercronic`, mounts de src/config/crontab y healthcheck `kill -0 1` |
+
+### Justificación
+
+**`default_publish_routing_key` faltaba en la config del exchange:** sin esa clave, Symfony publica al exchange con routing key vacío (`''`). En un exchange `direct`, el mensaje solo llega a la queue si el routing key matchea el binding key (`ingest`). Resultado: `publish_in: 18` en el exchange pero `deliver_get: 0` en la queue — los mensajes se "perdían" silenciosamente. Detectado inspeccionando la management API de RabbitMQ; no hay error visible en el producer (el dispatch "no falla"). Fix: agregar `default_publish_routing_key: ingest/enrich` a cada exchange.
+
+**Handler stub para evitar failed queue churn:** sin un handler registrado, Symfony lanza `NoHandlerForMessageException`, reintenta 3 veces y manda el mensaje a la failed queue. Para la fase 0.6 (stub), eso generaría ruido en la failed queue con cada ejecución del cron. El handler stub simplemente loguea y retorna éxito; el handler real llega en Fase 1.
+
+**Supercronic en el stage base (no en un stage separado):** el scheduler necesita PHP para ejecutar `bin/console`. Añadir supercronic al mismo Dockerfile evita un segundo contexto de build y permite que worker y scheduler compartan la misma imagen (menos superficie de mantenimiento). El binario es estático (~7MB), sin impacto significativo en la imagen.
+
+**Verificación:** supercronic ejecutó `app:sources:poll` a las 03:45 y 03:50 UTC (automáticos); worker logueó `IngestSourceHandler: stub no-op` + `acknowledged to transport` para los 3 mensajes de cada run.
+
+---
+
 ## [docs] docs: agregar explicación de RabbitMQ a concepts.md
 
 **Hash:** `18e1740`
