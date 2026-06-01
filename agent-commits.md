@@ -91,7 +91,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 1.3] feat: poll programado — SourcesPollCommand itera adapters registrados
 
-**Hash:** `<pendiente>`
+**Hash:** `a48f5ed`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
