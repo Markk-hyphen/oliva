@@ -40,8 +40,29 @@ Se está construyendo **encima** un proyecto-vidriera: **"Crypto Pulse"** — pl
 - **Glosario de conceptos técnicos:** `concepts.md` (explicaciones teóricas agregadas a pedido).
 - **Rama de trabajo:** `release/plan-market-pulse` (no tocar `main`).
 - **Decisiones cerradas:** broker **RabbitMQ**, scheduler **contenedor cron (supercronic)**, LLM **Anthropic** (Haiku volumen / Sonnet agregados), vector **pgvector**, dominio **cripto** (RSS CoinDesk/Cointelegraph + CoinGecko; CryptoPanic en Fase 2).
-- **Próximo paso:** 0.3 — pgvector.
+- **Próximo paso:** 0.6 — scheduler (cron container, supercronic).
 - **Modelo:** planificado con Opus; **ejecutar con Sonnet** (Haiku solo para pasos mecánicos).
+
+## Chequeos de sanidad (inicio y cierre de sesión)
+
+Correr al **inicio** de cada sesión antes de tocar código:
+
+```bash
+git branch --show-current          # debe ser release/plan-market-pulse
+git status -s                      # debe estar limpio (o saber qué hay pendiente)
+git log --oneline -3               # orientarse en dónde quedó la sesión anterior
+docker compose ps                  # todos los servicios healthy
+docker compose exec backend bin/console doctrine:migrations:status  # sin migraciones pendientes
+```
+
+Verificar al **cierre** de sesión antes de cortar:
+
+```bash
+git status -s                      # sin archivos sin commitear (salvo intencional)
+git log --oneline -3               # el último commit tiene hash real en agent-commits.md
+```
+
+Y en `CLAUDE.md` asegurarse de que **"Próximo paso"** apunte al paso correcto para la sesión siguiente.
 
 ## Protocolo de explicaciones conceptuales
 
