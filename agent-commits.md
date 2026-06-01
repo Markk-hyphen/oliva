@@ -26,7 +26,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [PASO 0.3] feat: add pgvector — extension, migration, Doctrine type
 
-**Hash:** *(pendiente)*
+**Hash:** `1435f0c`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-01
 
