@@ -9,6 +9,10 @@
         reverse_proxy http://backend:80
     }
 
+    handle /health {
+        reverse_proxy http://backend:80
+    }
+
     handle /.well-known/mercure* {
         reverse_proxy http://backend:80
     }

@@ -24,6 +24,26 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ---
 
+## [fix] fix: proxy /health desde el frontend hacia el backend en prod
+
+**Hash:** `<pendiente>`
+**Rama:** `release/plan-market-pulse`
+**Fecha:** 2026-06-13
+
+### Cambios
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `frontend/Caddyfile` | modificado | Agrega `handle /health { reverse_proxy http://backend:80 }` |
+
+### Justificación
+
+En producción el frontend Caddy expone `:80` y el backend queda solo accesible internamente. El `Caddyfile` del frontend únicamente reenviaba `/api/*`, `/live.php` y `/.well-known/mercure*` al backend; `/health` no estaba incluido, así que caía al `file_server` (404) → `handle_errors` → respondía `"Something went wrong!"` en vez del `{"status":"ok"}` real del backend. En dev nunca se notó porque el backend expone `:80` directo (sin pasar por el frontend) y el CI solo prueba el stack de dev.
+
+Detectado durante una verificación del stack de producción de `main` (framework Oliva, no específico de Crypto Pulse), pero el mismo `Caddyfile` existe igual en esta rama — se portea el mismo fix de una línea aquí. Verificado en un stack prod aislado (`-p oliva-fix-test`): `curl http://localhost/health` → `{"status":"ok"}` a través del frontend.
+
+---
+
 ## [PASO 1.1] feat: modelo de dominio — entidades NewsItem y Enrichment
 
 **Hash:** `<pendiente>`
