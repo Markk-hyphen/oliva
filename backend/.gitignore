@@ -1,4 +1,7 @@
 vendor/
-./config/packages
-./config/mercure
+var/
 config/jwt/
+config/mercure/
+.env.local
+.env.local.php
+.env.*.local

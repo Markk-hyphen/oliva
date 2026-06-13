@@ -25,7 +25,6 @@
 .github/
 docs/
 public/bundles/
-tests/
 var/
 vendor/
 .editorconfig

@@ -1,6 +1,6 @@
 services:
   database:
-    image: postgres:${POSTGRES_VERSION:-15}
+    image: pgvector/pgvector:pg${POSTGRES_VERSION:-15}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -16,13 +16,26 @@ services:
       retries: 5
       timeout: 5s
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-app}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-app}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      args:
-        SYMFONY_VERSION: ${SYMFONY_VERSION}
-        STABILITY: ${STABILITY}
     restart: unless-stopped
     env_file:
       - .env
@@ -30,12 +43,30 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     expose:
       - "80/tcp"
     networks:
       app_network:
         aliases:
           - backend.${SERVER_NAME}
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.backend
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    networks:
+      - app_network
 
   frontend:
     build:
@@ -58,3 +89,4 @@ networks:
 
 volumes:
   db_data:
+  rabbitmq_data:

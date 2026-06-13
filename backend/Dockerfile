@@ -16,9 +16,6 @@ WORKDIR /app
 ENV PROJECT_DIR=/app
 ENV HTTP_PORT=80
 
-ARG SYMFONY_VERSION
-ARG STABILITY
-
 VOLUME /app/var/
 
 # persistent / runtime deps
@@ -34,11 +31,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN set -eux; \
 	install-php-extensions \
 		@composer \
+		amqp \
 		apcu \
 		intl \
 		opcache \
+		pdo_pgsql \
 		zip \
 	;
+
+# supercronic — used by the scheduler service
+ENV SUPERCRONIC_VERSION=v0.2.46
+RUN curl -fsSL "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-amd64" \
+	-o /usr/local/bin/supercronic \
+	&& chmod +x /usr/local/bin/supercronic
 
 # https://getcomposer.org/doc/03-cli.md#composer-allow-superuser
 ENV COMPOSER_ALLOW_SUPERUSER=1
@@ -51,16 +56,22 @@ ENV PHP_INI_SCAN_DIR=":$PHP_INI_DIR/app.conf.d"
 COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
 COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
+COPY --link scheduler/crontab /etc/supercronic/crontab
 
-RUN composer create-project "symfony/skeleton $SYMFONY_VERSION" tmp --stability="$STABILITY" --prefer-dist --no-progress --no-interaction --no-install \
-    && cp -Rp tmp/* . \
-    && rm -Rf tmp \
-    && composer require "php:>=$PHP_VERSION" runtime/frankenphp-symfony \
-    && composer config --json extra.symfony.docker 'true' \
-    && composer require lexik/jwt-authentication-bundle
+# Install dependencies from versioned composer.json
+COPY --link composer.json composer.lock symfony.lock ./
+RUN composer install --prefer-dist --no-progress --no-interaction --no-scripts --no-autoloader
 
-COPY --link frankenphp/docker-configs/lexik_jwt_authentication.yaml /app/config/packages/lexik_jwt_authentication.yaml
-#COPY --link frankenphp/docker-configs/mercure.yaml ./config/packages/mercure.yaml Uncomment if MercureBundle is installed.
+# Copy application source
+COPY --link bin bin/
+COPY --link config config/
+COPY --link migrations migrations/
+COPY --link public public/
+COPY --link src src/
+COPY --link tests tests/
+COPY --link phpunit.dist.xml ./
+
+RUN composer dump-autoload --optimize
 
 ENTRYPOINT ["docker-entrypoint"]
 
