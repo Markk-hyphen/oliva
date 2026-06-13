@@ -43,6 +43,10 @@ Además de `database`, `backend` y `frontend`, `docker-compose.yml` define:
 
 La base de datos usa la imagen `pgvector/pgvector:pg${POSTGRES_VERSION}` — es un Postgres normal con la extensión `vector` compilada y una migración que la habilita (`CREATE EXTENSION IF NOT EXISTS vector`). No tiene costo si la app no usa tipos `vector`; no hace falta quitarla.
 
+### Deuda conocida: `worker` no tiene definición de producción
+
+`docker-compose.override.yml` (dev) define `worker` con `bin/console messenger:consume`, pero no hay equivalente en `docker-compose.prod.yml` ni en el `docker-compose.yml` base. Si una app usa RabbitMQ/Messenger en serio, antes de ir a producción hay que agregar un servicio `worker` (imagen `app-backend-prod:1.0`, comando `messenger:consume`, sin exponer puertos). `scheduler` sí está cubierto en prod (usa `app-backend-prod:1.0` / target `frankenphp_prod`, igual que `backend`).
+
 Mercure (`/.well-known/mercure`) está siempre activo vía el hub de Caddy (`backend/frankenphp/Caddyfile`); la demo de canvas en vivo (`backend/public/live.php` + `frontend/src/js/live.js`) muestra que funciona out of the box.
 
 ## Variables de entorno

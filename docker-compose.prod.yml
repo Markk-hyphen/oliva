@@ -7,6 +7,14 @@ services:
     environment:
       - APP_ENV=production
 
+  scheduler:
+    image: app-backend-prod:1.0
+    build:
+      target: frankenphp_prod
+    restart: unless-stopped
+    environment:
+      - APP_ENV=production
+
   frontend:
     image: app-frontend-prod:1.0
     build:
