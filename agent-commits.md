@@ -26,7 +26,7 @@ Cada entrada detalla qué cambió, por qué, y qué decisión de arquitectura re
 
 ## [fix] fix: proxy /health desde el frontend hacia el backend en prod
 
-**Hash:** `<pendiente>`
+**Hash:** `4c20e1c`
 **Rama:** `release/plan-market-pulse`
 **Fecha:** 2026-06-13
 
