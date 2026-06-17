@@ -103,19 +103,64 @@ oliva/
 
 ---
 
-## Services and how to disable them
+## Optional services (Compose profiles)
 
-Beyond `database`, `backend` and `frontend`, `docker-compose.yml` defines:
+The core stack — `backend`, `frontend`, `database` — always comes up. Optional
+services live behind **Docker Compose profiles**, so a fork only runs what it
+needs. The lever is the `COMPOSE_PROFILES` variable (in `.env`): empty = core
+only; otherwise a comma-separated list of profiles to enable.
 
-| Service | What it's for | If your app doesn't need it |
+| Profile | Services it brings up | Variables you must set |
 |---|---|---|
-| `rabbitmq` | Broker for Symfony Messenger (`ingest`/`enrich` example queues) | Remove the `rabbitmq` block and the `depends_on: rabbitmq` entries on `backend`/`scheduler`/`worker` |
-| `scheduler` | Runs `supercronic` against `backend/scheduler/crontab` for periodic tasks | Remove the `scheduler` block (and `backend/scheduler/crontab`) |
-| `worker` (dev only, in `docker-compose.override.yml`) | Runs `bin/console messenger:consume` | Remove the `worker` block if there's no async messaging |
+| _(none)_ | `backend`, `frontend`, `database` | `DATABASE_URL`, `APP_SECRET`, JWT + Mercure keys |
+| `queues` | `+ rabbitmq`, `+ worker` (dev) | `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_DSN` |
 
-The database image is `pgvector/pgvector:pg${POSTGRES_VERSION}` — a normal Postgres with the `vector` extension compiled in and a migration that enables it (`CREATE EXTENSION IF NOT EXISTS vector`). It costs nothing if the app doesn't use `vector` columns, so there's no need to remove it.
+```bash
+# Core only (default):
+COMPOSE_PROFILES=        docker compose up -d
 
-Mercure (`/.well-known/mercure`) is always on via Caddy's built-in hub (`backend/frankenphp/Caddyfile`); the live canvas demo (`backend/public/live.php` + `frontend/src/js/live.js`) shows it working out of the box.
+# With queues:
+COMPOSE_PROFILES=queues  docker compose up -d
+```
+
+> **Rule:** if you enable a profile, configure its variables too. A service
+> can come up via its profile and still crash at boot if its DSN/keys are
+> missing — that coherence is the fork's responsibility, not the framework's.
+
+> **Caveat:** Compose only stops what's *not requested anymore* on its own
+> when the containers don't exist yet. If a profiled service is already
+> running and you remove it from `COMPOSE_PROFILES`, `docker compose up -d`
+> won't stop it for you — run `docker compose stop <service>` (or `down`)
+> explicitly.
+
+### Always-on, not behind a profile
+
+- **`scheduler`** — `supercronic` against `backend/scheduler/crontab`. Cheap; if
+  your app has no cron jobs, just leave `crontab` empty (or remove the block).
+- **`database`** — image `pgvector/pgvector:pg${POSTGRES_VERSION}`, a normal
+  Postgres with the `vector` extension compiled in. Costs nothing if you don't
+  use `vector` columns.
+- **Mercure** (`/.well-known/mercure`) — runs *inside* the backend via Caddy's
+  built-in hub (`backend/frankenphp/Caddyfile`), not as a separate container, so
+  there's nothing to toggle. The live canvas demo (`backend/public/live.php` +
+  `frontend/src/js/live.js`) shows it working out of the box.
+
+### Adding a new profile
+
+When a future optional service appears (e.g. a search engine, a cache):
+
+1. Add the service block to `docker-compose.yml` with `profiles: ["<name>"]`
+   (and to `docker-compose.override.yml` if it has a dev-only variant).
+2. **Do not** let core services (`backend`, `scheduler`, …) `depends_on` a
+   profiled service — Compose would pull it back up even with the profile off,
+   defeating the lever. Wire dependencies only between services in the same
+   profile.
+3. Add a row to the table above with the variables the profile requires.
+4. Document the profile name in `.env.example` next to `COMPOSE_PROFILES`.
+
+> This profile mechanism is the v1 bridge. The destination (v2.0) is
+> install-time flags / scaffolding that builds each fork with only the services
+> it asked for, instead of inheriting everything and switching it off here.
 
 ---
 
