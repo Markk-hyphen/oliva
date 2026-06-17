@@ -98,6 +98,10 @@ Para proyectos donde se quiera dejar un registro detallado de cada cambio del ag
 - Si un cambio resuelve un problema encontrado durante la ejecución (no previsto en el plan), documentarlo explícitamente.
 - El commit de git y la entrada en `agent-commits.md` van en el **mismo commit**.
 
+## Comandos del agente
+
+Ver `claude-commands.md` en la raíz del proyecto para los comandos que el usuario puede invocar en el chat (protocolos de reinicio de sesión, etc.).
+
 ## Chequeos de sanidad (inicio y cierre de sesión)
 
 Correr al **inicio** de cada sesión antes de tocar código:
