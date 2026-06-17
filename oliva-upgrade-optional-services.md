@@ -117,9 +117,10 @@ Agregar al README de Oliva una tabla del estilo:
       con `docker compose ps` — sin rabbitmq/worker.
 - [x] Test local: `COMPOSE_PROFILES=queues` → aparecen rabbitmq + worker;
       al vaciar la variable y `docker compose stop`, desaparecen.
-- [ ] **Pendiente: testeo manual del usuario** antes de mergear (rama pusheada
-      a remoto, no mergear hasta confirmación).
-- [ ] Merge a `main` con el upgrade probado.
+- [x] Testeo manual del usuario: `COMPOSE_PROFILES=queues` levanta rabbitmq +
+      worker (healthy), worker consume `ingest`/`enrich` sin errores, sin
+      tocar backend/database/frontend/scheduler ya corriendo.
+- [x] Merge a `main` con el upgrade probado.
 
 ### Cambio adicional no previsto en el spec original
 
