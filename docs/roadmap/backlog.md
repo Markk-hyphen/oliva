@@ -15,7 +15,16 @@ con el motivo.
 
 ## Ideas
 
-_(vacío — sumá acá lo que se te vaya ocurriendo)_
+- [ ] **Modos de configuración del instalador** — capa sobre el Eje A (flags en
+  instalación). En vez de solo preguntar servicio por servicio, ofrecer tres
+  modos: (a) **config avanzada** = elegir servicio por servicio; (b)
+  **pre-configs** = sets predefinidos (ej. "Fullstack app chica" sin RabbitMQ,
+  "Stack IA", etc.); (c) **config automática** = una serie de preguntas infiere
+  el stack. La automática usa primero un **filtro determinista** (mapear
+  respuestas a un stack sin gastar tokens) y solo escala a una request a un LLM
+  si el input queda demasiado inconcluso. Candidato a **v2.1** (upgrade del
+  sistema de instalación de v2.0). Depende de `epics/A-install-time-flags.md`.
+  (origen: sesión 2026-06)
 
 ## Descartadas
 
