@@ -1,7 +1,7 @@
 # Epic D — Manejo de secretos
 
 > **Estado:** 💡 idea · **Versión destino:** sin asignar (candidato v2.x) ·
-> **Origen:** sesión 2026-06, fix `DATABASE_URL` → `.env.backend` (commit del
+> **Origen:** sesión 2026-06, fix de ubicación de `DATABASE_URL` (durante el
 > deploy de finanzas-ong con infra compartida).
 
 ## Problema
@@ -11,19 +11,20 @@ archivos versionados (`.env.backend` trae `APP_SECRET`, `JWT_PASSPHRASE`, claves
 Mercure; `.env.example` los placeholders). Funciona, pero arrastra dos costos:
 
 1. **Duplicación de credenciales (footgun de standalone).** En modo standalone,
-   `DATABASE_URL` (en `.env.backend`) y `POSTGRES_USER/PASSWORD/DB` (en `.env`,
-   porque se interpolan en `docker-compose.yml`) describen **el mismo Postgres**:
-   son la misma password escrita dos veces, en dos archivos, que deben coincidir
-   a mano. En infra compartida la asimetría se invierte (`DATABASE_URL` es la
-   fuente única y `POSTGRES_*` quedan inertes), pero el riesgo de desincronizar
-   sigue ahí mientras la credencial esté duplicada.
+   `DATABASE_URL` y `POSTGRES_USER/PASSWORD/DB` viven ambos en `.env` (juntos, por
+   el acoplamiento) y describen **el mismo Postgres**: la misma password escrita
+   dos veces que hay que mantener coincidente a mano. En infra compartida la
+   asimetría se invierte (`DATABASE_URL` se setea como override en `.env.backend`
+   y los `POSTGRES_*` quedan inertes), pero el riesgo de desincronizar sigue ahí
+   mientras la credencial esté duplicada.
 2. **Secretos en claro en el repo.** No es solo la DB: todos los secretos del
    backend están commiteados. Para 1-3 apps en un VPS propio es tolerable; deja
    de serlo apenas haya colaboradores, CI con secretos reales, o rotación.
 
-El fix de la sesión 2026-06 (mover `DATABASE_URL` a `.env.backend`, matar la
-`BACKEND_DATABASE_URL` muerta, documentar la regla de coincidencia) **resolvió
-la confusión**, no la duplicación. Eso es lo que este epic ataca de fondo.
+El fix de la sesión 2026-06 (aclarar dónde vive `DATABASE_URL` — standalone en
+`.env` junto a `POSTGRES_*`, override de shared-infra comentado en `.env.backend`
+— y matar la `BACKEND_DATABASE_URL` muerta) **resolvió la confusión y el clobber
+del .env per-clone**, no la duplicación. Eso es lo que este epic ataca de fondo.
 
 ## Visión
 
