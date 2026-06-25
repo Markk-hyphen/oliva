@@ -92,6 +92,45 @@ en `.env.backend` de prod apuntando al Postgres compartido (`postgres`), no a `d
 Es reversible: si una app deja de usar infra compartida, simplemente no se pasa
 ese `-f` al arrancar — `docker-compose.prod.yml` standalone sigue intacto.
 
+### Runbook de deploy con infra compartida (pasos manuales por app)
+
+Estos pasos se repiten en **cada** deploy de **cada** fork sobre infra
+compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
+único por app):
+
+1. **En el VPS, traer el código:** `cd ~/<app> && git pull` (trae el overlay y
+   el `.env.backend` con el `DATABASE_URL` comentado).
+2. **Crear el `.env`** (gitignored → NO viene en el pull): `cp .env.example .env`.
+   En shared-infra casi todo el `.env` queda inerte (no hay `database` local) o
+   lo pisa `.env.backend`; igual debe existir porque Compose lo interpola
+   (`POSTGRES_VERSION`, etc.) y es el `env_file` base.
+3. **Provisionar la base** en el Postgres compartido, desde `~/infra`:
+   `./scripts/provision-postgres.sh <app>_db <app>_user` → imprime el
+   `DATABASE_URL` con la password generada (guardarla en el gestor de claves).
+   El script ya crea la extensión `vector` como superuser (ver nota pgvector
+   abajo).
+4. **Setear el `DATABASE_URL`** en `~/<app>/.env.backend`: **descomentar** la
+   línea y pegar la URL provisionada (host `postgres`, `<app>_user`, `<app>_db`).
+   Al cargarse después de `.env`, pisa el `DATABASE_URL` standalone.
+5. **Alias de red único** en `docker-compose.shared-infra.yml`: reemplazar
+   `CHANGE-THIS-ALIAS-frontend` por `<app>-frontend` (esto sí se commitea en el
+   fork, una vez).
+6. **Build:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml build`.
+7. **Up** (project name `-p <app>` ÚNICO, los 3 overlays; sin listar servicios,
+   el profile inerte ya excluye `database`/`rabbitmq`):
+   `docker compose -p <app> -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.shared-infra.yml up -d`.
+8. **Migraciones:** `docker exec <app>-backend-1 bin/console doctrine:migrations:migrate --no-interaction`.
+9. **Health:** `docker exec <app>-backend-1 curl -s http://localhost/health` → `{"status":"ok"}`.
+10. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
+    alias `<app>-frontend` + `docker exec infra-reverse-proxy-1 caddy reload`.
+
+> **Gotcha pgvector / shared-infra:** en standalone la app conecta como el
+> superuser del Postgres local, así que la migración que hace
+> `CREATE EXTENSION vector` funciona. En shared-infra conecta como `<app>_user`
+> (no-superuser) y esa migración falla con *"permission denied to create
+> extension"*. Por eso `provision-postgres.sh` crea la extensión como superuser
+> al provisionar; la migración la encuentra con su `IF NOT EXISTS` y hace no-op.
+
 ## Variables de entorno
 
 Ver `.env.example` como referencia. Agrupadas por servicio:
