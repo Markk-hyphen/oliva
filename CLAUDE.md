@@ -86,8 +86,8 @@ Qué hace (requiere Docker Compose ≥ 2.24, por la tag de merge `!override`):
 `CHANGE-THIS-ALIAS-frontend` por un alias único (ej. `ong-frontend`); (2)
 **arrancar con `-p <appname>` único** — eso hace su red privada
 `<appname>_app_network` y evita que el DNS interno colisione con otra app (ver
-[`infra` README, "Topología de red"]); (3) apuntar `DATABASE_URL`/`BACKEND_DATABASE_URL`
-(en `.env`/`.env.backend` de prod) al Postgres compartido (`postgres`), no a `database`.
+[`infra` README, "Topología de red"]); (3) apuntar `DATABASE_URL`
+(en `.env.backend` de prod) al Postgres compartido (`postgres`), no a `database`.
 
 Es reversible: si una app deja de usar infra compartida, simplemente no se pasa
 ese `-f` al arrancar — `docker-compose.prod.yml` standalone sigue intacto.
@@ -95,7 +95,8 @@ ese `-f` al arrancar — `docker-compose.prod.yml` standalone sigue intacto.
 ## Variables de entorno
 
 Ver `.env.example` como referencia. Agrupadas por servicio:
-- **DB**: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL` / `BACKEND_DATABASE_URL`
+- **DB — contenedor local (en `.env`)**: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_VERSION`
+- **DB — conexión del backend (en `.env.backend`)**: `DATABASE_URL` — la lee Doctrine. En standalone sus credenciales deben coincidir con `POSTGRES_*`; en infra compartida apunta al `postgres` compartido
 - **Mercure**: `MERCURE_URL`, `MERCURE_PUBLIC_URL`, `MERCURE_PUBLISHER_JWT_KEY`, `MERCURE_JWT_SECRET`, `CADDY_MERCURE_URL`, `CADDY_MERCURE_PUBLIC_URL`
 - **RabbitMQ**: `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_DSN`
 - **JWT**: `JWT_PASSPHRASE`
