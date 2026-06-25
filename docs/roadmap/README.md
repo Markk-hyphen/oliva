@@ -54,6 +54,7 @@ Una subversión 0.x existe como release oficial cuando cumple **todo** esto:
 | **A** — flags en instalación | — | — | ●  (justifica el major) |
 | **B** — modelo de upgrade de forks | ●  (slice inicial) | — | (puede seguir) |
 | **C** — worker de producción | — | ● | — |
+| **D** — manejo de secretos | — | — | — (sin asignar; espera disparador) |
 
 > El mapa es vivo: cuando un epic crece o entra uno nuevo, se reasigna acá. Las
 > celdas no son contratos, son la secuencia tentativa actual.

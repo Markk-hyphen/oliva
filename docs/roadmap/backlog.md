@@ -26,6 +26,13 @@ con el motivo.
   sistema de instalación de v2.0). Depende de `epics/A-install-time-flags.md`.
   (origen: sesión 2026-06)
 
+- [ ] **Manejo de secretos** — promovido a `epics/D-secret-management.md`. La
+  credencial de la DB está duplicada (`DATABASE_URL` vs `POSTGRES_*`) y todos los
+  secretos del backend están en texto plano versionado. Opciones de fondo (Symfony
+  Secrets vault / Docker secrets) vs tactical (derivar `DATABASE_URL`); decisión
+  diferida hasta que haya disparador (colaborador, CI con secretos, rotación).
+  (origen: sesión 2026-06, fix `DATABASE_URL` → `.env.backend`)
+
 ## Descartadas
 
 _(nada todavía)_
