@@ -119,9 +119,18 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 7. **Up** (project name `-p <app>` ÚNICO, los 3 overlays; sin listar servicios,
    el profile inerte ya excluye `database`/`rabbitmq`):
    `docker compose -p <app> -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.shared-infra.yml up -d`.
-8. **Migraciones:** `docker exec <app>-backend-1 bin/console doctrine:migrations:migrate --no-interaction`.
-9. **Health:** `docker exec <app>-backend-1 curl -s http://localhost/health` → `{"status":"ok"}`.
-10. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
+8. **Migraciones:** automáticas. El entrypoint del backend las corre en cada
+   boot (`doctrine:migrations:migrate`), junto con la generación de las claves
+   JWT y el wait-for-db. Solo verificar que no quedaron pendientes:
+   `docker exec <app>-backend-1 bin/console doctrine:migrations:status`.
+9. **Claves JWT:** en el primer boot el entrypoint las genera en `./secrets/jwt`
+   (bind-mount al host, gitignored) usando `JWT_PASSPHRASE`. **Backupear**
+   `~/<app>/secrets/jwt/{private,public}.pem` + la `JWT_PASSPHRASE` al gestor de
+   claves. De ahí en más persisten y NUNCA se regeneran (recrear el container no
+   desloguea a nadie). Para restaurar en un host nuevo: poné los `.pem` ahí antes
+   del `up`.
+10. **Health:** `docker exec <app>-backend-1 curl -s http://localhost/health` → `{"status":"ok"}`.
+11. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
     alias `<app>-frontend` + `docker exec infra-reverse-proxy-1 caddy reload`.
 
 > **Gotcha pgvector / shared-infra:** en standalone la app conecta como el
