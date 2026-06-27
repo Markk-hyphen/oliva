@@ -1,6 +1,6 @@
 # Epic E — Seeding layer (staging)
 
-> **Estado:** 🟡 parcial (tooling listo, falta el modelo de infra de staging) ·
+> **Estado:** ✅ completo ·
 > **Versión destino:** v1.1 · **Origen:**
 > necesidad surgida en finanzas-ong (poblar staging con datos representativos sin SQL crudo).
 
@@ -52,34 +52,41 @@ frankenphp_base
 - [x] Paso opt-in en el runbook de deploy del `CLAUDE.md`
 - [x] Comando documentado en `.env.example`
 - [x] Sección Foundry en `docs/concepts.md`
+- [x] `docker-compose.staging.yml` — overlay mínimo (image + target + env_file)
+- [x] `.env.staging.example` — env template para la DB desechable de staging
+- [x] `scripts/deploy-staging.sh` — deploy completo de staging en una llamada
+- [x] Runbook formal de staging en `CLAUDE.md`
+- [x] Modelo de infra de staging documentado (Epic E, deuda crítica resuelta)
 
-## Deuda crítica — el modelo de infra de staging (PENDIENTE)
+## Deuda crítica — el modelo de infra de staging (RESUELTA 2026-06-29)
 
-> Detectado en el checkpoint del 2026-06-27, post-merge. **Riesgo de pérdida de
-> datos productivos** si se sigue el runbook tal como quedó en la primera versión.
+> Detectada en el checkpoint del 2026-06-27. Resuelta con Opción 1 (staging como
+> app más en el VPS, DB propia desechable en el mismo Postgres compartido).
 
 `doctrine:fixtures:load` **purga la base antes de cargar** (DELETE/TRUNCATE de
 todas las tablas gestionadas, salvo `--append`). El guard estructural de la imagen
-prod (`--no-dev`, sin el comando) **no alcanza**: el propio paso 11 del runbook te
-hace buildear la imagen `frankenphp_staging` que SÍ tiene el comando, y en infra
-compartida el container apunta al Postgres central vía el `DATABASE_URL` **de
-producción**. Resultado: seedear "staging" purgaría la base productiva.
+prod (`--no-dev`) no alcanzaba por sí solo: el propio paso 11 del runbook anterior
+hacía buildear la imagen `frankenphp_staging` que SÍ tiene el comando, y en infra
+compartida el container apuntaba al Postgres central vía el `DATABASE_URL` **de
+producción**.
 
-La raíz del problema: tratamos "staging" como un *modo de la app de prod* (misma
-DB, mismo deploy) cuando debe ser **una app separada a nivel infra**, con su propia
-DB desechable — igual que cualquier otra app en la infra compartida.
+**Solución implementada (Opción 1 — staging como app aparte):**
 
-**Diseño pendiente (no implementado):**
+- `docker-compose.staging.yml`: overlay mínimo que overridea `image` y
+  `build.target` del backend/scheduler (tag `app-backend-staging:1.0`, target
+  `frankenphp_staging`). Evita pisar la imagen de prod en el host.
+- `.env.staging` (gitignored) + `.env.staging.example`: env de staging con el
+  `DATABASE_URL` de la DB desechable. Se carga como último env_file en el overlay.
+- **Project name propio** (`-p <app>-staging`): red privada propia, sin colisión
+  DNS con el stack de producción.
+- **DB propia** en el mismo Postgres compartido de infra:
+  `provision-postgres.sh <app>_staging_db <app>_staging_user`. La purga es
+  inocua — la DB de staging es desechable.
+- `scripts/deploy-staging.sh`: atajo que ejecuta build + up + migraciones +
+  `fixtures:load` en una sola llamada.
+- Runbook formal en `CLAUDE.md` (sección "Runbook de staging").
 
-- DB de staging propia: `provision-postgres.sh <app>_staging_db <app>_staging_user`.
-- Project name propio: `-p <app>-staging` (red privada propia, sin colisión DNS).
-- `DATABASE_URL` de staging apuntando a esa DB, nunca al `<app>_db` de prod.
-- Decidir si va un overlay `docker-compose.staging.yml` (target `frankenphp_staging`
-  + `.env.staging`) o se parametriza el de shared-infra. **Decisión abierta.**
-- El seeding corre SOLO en ese stack de staging; la DB es desechable, la purga es inocua.
-
-Hasta que esto esté, el paso 11 del runbook lleva una advertencia de PELIGRO y el
-seeding **no debe correrse en infra compartida** contra la DB de una app productiva.
+El paso 11 del runbook de shared-infra apunta ahora al runbook de staging.
 
 ## Cómo extiende un fork
 
