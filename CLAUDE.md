@@ -144,9 +144,21 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 11. **(Opt-in, staging) Poblar base de datos:** construir la imagen staging y cargar fixtures:
     ```bash
     docker compose -f docker-compose.yml -f docker-compose.prod.yml build --target frankenphp_staging backend
-    docker exec <app>-backend-1 bin/console doctrine:fixtures:load --group=staging --no-interaction
+    docker exec <app>-staging-backend-1 bin/console doctrine:fixtures:load --group=staging --no-interaction
     ```
     La imagen prod no tiene este comando (instalada con `--no-dev`): guard estructural contra seedear producción por accidente.
+
+    > ⚠️ **PELIGRO — `fixtures:load` PURGA la base antes de cargar** (DELETE/TRUNCATE de todas
+    > las tablas, salvo que se pase `--append`). En infra compartida el container de una app
+    > apunta al Postgres central vía el `DATABASE_URL` **de producción** → correr esto ahí
+    > **borra los datos productivos**. El guard de la imagen `--no-dev` NO alcanza, porque este
+    > mismo paso te hace buildear la imagen staging que SÍ tiene el comando.
+    >
+    > **Regla:** staging es **su propia app a nivel infra**, nunca la de prod. Debe tener:
+    > DB propia provisionada (`provision-postgres.sh <app>_staging_db <app>_staging_user`),
+    > project name propio (`-p <app>-staging`), y su propio `DATABASE_URL` apuntando a esa DB.
+    > El seeding purga la DB de staging (desechable), jamás la productiva. **El overlay/runbook
+    > formal de staging todavía no está implementado** — ver Epic E, sección "Deuda crítica".
 12. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
     alias `<app>-frontend` + `docker exec infra-reverse-proxy-1 caddy reload`.
 
