@@ -54,3 +54,46 @@ por ser de menor riesgo y porque el override explícito sigue siendo necesario e
 string largo; CI no asume la palabra larga. Verificado con `docker compose config`
 que `APP_ENV` resuelve corto en `backend`/`scheduler` en los 3 entornos
 (dev/prod/staging), incluyendo el `scheduler` tras el profile `cron`.
+
+---
+
+## [PASO 1.2] ci: post-merge smoke + caché de capas GHA + guard de APP_ENV prod
+**Hash:** `57663fe`
+**Rama:** `main` (mergeado vía FF desde `feat/env-isolation-deploy`)
+**Fecha:** 2026-06-30
+
+### Cambios
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `.github/workflows/ci.yml` | modificado | Recalibración completa al flujo solo-dev (ver justificación). |
+
+### Justificación
+Marcos cuestionó si PRs + GitHub Actions tienen sentido a su escala (solo-dev, ONG,
+1-3 apps chicas) si igual no mira el CI y tarda ~15 min. Diagnóstico tras leer el
+workflow: **no había testeo de más** — el `tests` job ya es un smoke test correcto
+(health + Mercure + migraciones + `schema:validate` + PHPUnit). El tiempo se iba en
+**buildear sin caché** (compila extensiones PHP + `composer install` + `yarn install`
+desde cero cada corrida). Tres cambios quirúrgicos:
+- **Triggers:** se saca `pull_request` (se elimina la ceremonia de PR, ver
+  [[feedback]] flujo solo-dev), se deja `push:main` + `workflow_dispatch`. El CI pasa a
+  correr DESPUÉS del merge — red de seguridad que solo avisa en rojo, no algo que
+  haya que vigilar.
+- **Caché de capas GHA:** build vía `docker/bake-action` con `cache-from/to=type=gha`.
+  Con deps sin cambios, las capas caras son cache-hit → el build cae de minutos a
+  segundos. Requiere el driver docker-container de `setup-buildx-action` (el driver
+  por defecto no soporta backends de caché). Sólo se buildean `backend`+`frontend`
+  (los únicos con `build`); `database` se pullea en el `up`.
+- **Job `prod-config` (la guarda que pidió Marcos):** valida vía `compose config`
+  (sin build, corrió en **3s** en CI) que `APP_ENV` resuelve a `prod` en backend y
+  scheduler del stack prod. Atrapa la clase de bug del PASO 1.1 (palabra larga
+  pisando `APP_ENV` → `when@prod` de Symfony desactivado), que el job `tests` NO ve
+  porque solo levanta el stack DEV.
+
+**Resultado en CI:** los 3 jobs verdes. Primera corrida 12m18s (priming: además de
+buildear, *escribe* el caché). El speedup esperado (~2-4 min) se valida recién en el
+próximo push a main (caché disponible para *leer*). Deuda menor anotada: las actions
+targetean Node 20 (deprecado), bumpear a `checkout@v5` etc. cuando convenga.
+
+> Nota: este PASO 1.2 se registró a posteriori (en el `claude reiniciar` de cierre),
+> no en el mismo commit `57663fe` — excepción puntual a la regla de "log y commit
+> juntos", porque el valor de dejar el cierre de sesión documentado lo justifica.
