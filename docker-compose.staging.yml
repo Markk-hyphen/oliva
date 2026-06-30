@@ -26,11 +26,11 @@ services:
     image: app-backend-staging:1.0
     build:
       target: frankenphp_staging
-    # prod.yml hardcodea environment: APP_ENV=production en backend/scheduler.
+    # prod.yml hardcodea environment: APP_ENV=prod en backend/scheduler.
     # Precedencia de Compose: environment: > env_file: > ENV de la imagen — sin
     # este override, ese environment pisaría .env.staging y quedaría en prod
     # pese al env_file. Síntoma real: fixtures:load fallaba ("command not
-    # defined") porque production no está en bundles.php.
+    # defined") porque prod no está en bundles.php.
     environment:
       - APP_ENV=staging
     # !override reemplaza (no concatena) la lista del base: evita duplicados.

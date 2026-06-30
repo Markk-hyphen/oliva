@@ -217,11 +217,11 @@ con `-v` agregado al comando de los 4 overlays.
 
 > **Gotcha — precedencia de `APP_ENV` (la saga que costó 3 capas):** en Compose,
 > `environment:` > `env_file:` > `ENV` horneado en la imagen. `prod.yml`
-> hardcodea `environment: APP_ENV=production` en backend/scheduler — sin un
+> hardcodea `environment: APP_ENV=prod` en backend/scheduler — sin un
 > override explícito en `staging.yml`, ese `environment:` pisaba
 > `.env.staging` (env_file) Y el `ENV` del Dockerfile, pese a apilarse encima.
 > Síntoma real: `fixtures:load` fallaba con "command not defined" porque
-> `production` no está en `bundles.php`. Por eso `docker-compose.staging.yml`
+> `prod` no está en `bundles.php`. Por eso `docker-compose.staging.yml`
 > fija `environment: [APP_ENV=staging]` explícito en backend/scheduler, y el
 > stage `frankenphp_staging` del Dockerfile borra el `.env.local.php` heredado
 > de prod (otra capa que pisaba el entorno). Regla general para diagnosticar
