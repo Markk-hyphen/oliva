@@ -85,12 +85,21 @@ Qué hace (requiere Docker Compose ≥ 2.24, por la tag de merge `!override`):
   `data_net`. El frontend no toca `data_net` (no llega a la DB). Las redes
   `proxy_net`/`data_net` son externas (las crea el repo de infra).
 
-**Cada fork que use este overlay debe:** (1) reemplazar el placeholder
-`CHANGE-THIS-ALIAS-frontend` por un alias único (ej. `ong-frontend`); (2)
-**arrancar con `-p <appname>` único** — eso hace su red privada
-`<appname>_app_network` y evita que el DNS interno colisione con otra app (ver
-[`infra` README, "Topología de red"]); (3) descomentar/setear `DATABASE_URL`
+**Cada fork que use este overlay debe:** (1) **arrancar con `-p <appname>`
+único** — eso hace su red privada `<appname>_app_network` y deriva el alias de
+`frontend` en `proxy_net` (`${COMPOSE_PROJECT_NAME}-frontend`, ej.
+`ong-frontend`), evitando que el DNS interno colisione con otra app (ver
+[`infra` README, "Topología de red"]); (2) descomentar/setear `DATABASE_URL`
 en `.env.backend` de prod apuntando al Postgres compartido (`postgres`), no a `database`.
+
+> **Gotcha — colisión de alias en `proxy_net`:** `proxy_net` es externa y
+> compartida entre TODOS los `-p` del VPS. Si dos apps (o prod/staging de la
+> misma app) registraran el mismo alias fijo, el DNS interno de Docker hace
+> round-robin entre ambas → el reverse-proxy rutearía tráfico de una al
+> frontend de la otra. Por eso el alias se
+> deriva de `${COMPOSE_PROJECT_NAME:-app}` en vez de hardcodearse: con `-p
+> ong` da `ong-frontend`, con `-p ong-staging` da `ong-staging-frontend` —
+> nunca colisionan.
 
 Es reversible: si una app deja de usar infra compartida, simplemente no se pasa
 ese `-f` al arrancar — `docker-compose.prod.yml` standalone sigue intacto.
@@ -101,8 +110,8 @@ Estos pasos se repiten en **cada** deploy de **cada** fork sobre infra
 compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 único por app):
 
-> **Atajo para redeploys:** los pasos 1, 6 y 7 (pull + build + up) están
-> envueltos en `scripts/deploy.sh`. Después del setup inicial (pasos 2-5, que
+> **Atajo para redeploys:** los pasos 1, 5 y 6 (pull + build + up) están
+> envueltos en `scripts/deploy.sh`. Después del setup inicial (pasos 2-4, que
 > se hacen una sola vez por app), cada redeploy es solo:
 > `cd ~/<app> && ./scripts/deploy.sh` (toma el `app_name` del nombre del dir;
 > hace `down` antes del `up` para no dejar containers stale). Si la app usa
@@ -123,27 +132,25 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 4. **Setear el `DATABASE_URL`** en `~/<app>/.env.backend`: **descomentar** la
    línea y pegar la URL provisionada (host `postgres`, `<app>_user`, `<app>_db`).
    Al cargarse después de `.env`, pisa el `DATABASE_URL` standalone.
-5. **Alias de red único** en `docker-compose.shared-infra.yml`: reemplazar
-   `CHANGE-THIS-ALIAS-frontend` por `<app>-frontend` (esto sí se commitea en el
-   fork, una vez).
-6. **Build:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml build`.
-7. **Up** (project name `-p <app>` ÚNICO, los 3 overlays; sin listar servicios,
-   el profile inerte ya excluye `database`/`rabbitmq`):
+5. **Build:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml build`.
+6. **Up** (project name `-p <app>` ÚNICO, los 3 overlays; sin listar servicios,
+   el profile inerte ya excluye `database`/`rabbitmq`; el alias de `frontend`
+   en `proxy_net` se deriva solo de `-p <app>`, no hace falta tocar nada):
    `docker compose -p <app> -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.shared-infra.yml up -d`.
-8. **Migraciones:** automáticas. El entrypoint del backend las corre en cada
+7. **Migraciones:** automáticas. El entrypoint del backend las corre en cada
    boot (`doctrine:migrations:migrate`), junto con la generación de las claves
    JWT y el wait-for-db. Solo verificar que no quedaron pendientes:
    `docker exec <app>-backend-1 bin/console doctrine:migrations:status`.
-9. **Claves JWT:** en el primer boot el entrypoint las genera en `./secrets/jwt`
+8. **Claves JWT:** en el primer boot el entrypoint las genera en `./secrets/jwt`
    (bind-mount al host, gitignored) usando `JWT_PASSPHRASE`. **Backupear**
    `~/<app>/secrets/jwt/{private,public}.pem` + la `JWT_PASSPHRASE` al gestor de
    claves. De ahí en más persisten y NUNCA se regeneran (recrear el container no
    desloguea a nadie). Para restaurar en un host nuevo: poné los `.pem` ahí antes
    del `up`.
-10. **Health:** `docker exec <app>-backend-1 curl -s http://localhost/health` → `{"status":"ok"}`.
-11. **(Opt-in) Levantar el stack de staging:** staging es una app aparte en el VPS
+9. **Health:** `docker exec <app>-backend-1 curl -s http://localhost/health` → `{"status":"ok"}`.
+10. **(Opt-in) Levantar el stack de staging:** staging es una app aparte en el VPS
     con su propia DB desechable. Ver **"Runbook de staging"** más abajo.
-12. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
+11. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
     alias `<app>-frontend` + `docker exec infra-reverse-proxy-1 caddy reload`.
 
 > **Gotcha pgvector / shared-infra:** en standalone la app conecta como el
@@ -171,22 +178,21 @@ stack de producción.
    `cp .env.staging.example .env.staging`
    Setear `DATABASE_URL` con la URL impresa en el paso anterior
    (host `postgres`, `<app>_staging_user`, `<app>_staging_db`).
-3. **Build** de la imagen staging (tag `app-backend-staging:1.0`, sin pisar prod):
+3. **Build + up** (project name `-p <app>-staging` propio; staging como app en
+   shared-infra). `up -d --build` buildea automáticamente cualquier servicio
+   con sección `build` (backend/scheduler con tag `app-backend-staging:1.0`,
+   target `frankenphp_staging`; frontend con tag `app-frontend-staging:1.0`) —
+   no se enumeran servicios a propósito, ver gotcha más abajo:
    ```bash
    docker compose -p <app>-staging \
      -f docker-compose.yml -f docker-compose.prod.yml \
      -f docker-compose.shared-infra.yml -f docker-compose.staging.yml \
-     build backend
-   ```
-4. **Up** (project name `-p <app>-staging` propio; staging como app en shared-infra):
-   ```bash
-   docker compose -p <app>-staging \
-     -f docker-compose.yml -f docker-compose.prod.yml \
-     -f docker-compose.shared-infra.yml -f docker-compose.staging.yml \
-     up -d
+     up -d --build
    ```
    Env files que se cargan: `.env` → `.env.backend` → `.env.staging`
-   (`.env.staging` carga último y pisa `DATABASE_URL` y `APP_ENV`).
+   (`.env.staging` carga último y pisa `DATABASE_URL`). `APP_ENV=staging` lo
+   fija `docker-compose.staging.yml` vía `environment:` (no vía env_file —
+   ver gotcha de precedencia abajo).
 5. **Migraciones:** automáticas en el entrypoint. Verificar:
    `docker exec <app>-staging-backend-1 bin/console doctrine:migrations:status`
 6. **Seeding:** la imagen `frankenphp_staging` sí tiene `doctrine:fixtures:load`
@@ -198,13 +204,30 @@ stack de producción.
 7. **Health:** `docker exec <app>-staging-backend-1 curl -s http://localhost/health`
 
 Para reiniciar con datos frescos: `SKIP_PULL=1 ./scripts/deploy-staging.sh`.
-Para bajar staging: `docker compose -p <app>-staging ... down -v`.
+Para bajar staging (preserva el volumen de la DB desechable): `./scripts/down-staging.sh`
+(o `./scripts/down-staging.sh <app>`; análogo a `down.sh` pero con los 4 overlays
+y project name `<app>-staging`). Para purgar también el volumen, bajar a mano
+con `-v` agregado al comando de los 4 overlays.
 
 > **env_file de staging:** `docker-compose.staging.yml` usa `env_file: !override`
 > (Compose >= 2.24, mismo requisito que shared-infra) para REEMPLAZAR (no concatenar)
 > la lista del base. Sin `!override`, Compose concatena listas → `.env`/`.env.backend`
 > aparecerían duplicados. Con él, la lista queda `[.env, .env.backend, .env.staging]`
-> y `.env.staging` carga último, pisando solo `DATABASE_URL` y `APP_ENV`.
+> y `.env.staging` carga último, pisando `DATABASE_URL`.
+
+> **Gotcha — precedencia de `APP_ENV` (la saga que costó 3 capas):** en Compose,
+> `environment:` > `env_file:` > `ENV` horneado en la imagen. `prod.yml`
+> hardcodea `environment: APP_ENV=production` en backend/scheduler — sin un
+> override explícito en `staging.yml`, ese `environment:` pisaba
+> `.env.staging` (env_file) Y el `ENV` del Dockerfile, pese a apilarse encima.
+> Síntoma real: `fixtures:load` fallaba con "command not defined" porque
+> `production` no está en `bundles.php`. Por eso `docker-compose.staging.yml`
+> fija `environment: [APP_ENV=staging]` explícito en backend/scheduler, y el
+> stage `frankenphp_staging` del Dockerfile borra el `.env.local.php` heredado
+> de prod (otra capa que pisaba el entorno). Regla general para diagnosticar
+> cualquier env var que no toma el valor esperado: primero
+> `docker exec <c> printenv VAR` + `docker compose ... config` (de qué capa
+> sale), recién después editar.
 
 ## Variables de entorno
 
