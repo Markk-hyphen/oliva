@@ -8,8 +8,6 @@
 #   1. Provisionar la DB de staging en el Postgres compartido:
 #        ~/infra/scripts/provision-postgres.sh <app>_staging_db <app>_staging_user
 #   2. Completar .env.staging (copiar de .env.staging.example y setear DATABASE_URL).
-#   3. Reemplazar CHANGE-THIS-ALIAS-frontend en docker-compose.shared-infra.yml
-#      (ya debería estar hecho para prod; staging comparte el alias de red de prod).
 #
 # Uso:
 #   ./scripts/deploy-staging.sh            # app_name = nombre del directorio actual
@@ -36,11 +34,12 @@ fi
 echo ">> down"
 COMPOSE_PROFILES=cron "${COMPOSE[@]}" down --remove-orphans
 
-echo ">> build (target: frankenphp_staging)"
-"${COMPOSE[@]}" build backend
-
-echo ">> up -d"
-"${COMPOSE[@]}" up -d
+# build-everything (no enumerar servicios): enumerar es lo frágil — es lo que
+# en finanzas-ong dejó el frontend STALE (build solo listaba backend) y se
+# pudre de nuevo en cuanto un fork agregue un servicio buildeable más. Alinea
+# además con deploy.sh (prod), que ya usa up -d --build.
+echo ">> up -d --build (target backend/scheduler: frankenphp_staging)"
+"${COMPOSE[@]}" up -d --build
 
 echo ">> migraciones"
 docker exec "${STAGING_PROJECT}-backend-1" bin/console doctrine:migrations:migrate --no-interaction
