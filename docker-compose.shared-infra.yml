@@ -29,9 +29,10 @@
 #   2. Descomentar/setear DATABASE_URL en .env.backend de prod apuntando al
 #      Postgres compartido (host `postgres`), no a `database` local — con el
 #      usuario/base que provisiona `infra/scripts/provision-postgres.sh`.
-#   3. Reemplazar el placeholder `CHANGE-THIS-ALIAS-frontend` por un alias de
-#      red ÚNICO por app (ej. `ong-frontend`) y agregar el bloque correspondiente
-#      en `infra/caddy/Caddyfile` apuntando a ese alias.
+#   3. El alias de `frontend` en `proxy_net` se deriva solo de
+#      `${COMPOSE_PROJECT_NAME}` (ver abajo) — NO hace falta tocar nada acá.
+#      Sí hay que agregar el bloque correspondiente en `infra/caddy/Caddyfile`
+#      apuntando a ese alias (`-p ong` → `ong-frontend`).
 #
 # Requiere Docker Compose >= 2.24 (tag de merge `!override`, usada para anular
 # `depends_on`/`ports`/`profiles` heredados del base — los merges de Compose
@@ -65,7 +66,7 @@ services:
       app_network:
       proxy_net:
         aliases:
-          - CHANGE-THIS-ALIAS-frontend   # ej. ong-frontend, crypto-frontend
+          - ${COMPOSE_PROJECT_NAME:-app}-frontend   # ej. -p ong -> ong-frontend
 
 networks:
   # Red privada de ESTA app, project-scoped: con `-p ong` queda `ong_app_network`,
