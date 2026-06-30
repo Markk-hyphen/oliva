@@ -26,6 +26,13 @@ services:
     image: app-backend-staging:1.0
     build:
       target: frankenphp_staging
+    # prod.yml hardcodea environment: APP_ENV=production en backend/scheduler.
+    # Precedencia de Compose: environment: > env_file: > ENV de la imagen — sin
+    # este override, ese environment pisaría .env.staging y quedaría en prod
+    # pese al env_file. Síntoma real: fixtures:load fallaba ("command not
+    # defined") porque production no está en bundles.php.
+    environment:
+      - APP_ENV=staging
     # !override reemplaza (no concatena) la lista del base: evita duplicados.
     # Requiere Docker Compose >= 2.24 (mismo requisito que shared-infra.yml).
     env_file: !override
@@ -37,7 +44,15 @@ services:
     image: app-backend-staging:1.0
     build:
       target: frankenphp_staging
+    environment:
+      - APP_ENV=staging
     env_file: !override
       - .env
       - .env.backend
       - .env.staging
+
+  # Sin declarar este servicio, staging heredaría app-frontend-prod:1.0 de
+  # prod.yml (mismo target/build que prod, solo cambia el tag para no pisar
+  # la imagen de prod en el host).
+  frontend:
+    image: app-frontend-staging:1.0
