@@ -29,6 +29,7 @@ Oliva is the base every new project starts from: a backend, a frontend, a databa
 | Queues | RabbitMQ + Symfony Messenger |
 | Scheduled tasks | `supercronic` running `backend/scheduler/crontab` |
 | Staging / seeding | [Foundry](https://symfony.com/bundles/ZenstruckFoundryBundle/current/index.html) + Doctrine Fixtures · `frankenphp_staging` Docker stage |
+| API testing | [Bruno](https://www.usebruno.com/) collection in `api/` (per-app, not shipped by Oliva — the requests are 100% domain-specific) |
 | Infrastructure | Docker Compose · bridge network · multi-stage builds (dev / prod / staging) |
 
 See `docs/concepts.md` for explanations of the less obvious pieces (pgvector, AMQP, Mercure, etc.) and `docs/examples/` for reference skeletons of a queue producer/consumer and a Mercure publisher.

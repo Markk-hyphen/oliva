@@ -97,3 +97,38 @@ targetean Node 20 (deprecado), bumpear a `checkout@v5` etc. cuando convenga.
 > Nota: este PASO 1.2 se registró a posteriori (en el `claude reiniciar` de cierre),
 > no en el mismo commit `57663fe` — excepción puntual a la regla de "log y commit
 > juntos", porque el valor de dejar el cierre de sesión documentado lo justifica.
+
+---
+
+## [PASO 2.1] docs(bruno): convención de API testing doc-only (README + runbook)
+**Hash:** `a6ac209`
+**Rama:** `main`
+**Fecha:** 2026-06-30
+
+### Cambios
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `README.md` | modificado | Nueva fila en la tabla de stack: `API testing → Bruno collection in api/` (marcada como per-app, no shipeada por Oliva). |
+| `CLAUDE.md` | modificado | Nuevo paso 12 en el runbook de deploy shared-infra: smoke de flujos de negocio con la collection Bruno contra `{{base_url}}`, simétrico al `fixtures:load` del runbook de staging. |
+| `agent-commits.md` | modificado | Esta entrada. |
+
+### Justificación
+finanzas-ong (primer fork real) tiene una collection Bruno funcionando en `api/`
+(commit `27ff98c`): environments prod/staging, auto-token post-login, `batch_id`
+capturado para confirmar sin copy-paste, 9 requests cubriendo todos los flujos.
+Surgió la pregunta de si eso debía subir a Oliva como stub físico (igual que
+`AppFixtures` de la seeding layer).
+
+**Decisión: NO shipear archivos.** A diferencia de las fixtures —donde el stub
+`AppFixtures` es genérico y reutilizable—, una collection Bruno es 100% dominio de
+la app (los endpoints, los payloads, los flujos son de finanzas-ong, no de Oliva) y
+Bruno es una app externa, no parte del stack corriendo. Con n=1 fork, extraer una
+convención de *layout de archivos* es prematuro: no hay evidencia de qué es
+invariante entre apps.
+
+**Lo que SÍ va en Oliva (doc-only, este commit):** (1) una línea en la tabla de
+stack del README declarando la convención "API testing: Bruno en `api/`, por app";
+(2) un paso en el runbook de deploy simétrico al `fixtures:load` de seeding —
+health check confirma que el proceso arranca, la collection confirma que el dominio
+funciona end-to-end. Extraer una convención de archivos recién cuando la app #2
+confirme que el layout es invariante.

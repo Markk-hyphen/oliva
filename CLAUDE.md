@@ -152,6 +152,14 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
     con su propia DB desechable. Ver **"Runbook de staging"** más abajo.
 11. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
     alias `<app>-frontend` + `docker exec infra-reverse-proxy-1 caddy reload`.
+12. **Smoke de flujos de negocio:** correr la collection Bruno de la app (`api/`,
+    si existe) contra el entorno recién levantado — apuntar `{{base_url}}` al host
+    correcto (público tras el paso 11, o `http://localhost` local) y verificar que
+    login + los flujos de dominio responden OK. Simétrico al `fixtures:load` del
+    runbook de staging: el health check confirma que el proceso arranca; la
+    collection confirma que el dominio funciona end-to-end. Es opt-in y por app —
+    Oliva no shipea la collection (los requests son 100% dominio, ver tabla de
+    stack del README).
 
 > **Gotcha pgvector / shared-infra:** en standalone la app conecta como el
 > superuser del Postgres local, así que la migración que hace
