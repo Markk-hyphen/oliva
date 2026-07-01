@@ -101,7 +101,7 @@ targetean Node 20 (deprecado), bumpear a `checkout@v5` etc. cuando convenga.
 ---
 
 ## [PASO 2.1] docs(bruno): convención de API testing doc-only (README + runbook)
-**Hash:** `a6ac209`
+**Hash:** `468b2c2`
 **Rama:** `main`
 **Fecha:** 2026-06-30
 
