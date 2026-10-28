@@ -19,7 +19,7 @@
 # El fix NO toma efecto en procesos vivos: hay que RECREAR los containers, no reiniciar
 # el servicio. scripts/deploy.sh ya hace `down` antes del `up`; el step [php-version] de
 # verify.sh asserta que lo que corre coincide con este pin.
-FROM dunglas/frankenphp:1.13.2-php8.3.36 AS frankenphp_upstream
+FROM dunglas/frankenphp:1.13.4-php8.3.36 AS frankenphp_upstream
 
 # The different stages of this Dockerfile are meant to be built into separate images
 # https://docs.docker.com/develop/develop-images/multistage-build/#stop-at-a-specific-build-stage
