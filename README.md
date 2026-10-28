@@ -51,7 +51,7 @@ Some of what is loud today:
 
 Guards cost nothing when they don't apply: an empty crontab or no PHP extensions means no output at all.
 
-The operating rules travel with the code. [`AGENTS.md`](AGENTS.md) is the open format that Claude Code, Codex, Cursor, Gemini CLI, Copilot, Aider, Zed and others read natively. A one-line `CLAUDE.md` stub imports it. `./oliva` is the single entry point, so docs never depend on script paths, and `./oliva doctor` is the read-only status check an agent runs before touching code.
+The operating rules travel with the code. [`AGENTS.md`](AGENTS.md) is the open format that Claude Code, Codex, Cursor, Gemini CLI, Copilot, Aider, Zed and others read natively. A one-line `CLAUDE.md` stub imports it. `./oliva` is the single entry point, so docs never depend on script paths, and `./oliva doctor` is the read-only status check an agent runs before touching code. New to the project? [`docs/sanity-checks.md`](docs/sanity-checks.md) walks through every check, how they correlate, and what each one does — with a run-it-yourself ✅/❌ checklist.
 
 ### 3. Staying patched is the default
 
