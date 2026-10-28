@@ -18,7 +18,7 @@ FROM base AS builder
 COPY . .
 RUN yarn run build
 
-FROM caddy:2.8.4 AS production
+FROM caddy:2.11.7 AS production
 WORKDIR /usr/share/caddy
 COPY --from=builder /usr/src/app/dist /usr/share/caddy
 COPY --link Caddyfile /etc/caddy/Caddyfile
