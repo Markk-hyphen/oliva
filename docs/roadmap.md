@@ -282,6 +282,46 @@ Plan and decisions: [`docs/roadmap/epics/E-capa-agentica.md`](roadmap/epics/E-ca
 
 ---
 
+## 5. One language, no personal names
+
+Two cleanups of the same kind as item 4: Oliva's surface shouldn't encode *who*
+maintains it or *which language* they happen to speak. Item 4 removed the vendor
+from the filename; this removes the maintainer from the content.
+
+**English everywhere.** Today the split is accidental, not designed: `README.md`,
+this roadmap and `docs/sanity-checks.md` are English, while the docs a fork
+actually reads under pressure are Spanish — `AGENTS.md`, `docs/oliva/UPGRADING.md`,
+`docs/oliva/actualizaciones.md`, `docs/concepts.md`, `docs/qa-y-staging.md`,
+`agent-commands.md`, `agent-commits.md` and the files under `docs/roadmap/`. The
+worst offender is `UPGRADING.md`: it is the single most fork-facing file in the
+repo — the one `sync.sh` prints to whoever is mid-merge — and it is the one a
+non-Spanish-speaking fork can least afford not to read. Same argument as item 4:
+whoever forks Oliva should be able to operate it without inheriting the
+maintainer's defaults.
+
+**No personal names.** The maintainer's first name appears in 6 tracked files
+(most of them in `agent-commits.md`, plus the agent docs and the epic). Agent
+docs should address a role, not a person: "the user" / "the maintainer". The
+copyright holder in `LICENCE` is the one legitimate exception.
+
+**Not blocked on anything.** Like item 4, this changes how Oliva presents itself,
+not what it ships. It can start any time and land incrementally, doc by doc.
+
+**Two decisions to make before starting:**
+
+- **`UPGRADING.md`: translate retroactively or forward-only?** Its section format
+  is parsed by `sync.sh`, and forks already synced read those sections as
+  history. Rewriting past sections edits a record forks were shown in Spanish;
+  switching only from the next version on leaves the file bilingual. Forward-only
+  is the cheaper bet, with a one-line note at the top.
+- **`agent-commits.md`**: it is a log, not a document. Likely freeze the existing
+  entries and write new ones in English, rather than retranslate 22 entries.
+
+Once this lands, the honest-scope note in `README.md` ("Some operational docs are
+in Spanish, the maintainer's language") comes out.
+
+---
+
 ## Sequencing
 
 The items are dependency-ordered, not priority-ordered:
@@ -299,3 +339,5 @@ Item 1 is cheap and can start any time, and so can item 2's groundwork:
 unbundling roles, writing the contracts, probing them with a throwaway fork.
 Item 2's clean form waits on item 3, which waits on item 1's signal. Item 4 is
 already shipped: it built the entry point that item 3 later extends.
+Item 5 sits outside the chain entirely — it is presentation, not mechanism, and
+can land doc by doc whenever a file is being touched for another reason.
