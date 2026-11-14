@@ -26,9 +26,10 @@
 # ── Requisitos antes de usar este overlay ──────────────────────────────────
 #   1. Las redes externas `proxy_net` y `data_net` deben existir (las crea el
 #      repo de infra: `docker network create proxy_net && ... data_net`).
-#   2. Descomentar/setear DATABASE_URL en .env.backend de prod apuntando al
-#      Postgres compartido (host `postgres`), no a `database` local — con el
-#      usuario/base que provisiona `infra/scripts/provision-postgres.sh`.
+#   2. Set DATABASE_URL in the host's .env (gitignored) to the shared Postgres
+#      (host `postgres`), not the local `database` — with the user/db that
+#      `infra/scripts/provision-postgres.sh` provisions. Not in .env.backend:
+#      it is tracked, and since Oliva 1.6.0 it holds no secrets.
 #   3. El alias de `frontend` en `proxy_net` se deriva solo de
 #      `${COMPOSE_PROJECT_NAME}` (ver abajo) — NO hace falta tocar nada acá.
 #      Sí hay que agregar el bloque correspondiente en `infra/caddy/Caddyfile`

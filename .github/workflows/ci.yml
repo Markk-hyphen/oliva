@@ -41,27 +41,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       -
-        name: Set up environment files
-        run: |
-          cp .env.example .env
-          sed -i 's/your_db_password/app/g' .env
-          sed -i 's/your_rabbitmq_password/app/g' .env
-          cat > .env.backend << 'EOF'
-          APP_SECRET=ci_secret_change_in_prod_32chars
-          SERVER_NAME=0.0.0.0:80
-          HTTP_PORT=80
-          CADDY_GLOBAL_OPTIONS=#
-          CADDY_EXTRA_CONFIG=#
-          CADDY_SERVER_LOG_OPTIONS=#
-          JWT_PASSPHRASE=ci_jwt_passphrase
-          RABBITMQ_USER=app
-          RABBITMQ_PASSWORD=app
-          RABBITMQ_DSN=amqp://app:app@rabbitmq:5672/%2f
-          MERCURE_PUBLISHER_JWT_KEY=aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899
-          MERCURE_JWT_SECRET=aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899
-          MERCURE_URL=http://localhost/.well-known/mercure
-          MERCURE_PUBLIC_URL=http://localhost/.well-known/mercure
-          EOF
+        # The same command a newcomer runs: .env from .env.example, every secret
+        # generated. CI used to write its own .env.backend here, which hid for months
+        # that the tracked one overrode .env; now it exercises the real path.
+        name: Set up environment (./oliva env init)
+        run: ./oliva env init
 
       -
         # El cuello de botella era rebuildear extensiones PHP + composer + yarn en
@@ -158,6 +142,33 @@ jobs:
           jq -e '(.services.backend.environment.FRANKENPHP_CONFIG // "unset") != ""' prod-config.json > /dev/null \
             || { echo "::error::backend resuelve FRANKENPHP_CONFIG='' en el stack prod — worker mode quedaría APAGADO (regresión del bug de 1.4.3). No definir FRANKENPHP_CONFIG en .env/.env.example."; exit 1; }
           echo "✓ worker mode no está apagado a nivel compose"
+
+  env-contract:
+    # Cheap guard (no build, seconds). Fails when the environment Compose RESOLVES is not
+    # sound: a secret with a real value in a tracked file, a tracked file overriding .env
+    # with a placeholder or a publicly known value, a secret reaching the frontend, a
+    # manifest variable missing from .env.example. It is what stops "the container didn't
+    # start, so the key went into .env.backend" from reaching main unnoticed.
+    # No OLIVA_CI_SKIP for this one, on purpose. Secrets a person provides (kind `secret`,
+    # value `-` in env.manifest) are not required here: CI has no real value for them.
+    name: Env contract
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+
+      -
+        name: .env from the manifests
+        run: ./oliva env init
+
+      -
+        name: The resolved environment is sound (dev and prod stacks)
+        run: |
+          ./oliva env check \
+            || { echo "::error::env check failed on the dev stack (see the lines marked !! above; each names its fix)"; exit 1; }
+          ./oliva env check --prod \
+            || { echo "::error::env check failed on the prod stack (see the lines marked !! above; each names its fix)"; exit 1; }
 
   composer-constraints:
     # Guarda barata (sin build): falla si backend/composer.json tiene un constraint sin

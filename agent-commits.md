@@ -737,3 +737,242 @@ compose falso (DB listada antes que el backend, imagen inexistente, compose que 
 pendientes/ack/siembra/lint en un clon con una 1.5.1 de fixture; shellcheck sin errores.
 
 **Revisión post-release → 1.5.1 (`fix(sync): ajustes de 1.5.0 tras revisión`):** `release.sh` deja reconocida la versión que publica (sin esto, el `doctor` de Oliva listaba como pendientes las acciones de los forks; confirmado en clon). Hallazgo no obvio: `git pull` reemplaza `deploy.sh` con un inode nuevo y bash termina de ejecutar el script **viejo** (probado), así que el deploy que trae 1.5.x no corre los guards → acción `[host]` en 1.5.1 (`git pull && SKIP_PULL=1 ./scripts/deploy.sh`). Además: fences ignorados en lint/pendientes, `ack` robusto con `set -e`. Deploy simulado en clon: el tramo final con `docs/` borrado dio los 3 avisos.
+
+---
+
+> Entries from here on are written in English and address the maintainer by role
+> (roadmap item 5). Earlier entries stay as they were written.
+
+## [1.6.0 · phase 1] fix(security): no secrets in tracked env files; no public fallback for the Mercure key
+**Hash:** `14da99c04e5f` (phase 1 of the epic; the epic doc is `2a1278c`)
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `.env.backend` | modified | Non-secret defaults only. `APP_SECRET`, `JWT_PASSPHRASE`, `RABBITMQ_*`, both Mercure keys and the commented shared-infra `DATABASE_URL` are gone. |
+| `docker-compose.yml` | modified | `frontend` loads only `.env.frontend` (it was receiving every backend secret through `.env`). |
+| `backend/frankenphp/Caddyfile` | modified | Mercure key: no default, quoted. |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | Refuses to start the server when `MERCURE_PUBLISHER_JWT_KEY` is empty. |
+| `backend/frankenphp/known-public-secrets.sha256` | new | SHA-256 of every value a secret variable ever had in a tracked file, plus placeholders and CI values (19). No consumer yet (phase 3). |
+| `.env.example`, `backend/.env`, `docker-compose.shared-infra.yml` | modified | Comments: secrets and `DATABASE_URL` live in `.env`, in shared infra too. |
+| `.env.prod` | deleted | A `#TODO` nobody read. |
+| `docs/roadmap/epics/E-config-contract.md` | new | The epic (previous commit). |
+| `agent-commits.md` | modified | This entry (separate commit). |
+
+### Why
+Found while reviewing the framework for its next epic, not from an incident: `.env.backend` is
+tracked and is listed **after** `.env` in `env_file`, so it wins. Measured with
+`docker compose config` on the prod stack: `APP_SECRET`, `JWT_PASSPHRASE` and both Mercure keys
+resolved to the committed values regardless of `.env`. The repo is public and both apps carry the
+same values. The local `.env` of this checkout had placeholders in all four and everything worked,
+which is the tell: filling in `.env` never had any effect.
+
+It also invalidated the work that was planned next (a `doctor` guard for placeholders in `.env`
+plus an `env:init` that generates secrets into `.env`): both would have reported success while the
+committed values kept winning. Hence the rule the epic sets for the check: look at what Compose
+**resolves**, not at what a file says.
+
+**Decisions:**
+- *`.env` is the only home for secrets*, shared infra included. The old layout had the host edit
+  a tracked file (`.env.backend`) to set `DATABASE_URL`: a password in a tracked file, and a
+  conflict with the `git pull` of `deploy.sh` waiting to happen. One gitignored file per machine
+  is simpler than a third layer.
+- *`backend/.env` keeps its `changeme` placeholders.* Removing them would make Symfony fail on a
+  missing variable, which is the loud failure wanted, but it also breaks the image build
+  (`cache:clear`, `dump-env prod`) and it is a file every app shares with Symfony recipes. They
+  are in the hash list instead, and phase 3 refuses them in production.
+- *Hashes, not plaintext,* in the public-values list: the values are public already, but a list
+  of plaintext secrets trips every secret scanner and reads like an invitation.
+
+**Found during execution.** Removing the Caddyfile default was not enough and, done naively, made
+things worse. With the variable empty and unquoted, Caddy drops the token and parses
+`publisher_jwt HS256` with **`HS256` as the key**, and reports "Valid configuration". Quoted, an
+empty key is also accepted. Caddy cannot be the component that fails, so the entrypoint is: it
+refuses to start the server without a key.
+
+Verified: resolved config of dev, prod and prod+shared-infra (all four secrets come from `.env`
+in `backend` and `scheduler`, none in the public list; `frontend` receives no secret, counted in
+the running container too); entrypoint with an empty key exits 1 with the fix; `verify` 9/9, its
+`mercure` step running on the key from `.env`. Not verified: CI (it still writes its own
+`.env.backend`; changes in phase 4).
+
+---
+
+## [1.6.0 · phase 2] feat(env): `./oliva env init` — manifests of variables per slot
+**Hash:** `a652e1f`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `scripts/oliva/env.manifest` | new | Oliva's variables: `NAME SLOT KIND VALUE`. Kinds `secret`, `stateful`, `derived`, `plain`; values `gen:hexN`, `same:VAR`, `-` or a `${VAR}` template. |
+| `env.manifest` | new | The app's extension point, shipped empty (same pattern as `backend/php-extensions.txt`). |
+| `scripts/oliva/env.sh` | new | `init`: creates `.env` from `.env.example` or repairs an existing one. |
+| `oliva` | modified | `env` command. |
+| `scripts/oliva/verify.sh`, `backend/frankenphp/docker-entrypoint.sh` | modified | Their "missing `.env`" / "empty key" messages now name `./oliva env init`. |
+| `scripts/oliva/owned-paths.txt` | modified | `env.manifest` listed as an extension point. |
+| `docs/roadmap/epics/E-config-contract.md` | modified | Three rules learned while testing (below) and one change of plan. |
+
+### Why
+Replaces `cp .env.example .env` plus filling four secrets by hand. Each rule below exists because
+the obvious implementation breaks something without an error.
+
+- *The JWT key is the upgrade path, not a corner case.* The private key is encrypted with
+  `JWT_PASSPHRASE`. Until 1.6.0 the effective passphrase was the committed one, so **every existing
+  key** is encrypted with it; after phase 1 the effective one becomes whatever `.env` holds, and
+  every login would start failing with nothing wrong at boot. `init` therefore re-encrypts any key
+  the passphrase of `.env` doesn't open (same key pair, nobody is logged out), looking for the old
+  passphrase in the previous `.env` and in the git history of the tracked env files. Keys created
+  by the container are root-owned, so that case goes through a container. It was live in this very
+  checkout: `secrets/jwt/private.pem` still opened with the public passphrase.
+- *A stateful secret is generated only while nothing stored it.* Postgres and RabbitMQ keep the
+  password of their first start in the data volume; rotating the variable alone locks the app out
+  of its own database. `init` asks Docker whether the slot's volume exists. No volume: generate.
+  Volume, or Docker unreachable: leave it and print how to rotate.
+- *A derived value that doesn't match its sources is external.* First version: recompute
+  `DATABASE_URL` whenever `POSTGRES_PASSWORD` changes. On a shared-infra host that rewrites the
+  provisioned URL to the local `database` service. Now it is recomputed only if the current value
+  equals what the old sources would have produced.
+- *If nothing opens a key, nothing changes* and the command exits 1: a new passphrase can't help
+  and could bury the one that works.
+
+**Change of plan:** `.env.example` stays hand-written instead of generated from the manifests. Its
+comments carry gotchas and apps add their own lines to it (it is a SHARED file); a lint will keep
+it in step with the manifests (phase 3).
+
+Verified: fresh clone → `init` → `verify` 9/9, second run "nothing to do"; old `.env` with the
+public values and a root-owned key (secrets replaced, key opens with the new passphrase and no
+longer with the public one, same public key); key with an unknown passphrase (exit 1, nothing
+changed); shared-infra `DATABASE_URL` untouched; without Docker; malformed manifest; app manifest;
+shellcheck clean. Not verified: an HTTP login (Oliva has no login endpoint) and a real host.
+
+---
+
+## [1.6.0 · phase 3] feat(env): `./oliva env check` — the resolved environment, checked where it is used
+**Hash:** `a019fe9`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `scripts/lib/env-check.sh` | new | `env_check <full\|quiet> COMPOSE...` and `guard_env`. Also the helpers `env.sh` shares: manifest reader, "is this value a secret at all", JWT key access. bash + awk, no `jq`. |
+| `scripts/oliva/env.sh` | modified | `check [--prod]`; uses the shared helpers. |
+| `oliva` | modified | `doctor` gets the step `env` (reports, never fails it). |
+| `scripts/oliva/verify.sh` | modified | Step `env`, first, and it fails. Its name is the guard id `env` for `UPGRADING.md`. |
+| `scripts/deploy.sh` | modified | Aborts before `down` on an env error. When `up` fails, prints the last lines of the backend log. |
+| `scripts/deploy-staging.sh` | modified | Warns (after the stack is up). |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | `APP_ENV=prod`: refuses to start on an empty, placeholder or public value of the four framework secrets. `staging`: warns. |
+| `backend/Dockerfile` | modified | Copies the public-values list into the image. |
+| `docs/roadmap/epics/E-config-contract.md` | modified | Status and the decisions below. |
+
+### Why
+The check had to be built on `docker compose config`, not on `.env`: the incident was a tracked
+file overriding `.env`, and anything that parses `.env` passes it. Hence also the wording of the
+fix: when the resolved value isn't the one in `.env`, the message does not say `env init` (which
+would change nothing) but "something overrides `.env`, remove it there".
+
+**Decisions:**
+- *The first guard that aborts.* The rule from 1.5.0 stands (guards warn, the stack is already
+  up). This one runs before `down`, so aborting costs nothing: the current stack keeps serving.
+  Decided by the maintainer: a publicly known secret in production aborts.
+- *Entrypoint as the net under the deploy check, with no escape variable.* Three paths never reach
+  the check in `deploy.sh`: the standalone `docker compose up` the README documents, any manual
+  `up` on a host, and the first deploy that brings 1.6.0 (`git pull` replaces `deploy.sh` while
+  bash is still running the old one, the 1.5.1 gotcha). The entrypoint is inside the image that
+  same deploy builds. Its cost is honest: there the old stack is already down, so it turns a silent
+  exposure into an outage. No switch to turn it off, because there is no legitimate production on
+  a public secret and a switch is what an agent would flip to make the container start.
+- *A stateful secret only warns, in production too* (pending the maintainer's confirmation).
+  Rotating a database password is not one command, and the service isn't reachable from outside
+  the app's network. Aborting would block a host until someone does an `ALTER USER` by hand.
+- *Slot states are inferred from the resolved state, not declared.* A `DATABASE_URL` whose host
+  isn't `database` is a replaced slot, announced on every run. A flag could drift from reality;
+  declaration belongs to roadmap item 3.
+- *Called explicitly, not through `UPGRADE_GUARDS`.* The registry runs after `up` and only warns;
+  production needs it before `down`. `guard: env` is still valid in `UPGRADING.md` because the
+  lint accepts verify steps.
+
+Verified: every finding reproduced on purpose in a clone (placeholder, public value, tracked file
+overriding `.env`, real secret in a tracked file, Mercure keys that differ, `DATABASE_URL` against
+`POSTGRES_PASSWORD`, secrets reaching the frontend, JWT key that doesn't open, replaced database
+with and without a placeholder, app secret without a value, no `.env`, no Docker). A real
+`deploy.sh` on a temporary shared-infra setup (two networks and a Postgres, removed afterwards):
+healthy deploy announces `database REPLACED`; with a public `APP_SECRET` it exits 1 and the same
+containers keep answering `/health`; a direct `docker compose up` with that secret fails with 1
+and the reason is in the backend log; `env init` then deploy brings it back. `verify` 10/10.
+`doctor` survives without Docker. Not verified: a real host, CI.
+
+---
+
+## [1.6.0 · phase 4] ci: environment through `./oliva env init`; job `env-contract`
+**Hash:** `856c08b`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `.github/workflows/ci.yml` | modified | `tests`: `./oliva env init` replaces `cp` + `sed` + a heredoc that rewrote `.env.backend`. New job `env-contract` (no build): `env init`, then `env check` on the dev and prod stacks. |
+| `scripts/lib/env-check.sh` | modified | With `CI=true`, a secret a person provides (`-` in the manifest) only warns. New error: `DATABASE_URL` pointing at the local `database` service in a stack that doesn't run it. |
+
+### Why
+- *CI was part of why the bug stayed hidden.* It overwrote the tracked `.env.backend` with its own
+  values on every run, so it never tested the file the apps actually shipped. It now runs the
+  command a newcomer runs.
+- *No separate `tracked-secrets` job* (the epic planned one): `env check` already includes the
+  tracked-files check and also catches the other half, a tracked file overriding `.env` with a
+  placeholder or a public value. One job, same code as `verify` and `deploy`.
+- *No `OLIVA_CI_SKIP` for it.* Same reason as no escape variable in the entrypoint.
+- *`CI=true` instead of a flag.* An app with an API key in its manifest would be red forever in
+  CI, which has no real value for it. A flag on `env init` that fills in throwaway values was the
+  alternative; it is exactly what would get used locally to quiet the check.
+- *The shared-infra case came from writing the upgrade notes:* a host that pulls 1.6.0 and
+  forgets to move its `DATABASE_URL` from `.env.backend` to `.env` resolves the standalone URL,
+  the database slot looks absent, and the check said nothing. Now it is an error before `down`.
+
+Verified locally by running the job's commands in a clone: clean branch passes; a real key
+committed in `.env.backend` fails; the same key moved to `.env` passes in CI and is required
+without `CI=true`; a placeholder in `.env.backend` overriding the real value in `.env` is named as
+an override; the old public `APP_SECRET` back in `.env.backend` fails. `actionlint` clean.
+Not verified: a real run on GitHub (CI only runs on `main`).
+
+---
+
+## [1.6.0 · phase 5] docs: the config contract in README, AGENTS.md, runbooks and UPGRADING
+**Hash:** `f8e9049`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `AGENTS.md` | modified | New section "Environment contract"; structure list; shared-infra runbook steps 1, 2 and 4; env variables; `doctor` and CI descriptions. |
+| `README.md` | modified | Quickstart, production note, "silent before / loud now" rows, `./oliva` table, CI jobs, where env files live, project structure. |
+| `docs/oliva/UPGRADING.md` | modified | Section `## 1.6.0` and the note that sections are in English from here on. |
+| `scripts/lib/upgrade-guards.sh`, `scripts/oliva/sync.sh` | modified | Accept `**Action required` next to `**Acción requerida`, and the place `decision`. |
+| `docs/qa-y-staging.md` | modified | `verify` steps and CI jobs brought up to date (it said 8 steps and three jobs); stale note on advisories replaced. |
+| `docs/sanity-checks.md`, `docs/oliva/actualizaciones.md` | modified | `env` step and the `env.manifest` extension point. |
+| `docs/roadmap.md`, `docs/roadmap/epics/E-config-contract.md` | modified | Pointer from item 2 to the epic; status and what changed from the plan. |
+
+### Why
+- *`UPGRADING.md` in English, forward-only.* Roadmap item 5 left this decision open and called
+  forward-only the cheaper bet. A security release that every app must act on is the wrong one to
+  ship in a language a fork may not read. Old sections are untouched; the parser takes both
+  headings. The `sync.sh` of an app still on 1.5.1 prints whole sections, so it shows this one
+  as is (checked with its own awk).
+- *The upgrade actions are guarded where they can be.* `[local, guard: env]` is the `env` step of
+  `verify`; `[host, guard: env]` is the abort in `deploy.sh` plus the entrypoint. Only the
+  password-manager backup is unguarded and shows until `./oliva ack`.
+- *The host action asks to rotate before deploying* (`git pull && ./oliva env init &&
+  SKIP_PULL=1 ./scripts/deploy.sh`), and says what happens otherwise: that first deploy runs the
+  old script, so the entrypoint is what stops it, after the old stack is down.
+- `AGENTS.md` keeps its Spanish sections; only what this epic touches is in English. Translating
+  the whole file is item 5's own work and a larger merge for every app.
+
+Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulated app going
+1.5.1 → 1.6.0 lists only the unguarded item in `doctor` and on the host, and `ack` clears it;
+`verify` 10/10 on the final tree; shellcheck clean.

@@ -17,6 +17,7 @@ Framework:
   ack                                          = sync ack (acciones de upgrade hechas en esta máquina)
   verify                                       scripts/oliva/verify.sh
   release X.Y.Z                                scripts/oliva/release.sh
+  env <init|check [--prod]>                    scripts/oliva/env.sh (.env: crearlo/repararlo, o chequear lo que resuelve Compose)
 
 Operación:
   deploy                                       scripts/deploy.sh
@@ -40,6 +41,7 @@ case "$cmd" in
   ack)           exec scripts/oliva/sync.sh ack ;;
   verify)        exec scripts/oliva/verify.sh "$@" ;;
   release)       exec scripts/oliva/release.sh "$@" ;;
+  env)           exec scripts/oliva/env.sh "$@" ;;
   deploy)        exec scripts/deploy.sh "$@" ;;
   deploy-staging) exec scripts/deploy-staging.sh "$@" ;;
   down)          exec scripts/down.sh "$@" ;;
@@ -65,6 +67,10 @@ case "$cmd" in
     step "log" git log --oneline -3
     step "docker compose ps" docker compose ps
     step "migraciones" docker compose exec backend bin/console doctrine:migrations:status
+    # Lo que Compose RESUELVE para cada servicio (no lo que dice el .env): secretos
+    # faltantes/públicos, slots reemplazados. Informa; el exit code no corta a doctor.
+    env_board() { scripts/oliva/env.sh check || true; }
+    step "env" env_board
     step "deps due" scripts/oliva/deps.sh due
     # Acciones de UPGRADING.md sin guard que esta máquina no reconoció (./oliva ack).
     # Después de un sync es lo único que sigue mostrándolas: check ya da "al día".

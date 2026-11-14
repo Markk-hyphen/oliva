@@ -23,6 +23,73 @@ Al escribir una acción, en este orden: **eliminarla** (que el cambio no le pida
 **> guard > etiqueta sin guard** (se muestra hasta el ack) **> texto suelto**. Casi todo lo que
 parece "manual" es estado que vive donde git no llega (un `.env`, otro host); eso se chequea.
 
+> **From 1.6.0 on, sections are written in English** (roadmap item 5). The headings the
+> scripts parse have an English form, **Action required in the app** and **What changed**, and
+> the place `decision` equals `decisión`. Earlier sections stay as they were written.
+
+## 1.6.0 — 2026-11-14
+
+> **Security release: rotate your secrets.** Until now `.env.backend` (tracked, and loaded
+> *after* `.env`) carried `APP_SECRET`, `JWT_PASSPHRASE` and both Mercure keys. They overrode
+> whatever you had put in `.env`, so every app built on Oliva has been running on values that
+> are public in git, with no error anywhere. With the Mercure key anyone can sign a publisher or
+> subscriber token for your hub; with `APP_SECRET` anything Symfony signs can be forged. If you
+> ever ran production like this, treat those four values as leaked. This version moves every
+> secret to `.env` (gitignored), generates them for you, and refuses the public ones in
+> production. It also carries two security bumps of base images (Caddy 2.11.7, FrankenPHP
+> 1.13.4): rebuild to pick them up, and re-pull `pgvector/pgvector:pg15`.
+
+**Action required in the app**
+
+- [merge] `.env.backend`: take Oliva's version (it holds non-secret defaults only). If your app
+  added lines to it, keep the ones that are **not** secrets. Move each secret to `.env`, leave
+  a placeholder for it in `.env.example`, and declare it in the new `env.manifest`, one line
+  each, e.g. `ANTHROPIC_API_KEY  backend  secret  -`. A placeholder left in `.env.backend`
+  overrides the real value in `.env`: remove the line there.
+- [merge] If your frontend needs a variable that you kept in `.env`, move it to `.env.frontend`
+  (non-secret) or to `environment:` in your override. The `frontend` container no longer loads
+  `.env`: it was receiving every backend secret.
+- [local, guard: env] In your development checkout: `./oliva env init`, then
+  `docker compose up -d --force-recreate`. It replaces the public values in `.env` with generated
+  ones and re-encrypts your JWT private key with the new passphrase (same key pair, nobody is
+  logged out). Database and broker passwords are left alone when their data volume exists; it
+  prints how to rotate them. `./oliva verify` fails on its new `env` step until this is done.
+- [host, guard: env] On each host, **before** deploying this version:
+  ```bash
+  git checkout -- .env.backend     # only if you had edited it there (shared infra): first copy
+                                   # your DATABASE_URL line into .env, replacing the one in it
+  git pull && ./oliva env init && SKIP_PULL=1 ./scripts/deploy.sh
+  ```
+  `deploy.sh` now aborts **before** stopping anything if a secret is missing, a placeholder or
+  publicly known; the running stack keeps serving. If you deploy the usual way instead, that
+  first deploy still runs the old script (see 1.5.1), the old stack goes down and the new
+  backend refuses to start until `./oliva env init` is run: an outage instead of a warning.
+  After rotating: open pages must reload to get a new Mercure token, and anything signed with
+  the old `APP_SECRET` (remember-me cookies, signed URLs) stops being valid. JWT logins survive.
+- [host] If you back up `JWT_PASSPHRASE` and `secrets/jwt/*.pem` to a password manager, back them
+  up again: the passphrase changed and the private key was re-encrypted with it.
+
+**What changed**
+
+- `.env.backend`: non-secret defaults only. `.env` is the only home of secrets and of
+  `DATABASE_URL`, shared infra included (the host's `.env` carries the provisioned URL; the
+  runbook no longer edits a tracked file). `.env.prod` is gone.
+- `./oliva env init`: replaces `cp .env.example .env`. Creates `.env` or repairs it, touching
+  only what is missing, a placeholder or publicly known.
+- `./oliva env check [--prod]`: verifies what Compose **resolves** for each service, per slot.
+  It runs in `doctor`, in `verify` (step `env`) and in CI (job `env-contract`).
+- `scripts/oliva/env.manifest` (Oliva's variables) and `env.manifest` (yours, an extension
+  point Oliva never changes): slot, kind and how each value is made.
+- `scripts/deploy.sh` aborts before `down` on an env error and prints the backend log when
+  `up` fails. `scripts/deploy-staging.sh` warns.
+- The backend image refuses to start with `APP_ENV=prod` on an empty, placeholder or publicly
+  known value of the four secrets, and in any environment without a Mercure key. The Caddyfile
+  no longer has a default key.
+- CI: the environment comes from `./oliva env init`; new job `env-contract`. If your app has
+  secrets a person provides (`-` in `env.manifest`), CI does not require them.
+- Details and reasons: `docs/roadmap/epics/E-config-contract.md`, `AGENTS.md` ("Environment
+  contract").
+
 ## 1.5.1 — 2026-10-24
 
 > Ajustes de 1.5.0 encontrados en la revisión posterior al release. En el repo de Oliva,

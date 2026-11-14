@@ -33,10 +33,15 @@ http://:80 {
 	handle /.well-known/mercure* {
 		mercure {
 			anonymous
-			publisher_jwt {$MERCURE_PUBLISHER_JWT_KEY:!ChangeThisSecret!} HS256
+			# Quoted and with NO default, on purpose. A default is a publicly known key that
+			# takes over without a word when the variable is missing. Unquoted, an empty
+			# value makes Caddy drop the token and read "HS256" as the key (still "Valid
+			# configuration"). An empty key never gets here: docker-entrypoint.sh refuses
+			# to start the server without it.
+			publisher_jwt "{$MERCURE_PUBLISHER_JWT_KEY}" HS256
 			# Without it no subscriber can be authorized for private updates.
 			# Same key on purpose: MercureBundle signs both token kinds with MERCURE_JWT_SECRET.
-			subscriber_jwt {$MERCURE_PUBLISHER_JWT_KEY:!ChangeThisSecret!} HS256
+			subscriber_jwt "{$MERCURE_PUBLISHER_JWT_KEY}" HS256
 			# Mercure in FrankenPHP >= 1.13 rejects publisher_jwt/subscriber_jwt outside
 			# compatibility mode. Modern mode needs issuer blocks + an "iss" claim in every token.
 			protocol_version_compatibility 8

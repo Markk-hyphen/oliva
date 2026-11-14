@@ -48,6 +48,9 @@ Some of what is loud today:
 | The prod stack not actually running `APP_ENV=prod` | a CI job checks the resolved config |
 | A release with nothing telling the apps what changed | `release` refuses without an `UPGRADING.md` section |
 | Forgetting that a dependency or security cycle is due | `./oliva doctor` says so every session |
+| Secrets committed in a tracked file, overriding the ones you set in `.env` | `./oliva env check` reads what Compose *resolves*: red in `verify` and CI, and a production deploy aborts before stopping anything |
+| A service running on a placeholder or a publicly known secret | same check; in production the backend refuses to start |
+| Changing the JWT passphrase without re-encrypting the key (every login fails, nothing at boot) | `./oliva env init` re-encrypts the key; `env check` verifies it opens |
 
 Guards cost nothing when they don't apply: an empty crontab or no PHP extensions means no output at all.
 
@@ -85,7 +88,7 @@ git clone https://github.com/Markk-hyphen/oliva.git my-app
 cd my-app
 git remote rename origin oliva-upstream     # this is how `oliva sync` finds Oliva
 git remote add origin <your-app-repo-url>
-cp .env.example .env                        # then fill .env, .env.backend, .env.frontend
+./oliva env init                            # creates .env: every secret generated, nothing to fill in by hand
 docker compose up
 ./oliva doctor
 ```
@@ -110,6 +113,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 The frontend is served by Caddy on **http://localhost**. Backend, database and RabbitMQ are internal and never reachable from outside. On a server, redeploys are `./oliva deploy` (pull + build + down + up) and `./oliva deploy-staging`.
+
+Run `./oliva env check --prod` before the first `up`. In production the backend refuses to start on a secret that is missing, a placeholder or publicly known, and `./oliva deploy` checks the same before it stops the running stack. The fix is always `./oliva env init` on that machine.
 
 > **Known gap:** there's no production `worker` service yet. If your app uses Messenger queues for real, add one to `docker-compose.prod.yml` (image `${COMPOSE_PROJECT_NAME}-backend:prod`, command `messenger:consume`, no exposed ports) before going live.
 
@@ -190,18 +195,20 @@ The full reasoning, the slot contracts and the sequencing are in [`docs/roadmap.
 
 | Command | What it does |
 |---|---|
-| `doctor` | read-only status: branch, git, containers, migrations, deps/audit due, sync status (in an app) |
+| `doctor` | read-only status: branch, git, containers, migrations, resolved environment, deps/audit due, sync status (in an app) |
+| `env <init\|check [--prod]>` | `init` creates or repairs `.env` (generates secrets, derives values, re-encrypts the JWT key). `check` verifies what Compose resolves for each service |
 | `deps <due\|report\|update\|audit\|scan-images>` | Oliva's maintenance cycle and CVE audit |
 | `sync <check\|start\|locks\|verify>` | pull Oliva into an app |
-| `verify` | full local smoke test (migrations, schema, PHPUnit, prod build, running PHP version) |
+| `verify` | full local smoke test (environment, migrations, schema, PHPUnit, prod build, running PHP version) |
 | `release X.Y.Z` | cut an Oliva version (refuses without its `UPGRADING.md` section) |
 | `deploy`, `deploy-staging`, `down`, `down-staging` | operate an app on a server |
 | `version` | print `OLIVA_VERSION` |
 
 ### CI
 
-`.github/workflows/ci.yml` runs on every push and PR, skipping docs-only changes. It has five jobs:
+`.github/workflows/ci.yml` runs on every push and PR, skipping docs-only changes. It has six jobs:
 
+- **Env contract:** `./oliva env init`, then `env check` on the dev and prod stacks. Red when a tracked file carries a real secret or overrides `.env`.
 - **Tests:** build the images, bring up the stack, check `/health` and Mercure, run migrations, validate the Doctrine schema, run PHPUnit.
 - **Prod config guard:** `APP_ENV` really resolves to `prod`.
 - **Composer constraints guard.**
@@ -221,13 +228,22 @@ redis-6.2.0
 
 ### Environment variables
 
-Copy `.env.example` to `.env`. Per service:
+`./oliva env init` creates `.env` from `.env.example` and generates the secrets. Where things live:
+
+| File | Tracked | Holds |
+|---|---|---|
+| `.env` | no | this machine's real values, secrets included |
+| `.env.backend`, `.env.frontend` | yes | non-secret defaults. Never a secret: `.env.backend` loads after `.env` and would override it, publicly |
+| `.env.example` | yes | every variable, with placeholders |
+| `scripts/oliva/env.manifest`, `env.manifest` | yes | what each variable is (slot, kind, how its value is made). The second one is the app's: declare your own variables there |
+
+Per service:
 
 | Variable | Description |
 |---|---|
 | `COMPOSE_PROFILES` | optional services to bring up (see above) |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_VERSION` | local database |
-| `DATABASE_URL` | Doctrine connection. Standalone: in `.env`, matching `POSTGRES_*`. Shared infra: the override in `.env.backend` |
+| `DATABASE_URL` | Doctrine connection, always in `.env`. Standalone: derived from `POSTGRES_*` by `env init`. Shared infra or a managed database: the external URL (`env check` reports the slot as `REPLACED`) |
 | `APP_ENV` / `APP_SECRET` | Symfony environment (`dev`; prod/staging are set by their overlays) and secret |
 | `JWT_PASSPHRASE` | JWT key passphrase (keys are generated on first boot into `secrets/`) |
 | `SERVER_NAME` | domain (default `localhost`) |
@@ -241,6 +257,7 @@ Copy `.env.example` to `.env`. Per service:
 oliva/
 ├── oliva                   # the CLI: ./oliva <command>
 ├── OLIVA_VERSION
+├── env.manifest            # the app's own variables (Oliva's are in scripts/oliva/env.manifest)
 ├── AGENTS.md / CLAUDE.md   # operating guide for agents (+ one-line stub)
 ├── agent-commands.md       # chat commands for the agent
 ├── backend/                # Symfony app (FrankenPHP + Caddy)
@@ -256,8 +273,8 @@ oliva/
 │   ├── oliva/              # framework docs that ship to every app (sync system, UPGRADING)
 │   └── examples/           # reference skeletons (not live code)
 ├── scripts/
-│   ├── oliva/              # deps, sync, verify, release, owned-paths.txt
-│   ├── lib/                # project guard, cron guard, docker prune
+│   ├── oliva/              # deps, sync, verify, release, env, owned-paths.txt
+│   ├── lib/                # project guard, cron guard, env check, docker prune
 │   └── deploy*.sh / down*.sh
 ├── docker-compose.yml               # base
 ├── docker-compose.override.yml      # dev (auto-applied)

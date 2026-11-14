@@ -16,6 +16,7 @@ APP_NAME="${1:-$(basename "$PWD")}"
 source "$(dirname "$0")/lib/project-guard.sh"
 source "$(dirname "$0")/lib/docker-prune.sh"
 source "$(dirname "$0")/lib/upgrade-guards.sh"
+source "$(dirname "$0")/lib/env-check.sh"
 assert_not_staging_name "$APP_NAME"
 assert_project_owned_here "$APP_NAME"
 
@@ -33,6 +34,28 @@ seed_acked_version
 if [[ "${SKIP_PULL:-0}" != "1" ]]; then
   echo ">> git pull"
   git pull
+fi
+
+# The one guard that ABORTS a deploy (every other guard only warns, see upgrade-guards.sh).
+# A production stack on a secret that is missing, a placeholder or publicly known has no
+# secret at all: going on IS the damage. It runs before `down`, so the stack that is
+# serving now keeps serving. Checked on what Compose resolves for THIS stack.
+echo ">> env check"
+if ! env_check quiet "${COMPOSE[@]}"; then
+  cat >&2 <<EOF
+
+!! ================================================================
+!! DEPLOY ABORTED: the environment of '$APP_NAME' is not fit for
+!! production (see above). Nothing was stopped: the current stack
+!! is still running.
+!!
+!! Fix: ./oliva env init     (generates what is missing in .env)
+!!      ./oliva env check    (to see it again)
+!! then: SKIP_PULL=1 ./scripts/deploy.sh
+!! ================================================================
+
+EOF
+  exit 1
 fi
 
 # Docs internos: no pertenecen al host de prod. El código de la app vive
@@ -55,7 +78,13 @@ echo ">> down"
 "${COMPOSE[@]}" --profile '*' down --remove-orphans
 
 echo ">> up -d --build"
-"${COMPOSE[@]}" up -d --build
+if ! "${COMPOSE[@]}" up -d --build; then
+  # The reason is in the container's log, not in the output of `up` (e.g. the backend
+  # refusing to start on a public secret): bring it to the terminal.
+  echo "!! up failed. Last lines of the backend log:" >&2
+  "${COMPOSE[@]}" logs --no-color --no-log-prefix --tail 25 backend >&2 || true
+  exit 1
+fi
 
 echo ">> estado:"
 "${COMPOSE[@]}" ps

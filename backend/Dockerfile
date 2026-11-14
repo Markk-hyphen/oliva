@@ -126,6 +126,8 @@ ENV PHP_INI_SCAN_DIR=":$PHP_INI_DIR/app.conf.d"
 COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
 COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
+# Read by docker-entrypoint: values a secret must never have in production.
+COPY --link frankenphp/known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
 COPY --link scheduler/crontab /etc/supercronic/crontab
 
 # Install dependencies from versioned composer.json
