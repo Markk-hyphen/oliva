@@ -737,3 +737,63 @@ compose falso (DB listada antes que el backend, imagen inexistente, compose que 
 pendientes/ack/siembra/lint en un clon con una 1.5.1 de fixture; shellcheck sin errores.
 
 **Revisión post-release → 1.5.1 (`fix(sync): ajustes de 1.5.0 tras revisión`):** `release.sh` deja reconocida la versión que publica (sin esto, el `doctor` de Oliva listaba como pendientes las acciones de los forks; confirmado en clon). Hallazgo no obvio: `git pull` reemplaza `deploy.sh` con un inode nuevo y bash termina de ejecutar el script **viejo** (probado), así que el deploy que trae 1.5.x no corre los guards → acción `[host]` en 1.5.1 (`git pull && SKIP_PULL=1 ./scripts/deploy.sh`). Además: fences ignorados en lint/pendientes, `ack` robusto con `set -e`. Deploy simulado en clon: el tramo final con `docs/` borrado dio los 3 avisos.
+
+---
+
+> Entries from here on are written in English and address the maintainer by role
+> (roadmap item 5). Earlier entries stay as they were written.
+
+## [1.6.0 · phase 1] fix(security): no secrets in tracked env files; no public fallback for the Mercure key
+**Hash:** `14da99c04e5f` (phase 1 of the epic; the epic doc is `2a1278c`)
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `.env.backend` | modified | Non-secret defaults only. `APP_SECRET`, `JWT_PASSPHRASE`, `RABBITMQ_*`, both Mercure keys and the commented shared-infra `DATABASE_URL` are gone. |
+| `docker-compose.yml` | modified | `frontend` loads only `.env.frontend` (it was receiving every backend secret through `.env`). |
+| `backend/frankenphp/Caddyfile` | modified | Mercure key: no default, quoted. |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | Refuses to start the server when `MERCURE_PUBLISHER_JWT_KEY` is empty. |
+| `backend/frankenphp/known-public-secrets.sha256` | new | SHA-256 of every value a secret variable ever had in a tracked file, plus placeholders and CI values (19). No consumer yet (phase 3). |
+| `.env.example`, `backend/.env`, `docker-compose.shared-infra.yml` | modified | Comments: secrets and `DATABASE_URL` live in `.env`, in shared infra too. |
+| `.env.prod` | deleted | A `#TODO` nobody read. |
+| `docs/roadmap/epics/E-config-contract.md` | new | The epic (previous commit). |
+| `agent-commits.md` | modified | This entry (separate commit). |
+
+### Why
+Found while reviewing the framework for its next epic, not from an incident: `.env.backend` is
+tracked and is listed **after** `.env` in `env_file`, so it wins. Measured with
+`docker compose config` on the prod stack: `APP_SECRET`, `JWT_PASSPHRASE` and both Mercure keys
+resolved to the committed values regardless of `.env`. The repo is public and both apps carry the
+same values. The local `.env` of this checkout had placeholders in all four and everything worked,
+which is the tell: filling in `.env` never had any effect.
+
+It also invalidated the work that was planned next (a `doctor` guard for placeholders in `.env`
+plus an `env:init` that generates secrets into `.env`): both would have reported success while the
+committed values kept winning. Hence the rule the epic sets for the check: look at what Compose
+**resolves**, not at what a file says.
+
+**Decisions:**
+- *`.env` is the only home for secrets*, shared infra included. The old layout had the host edit
+  a tracked file (`.env.backend`) to set `DATABASE_URL`: a password in a tracked file, and a
+  conflict with the `git pull` of `deploy.sh` waiting to happen. One gitignored file per machine
+  is simpler than a third layer.
+- *`backend/.env` keeps its `changeme` placeholders.* Removing them would make Symfony fail on a
+  missing variable, which is the loud failure wanted, but it also breaks the image build
+  (`cache:clear`, `dump-env prod`) and it is a file every app shares with Symfony recipes. They
+  are in the hash list instead, and phase 3 refuses them in production.
+- *Hashes, not plaintext,* in the public-values list: the values are public already, but a list
+  of plaintext secrets trips every secret scanner and reads like an invitation.
+
+**Found during execution.** Removing the Caddyfile default was not enough and, done naively, made
+things worse. With the variable empty and unquoted, Caddy drops the token and parses
+`publisher_jwt HS256` with **`HS256` as the key**, and reports "Valid configuration". Quoted, an
+empty key is also accepted. Caddy cannot be the component that fails, so the entrypoint is: it
+refuses to start the server without a key.
+
+Verified: resolved config of dev, prod and prod+shared-infra (all four secrets come from `.env`
+in `backend` and `scheduler`, none in the public list; `frontend` receives no secret, counted in
+the running container too); entrypoint with an empty key exits 1 with the fix; `verify` 9/9, its
+`mercure` step running on the key from `.env`. Not verified: CI (it still writes its own
+`.env.backend`; changes in phase 4).
