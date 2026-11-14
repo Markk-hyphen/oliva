@@ -848,3 +848,60 @@ public values and a root-owned key (secrets replaced, key opens with the new pas
 longer with the public one, same public key); key with an unknown passphrase (exit 1, nothing
 changed); shared-infra `DATABASE_URL` untouched; without Docker; malformed manifest; app manifest;
 shellcheck clean. Not verified: an HTTP login (Oliva has no login endpoint) and a real host.
+
+---
+
+## [1.6.0 · phase 3] feat(env): `./oliva env check` — the resolved environment, checked where it is used
+**Hash:** `a019fe9`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `scripts/lib/env-check.sh` | new | `env_check <full\|quiet> COMPOSE...` and `guard_env`. Also the helpers `env.sh` shares: manifest reader, "is this value a secret at all", JWT key access. bash + awk, no `jq`. |
+| `scripts/oliva/env.sh` | modified | `check [--prod]`; uses the shared helpers. |
+| `oliva` | modified | `doctor` gets the step `env` (reports, never fails it). |
+| `scripts/oliva/verify.sh` | modified | Step `env`, first, and it fails. Its name is the guard id `env` for `UPGRADING.md`. |
+| `scripts/deploy.sh` | modified | Aborts before `down` on an env error. When `up` fails, prints the last lines of the backend log. |
+| `scripts/deploy-staging.sh` | modified | Warns (after the stack is up). |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | `APP_ENV=prod`: refuses to start on an empty, placeholder or public value of the four framework secrets. `staging`: warns. |
+| `backend/Dockerfile` | modified | Copies the public-values list into the image. |
+| `docs/roadmap/epics/E-config-contract.md` | modified | Status and the decisions below. |
+
+### Why
+The check had to be built on `docker compose config`, not on `.env`: the incident was a tracked
+file overriding `.env`, and anything that parses `.env` passes it. Hence also the wording of the
+fix: when the resolved value isn't the one in `.env`, the message does not say `env init` (which
+would change nothing) but "something overrides `.env`, remove it there".
+
+**Decisions:**
+- *The first guard that aborts.* The rule from 1.5.0 stands (guards warn, the stack is already
+  up). This one runs before `down`, so aborting costs nothing: the current stack keeps serving.
+  Decided by the maintainer: a publicly known secret in production aborts.
+- *Entrypoint as the net under the deploy check, with no escape variable.* Three paths never reach
+  the check in `deploy.sh`: the standalone `docker compose up` the README documents, any manual
+  `up` on a host, and the first deploy that brings 1.6.0 (`git pull` replaces `deploy.sh` while
+  bash is still running the old one, the 1.5.1 gotcha). The entrypoint is inside the image that
+  same deploy builds. Its cost is honest: there the old stack is already down, so it turns a silent
+  exposure into an outage. No switch to turn it off, because there is no legitimate production on
+  a public secret and a switch is what an agent would flip to make the container start.
+- *A stateful secret only warns, in production too* (pending the maintainer's confirmation).
+  Rotating a database password is not one command, and the service isn't reachable from outside
+  the app's network. Aborting would block a host until someone does an `ALTER USER` by hand.
+- *Slot states are inferred from the resolved state, not declared.* A `DATABASE_URL` whose host
+  isn't `database` is a replaced slot, announced on every run. A flag could drift from reality;
+  declaration belongs to roadmap item 3.
+- *Called explicitly, not through `UPGRADE_GUARDS`.* The registry runs after `up` and only warns;
+  production needs it before `down`. `guard: env` is still valid in `UPGRADING.md` because the
+  lint accepts verify steps.
+
+Verified: every finding reproduced on purpose in a clone (placeholder, public value, tracked file
+overriding `.env`, real secret in a tracked file, Mercure keys that differ, `DATABASE_URL` against
+`POSTGRES_PASSWORD`, secrets reaching the frontend, JWT key that doesn't open, replaced database
+with and without a placeholder, app secret without a value, no `.env`, no Docker). A real
+`deploy.sh` on a temporary shared-infra setup (two networks and a Postgres, removed afterwards):
+healthy deploy announces `database REPLACED`; with a public `APP_SECRET` it exits 1 and the same
+containers keep answering `/health`; a direct `docker compose up` with that secret fails with 1
+and the reason is in the backend log; `env init` then deploy brings it back. `verify` 10/10.
+`doctor` survives without Docker. Not verified: a real host, CI.
