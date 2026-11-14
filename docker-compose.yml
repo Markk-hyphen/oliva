@@ -76,8 +76,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Only .env.frontend, on purpose: .env holds the backend's secrets (APP_SECRET,
+    # DATABASE_URL, JWT and Mercure keys) and the frontend has no use for them. A
+    # frontend variable goes in .env.frontend (non-secret) or in `environment:`.
     env_file:
-      - .env
       - .env.frontend
     depends_on:
       backend:

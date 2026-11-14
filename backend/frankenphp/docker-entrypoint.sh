@@ -2,6 +2,17 @@
 set -e
 trap 'echo "Error on line $LINENO: $BASH_COMMAND"' ERR
 
+# The Mercure hub (Caddyfile) has no default key. An empty one must stop the server here:
+# Caddy would accept it as a valid configuration and the hub would come up without a real
+# key, with no error anywhere.
+if [ "$1" = 'frankenphp' ] && [ -z "${MERCURE_PUBLISHER_JWT_KEY:-}" ]; then
+	echo '!! MERCURE_PUBLISHER_JWT_KEY is empty: refusing to start the Mercure hub without a key.' >&2
+	echo '!! Fix: set MERCURE_PUBLISHER_JWT_KEY and MERCURE_JWT_SECRET (same value) in .env' >&2
+	echo '!!      (generate one with: openssl rand -hex 32) and recreate the container.' >&2
+	echo '!!      Secrets live in .env, never in .env.backend (it is tracked).' >&2
+	exit 1
+fi
+
 if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 	# Generate JWT keys if they don't exist (first deploy or fresh environment)
     JWT_DIR="$PROJECT_DIR/config/jwt"
