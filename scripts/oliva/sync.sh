@@ -225,7 +225,7 @@ case "${1:-}" in
   verify) exec "$(dirname "$0")/verify.sh" ;;
   ack)    ack_upgrade_actions ;;
   pending)
-    show_pending_upgrade_actions "local host decisión" \
+    show_pending_upgrade_actions "local host decisión decision" \
       && echo "   ninguna (reconocidas hasta Oliva $(oliva_acked_version))"
     exit 0 ;;
   *) sed -n '3,19p' "$0"; exit 1 ;;

@@ -18,7 +18,7 @@ que es responsabilidad de cada app:
 
 ## Capa 1 — `verify.sh`: el smoke test local
 
-Un solo comando que levanta el stack y asserta 8 cosas. Es lo que se corre después de un
+Un solo comando que levanta el stack y asserta 10 cosas. Es lo que se corre después de un
 sync de Oliva, después de un cambio en el Dockerfile, o antes de un release.
 
 ```bash
@@ -27,6 +27,7 @@ scripts/oliva/verify.sh
 
 | Step | Qué asserta |
 |---|---|
+| `env` | el entorno que Compose **resuelve** es sano: ningún secreto faltante, placeholder o públicamente conocido, ninguno en un archivo trackeado ni en el frontend, y la clave JWT abre con su passphrase. Fix habitual: `./oliva env init` |
 | `up` | `docker compose up -d --build --wait` — todos los servicios llegan a healthy |
 | `php-version` | el PHP que **corre** coincide con el pin del `Dockerfile`, y el tag pinea un patch exacto |
 | `health` | `GET /health` devuelve OK |
@@ -35,6 +36,8 @@ scripts/oliva/verify.sh
 | `schema` | `doctrine:schema:validate` — el schema real coincide con el mapeo |
 | `phpunit` | la suite de tests |
 | `prod-build` | las imágenes de **producción** buildean (no solo las de dev) |
+| `prod-worker` | worker mode de FrankenPHP queda prendido en prod (la imagen lo hornea y el `.env` no lo pisa) |
+| `ci-build` | solo si `backend/php-extensions.txt` tiene extensiones: rebuild con el driver buildx del CI |
 
 **Cada step es un incidente pasado convertido en assertion.** Eso explica por qué hay dos
 que parecen redundantes:
@@ -61,13 +64,16 @@ salida lo imprime como `SKIP` en vez de `PASS` para que la excepción quede a la
 
 ## Capa 2 — CI: lo mismo, en limpio
 
-`.github/workflows/ci.yml` corre en cada push y PR, con **tres jobs**:
+`.github/workflows/ci.yml` corre en cada push a `main`, con **seis jobs**:
 
 | Job | Qué hace |
 |---|---|
 | **Tests (smoke + PHPUnit)** | buildea las imágenes (con caché de capas de GHA), levanta los servicios, chequea alcanzabilidad HTTP y de Mercure, corre migraciones, valida el schema de Doctrine y corre PHPUnit. Si algo falla, vuelca los logs de los servicios |
 | **Prod config guard** | verifica que `APP_ENV` resuelve a `prod` en el stack de producción, en backend **y** scheduler. Es un guard de configuración, no de código: nació de que la precedencia de Compose (`environment:` > `env_file:` > `ENV` de la imagen) hizo que un entorno resolviera mal en silencio |
+| **Env contract** | `./oliva env init` + `env check` sobre los stacks dev y prod, sin build. Rojo si un archivo trackeado lleva un secreto real o pisa a `.env` |
+| **Composer constraints guard** | todo constraint de `composer.json` tiene techo |
 | **Docker Lint** | hadolint sobre el `Dockerfile` del backend |
+| **Image scan** | Trivy sobre las imágenes base, report-only |
 
 La diferencia con la capa 1 no es qué se prueba, es **dónde**: CI parte de cero, sin
 imágenes cacheadas localmente ni containers vivos, así que caza lo que tu máquina esconde.
@@ -182,7 +188,9 @@ Para no leer más garantías de las que hay:
 - **No hay `worker` de producción.** `docker-compose.override.yml` (dev) define uno con
   `messenger:consume`, pero no hay equivalente en prod. Si tu app usa Messenger en serio,
   hay que agregarlo antes de ir a producción.
-- **Las alertas de dependencias son por calendario, no por advisory.** `scripts/oliva/deps.sh due`
-  avisa cuando toca el ciclo de mantenimiento; no sabe de CVEs. Un CVSS 9.2 explotándose
-  activamente no espera el ciclo mensual — ese hueco está abierto y es el que dejó a dos
-  forks con un RCE sin parchear hasta que alguien lo leyó en las noticias.
+- **El audit de CVEs depende de que alguien lo corra.** `./oliva doctor` avisa a los 7 días
+  (`deps.sh audit`: composer, yarn, Trivy y el runtime de PHP), pero nada lo ejecuta solo ni
+  bloquea un deploy.
+- **`env check` no valida credenciales externas.** Un slot reemplazado (una base compartida o
+  gestionada) se anuncia como `REPLACED`; que su usuario y password sean correctos lo sabe quien
+  lo provee, no Oliva.

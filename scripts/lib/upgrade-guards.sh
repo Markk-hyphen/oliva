@@ -19,7 +19,7 @@
 #      actual (host o clon nuevo: arranca del template vigente, no arrastra historia).
 #
 # Formato de UPGRADING.md (desde OLIVA_TAGGED_SINCE): cada ítem de "Acción requerida en el
-# fork" empieza con una etiqueta `- [lugar]` o `- [lugar, guard: <id>]`, con lugar en
+# fork" (o "Action required in the app", en las secciones en inglés) empieza con una etiqueta `- [lugar]` o `- [lugar, guard: <id>]`, con lugar en
 # OLIVA_ACTION_PLACES. release.sh lo exige (lint_upgrade_actions).
 #
 # Requiere solo bash + awk + docker compose: corre en el host (sin jq).
@@ -28,7 +28,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/cron-guard.sh"
 
 OLIVA_ACK_FILE=".oliva/acked-version"
 OLIVA_TAGGED_SINCE="1.5.0"
-OLIVA_ACTION_PLACES="merge local host decisión"
+# `decision` = `decisión`: sections written in English (1.6.0 on) use the first.
+OLIVA_ACTION_PLACES="merge local host decisión decision"
 
 # ── Guards ───────────────────────────────────────────────────────────────────────
 # Cada guard: guard_<id> COMPOSE... → 0 = bien o no aplica, 1 = avisó (por stderr).
@@ -129,7 +130,7 @@ pending_upgrade_actions() {
     function vnum(v,  a) { split(v, a, "."); return a[1] * 1000000 + a[2] * 1000 + a[3] }
     BEGIN { lo = vnum(acked); hi = vnum(cur); fl = vnum(floor) }
     /^## [0-9]+\.[0-9]+\.[0-9]+/ { ver = $2; n = vnum(ver); inrange = (n > lo && n <= hi && n >= fl); inact = 0; take = 0; next }
-    /^\*\*Acción requerida/ { inact = inrange; next }
+    /^\*\*(Acción requerida|Action required)/ { inact = inrange; next }
     !inact { next }
     /^```/ { fence = !fence; if (take) print "     " $0; next }
     fence { if (take) print "     " $0; next }
@@ -193,13 +194,13 @@ lint_upgrade_actions() {
 
   found="$(awk -v v="$ver" '
     /^## [0-9]+\.[0-9]+\.[0-9]+/ { sec = ($2 == v); inact = 0; next }
-    sec && /^\*\*Acción requerida/ { inact = 1; print "#HEADER"; next }
+    sec && /^\*\*(Acción requerida|Action required)/ { inact = 1; print "#HEADER"; next }
     sec && inact && /^```/ { fence = !fence; next }
     fence { next }
     sec && /^\*\*/ { inact = 0; next }
     sec && inact && /^(- |[0-9]+\. )/' "$file")"
   if [[ "$found" != "#HEADER"* ]]; then
-    echo "   ## $ver: falta el bloque **Acción requerida en el fork** (o \"Ninguna.\")"
+    echo "   ## $ver: falta el bloque **Action required in the app** / **Acción requerida en el fork** (o \"None.\")"
     return 1
   fi
 

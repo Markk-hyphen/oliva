@@ -70,6 +70,7 @@ continues). What each section means:
 | **log** | Last 3 commits. | Sanity-check that the latest is what you expect. |
 | **docker compose ps** | Which containers are running. | Empty is normal if you haven't run `docker compose up`. |
 | **migraciones** | Pending database migrations. | `not running` just means the backend container is down — start the stack to see real status. |
+| **env** | What Compose resolves for each service: one line per slot (`default ok`, or `REPLACED` when it points at something external). | A line marked `!!` names its fix, almost always `./oliva env init`. |
 | **deps due** | Whether the dependency cycle or the CVE audit is due (see below). | If it says **TOCA**, act — see `deps` rows below. |
 | **acciones de upgrade** | Upgrade steps this machine hasn't acknowledged yet. | `ninguna` = nothing owed. Lines = do them, then `./oliva ack`. |
 | **CI** | The last CI run on `main`. | `success` ✅. `failure` = CI is red even if your local build passed. |
@@ -142,7 +143,7 @@ worked, ❌ if you got stuck or confused (note *why* — that's the useful signa
 | # | Do this | You should see | ✅ / ❌ | Notes if ❌ |
 |---|---|---|---|---|
 | 1 | From the repo root, run `./oliva help` | A grouped command list (Framework / Operación / Diagnóstico). | ☐ | |
-| 2 | Run `./oliva doctor` | A status board with sections: rama, status, log, docker, migraciones, deps due, acciones de upgrade, CI, sync check. | ☐ | |
+| 2 | Run `./oliva doctor` | A status board with sections: rama, status, log, docker, migraciones, env, deps due, acciones de upgrade, CI, sync check. | ☐ | |
 | 3 | Read the **status** section | Empty if the tree is clean; otherwise a list of changed files. Do you understand which it is? | ☐ | |
 | 4 | Read the **deps due** section | A line saying whether the 45-day cycle and the 7-day audit are OK or due (**TOCA**). | ☐ | |
 | 5 | Decide what `doctor` is telling you to do next | Nothing (all green) **or** one specific command to run (e.g. `deps audit`). Was it clear? | ☐ | |

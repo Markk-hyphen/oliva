@@ -1,6 +1,6 @@
 # Epic — Config contract: every variable has an owner, a slot and a home
 
-> **Status:** 🚧 phases 1–3 done on `feat/config-contract`; 4–6 pending ·
+> **Status:** 🚧 phases 1–5 done on `feat/config-contract` (release pending); phase 6, the apps, in their own sessions ·
 > **Target version:** v1.6.0 (absorbs the unreleased 1.5.2 security bumps) ·
 > **Origin:** framework review, 2026-11-14.
 
@@ -175,7 +175,7 @@ ever committed and the CI ones, forever.
 | `deploy-staging.sh` | warns, after the stack is up |
 | `deploy.sh`, when `up` fails | prints the last lines of the backend log, where the entrypoint's reason is |
 | backend entrypoint | with `APP_ENV=prod`, refuses to start on an empty, placeholder or public value of Oliva's four secrets; with `staging` it warns. Covers a plain `docker compose up`, the scheduler and the worker (same image), and the first deploy that brings 1.6.0, which still runs the old `deploy.sh`. No escape variable: there is no legitimate production on a public secret, and a switch is what an agent would flip to "fix" the boot |
-| CI, new job `tracked-secrets` | fails if a tracked file assigns a real value to a variable any manifest marks secret. Stops the regression where an agent "fixes" a boot error by committing the secret |
+| CI, new job `env-contract` | `env init` + `env check` on the dev and prod stacks. Fails if a tracked file assigns a real value to a variable any manifest marks secret, or overrides `.env` with a placeholder or public value. Stops the regression where an agent "fixes" a boot error by committing the secret. A secret a person provides is not required in CI |
 
 This is the first guard that aborts a deploy. The rule from 1.5.0 (guards warn)
 stays for everything else; the exception is written down with its reason: here
@@ -204,8 +204,9 @@ Each phase ends in a commit with its gate passed.
    *Gate:* each finding in the table reproduced on purpose and caught; prod
    deploy with a public secret aborts with the old stack still up; `doctor`
    survives Docker down.
-4. **CI.** `env init` replaces the heredoc; `tracked-secrets` job. *Gate:* a
-   branch that commits a secret goes red.
+4. **CI.** `env init` replaces the heredoc; job `env-contract` (`env check` on
+   the dev and prod stacks, which includes the tracked-files check, so no separate
+   `tracked-secrets` job). *Gate:* a branch that commits a secret goes red.
 5. **Docs + release.** README, `AGENTS.md`, runbooks, `UPGRADING.md` `## 1.6.0`
    with guarded actions (`[merge]` resolve `.env.backend`; `[local, guard: env]`
    and `[host, guard: env]` run `env init`). `release 1.6.0`.

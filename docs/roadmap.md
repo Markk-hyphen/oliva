@@ -227,8 +227,14 @@ replaced slots only become clean when a fork is *born* with what it chose
 (`--queues`, `--backend=<kind>`, `--shared-infra`), so there's no default code
 left to sync or guards to skip.
 
-What can start earlier, as item-1 work: writing the contracts down, and probing
-them. Bootstrap a throwaway fork that replaces a slot (a minimal non-PHP
+The first contracts are written, and executable: since 1.6.0 every variable
+belongs to a slot in `scripts/oliva/env.manifest`, and `./oliva env check` reports
+each slot as default, replaced or absent from what Compose resolves
+([`epics/E-config-contract.md`](roadmap/epics/E-config-contract.md)). Replacement
+is inferred there, not yet declared.
+
+What can start earlier, as item-1 work: writing the remaining contracts down, and
+probing them. Bootstrap a throwaway fork that replaces a slot (a minimal non-PHP
 backend, a different frontend) and log every place that breaks, or worse,
 doesn't.
 

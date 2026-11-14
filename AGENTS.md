@@ -38,13 +38,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 - `backend/` — Symfony con FrankenPHP (Doctrine ORM/Migrations, pgvector, Mercure, Messenger)
 - `frontend/` — Vite (Node), incluye demo de Mercure en vivo (`src/js/live.js`, sección "Live" de `index.html`)
 - `docs/concepts.md` — glosario técnico acumulativo (pgvector, RabbitMQ, AMQP, modelo de sync de forks, etc.)
-- `docs/qa-y-staging.md` — qué garantías ofrece el framework (verify.sh, los 3 jobs de CI, stack de staging, seeding) y qué NO cubre. Es el doc humano de lo que acá está desperdigado en runbooks
+- `docs/qa-y-staging.md` — qué garantías ofrece el framework (verify.sh, los jobs de CI, stack de staging, seeding) y qué NO cubre. Es el doc humano de lo que acá está desperdigado en runbooks
 - `docs/oliva/` — docs **del framework** que bajan a cada fork: `actualizaciones.md` (sistema de updates) y `UPGRADING.md` (notas por versión)
 - `scripts/oliva/` — herramientas de mantenimiento y sync (`deps.sh`, `sync.sh`, `verify.sh`, `release.sh`, `owned-paths.txt`)
 - `OLIVA_VERSION` — versión del framework sobre la que está el checkout
 - `docs/examples/` — esqueletos de referencia (`*.php.example`) no registrados como código de la app
-- `.env`, `.env.backend`, `.env.frontend` — variables por entorno
-- `.env.prod` — variables de producción
+- `.env` — this machine's real values, **secrets included**. Gitignored. Created and repaired by `./oliva env init`
+- `.env.backend`, `.env.frontend` — tracked, **non-secret** defaults. `.env.backend` loads after `.env` and overrides it
+- `scripts/oliva/env.manifest` (Oliva's variables) and `env.manifest` (the app's, an extension point) — what each variable is: slot, kind, how its value is made. See "Environment contract" below
 
 ## Servicios incluidos y cómo desactivarlos
 
@@ -156,8 +157,8 @@ Qué hace (requiere Docker Compose ≥ 2.24, por la tag de merge `!override`):
 único** — eso hace su red privada `<appname>_app_network` y deriva el alias de
 `frontend` en `proxy_net` (`${COMPOSE_PROJECT_NAME}-frontend`, ej.
 `ong-frontend`), evitando que el DNS interno colisione con otra app (ver
-[`infra` README, "Topología de red"]); (2) descomentar/setear `DATABASE_URL`
-en `.env.backend` de prod apuntando al Postgres compartido (`postgres`), no a `database`.
+[`infra` README, "Topología de red"]); (2) setear `DATABASE_URL`
+en el `.env` del host (gitignored; nunca en `.env.backend`, que está trackeado) apuntando al Postgres compartido (`postgres`), no a `database`.
 
 > **Gotcha — colisión de alias en `proxy_net`:** `proxy_net` es externa y
 > compartida entre TODOS los `-p` del VPS. Si dos apps (o prod/staging de la
@@ -187,20 +188,22 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 > profile falta, avisa al final. Los pasos de abajo quedan
 > como referencia de qué hace cada cosa.
 
-1. **En el VPS, traer el código:** `cd ~/<app> && git pull` (trae el overlay y
-   el `.env.backend` con el `DATABASE_URL` comentado).
-2. **Crear el `.env`** (gitignored → NO viene en el pull): `cp .env.example .env`.
-   En shared-infra casi todo el `.env` queda inerte (no hay `database` local) o
-   lo pisa `.env.backend`; igual debe existir porque Compose lo interpola
-   (`POSTGRES_VERSION`, etc.) y es el `env_file` base.
+1. **En el VPS, traer el código:** `cd ~/<app> && git pull`.
+2. **Create `.env`** (gitignored → it does NOT come with the pull): `./oliva env init`.
+   It copies `.env.example` and generates every secret. In shared infra the
+   `POSTGRES_*` values stay unused (there is no local `database`), but the file must
+   exist: Compose interpolates it and it is the base `env_file`.
 3. **Provisionar la base** en el Postgres compartido, desde `~/infra`:
    `./scripts/provision-postgres.sh <app>_db <app>_user` → imprime el
    `DATABASE_URL` con la password generada (guardarla en el gestor de claves).
    El script ya crea la extensión `vector` como superuser (ver nota pgvector
    abajo).
-4. **Setear el `DATABASE_URL`** en `~/<app>/.env.backend`: **descomentar** la
-   línea y pegar la URL provisionada (host `postgres`, `<app>_user`, `<app>_db`).
-   Al cargarse después de `.env`, pisa el `DATABASE_URL` standalone.
+4. **Set `DATABASE_URL`** in `~/<app>/.env` (the host's, gitignored): replace the
+   line with the provisioned URL (host `postgres`, `<app>_user`, `<app>_db`). Never in
+   `.env.backend`: it is tracked. `./oliva env check` then reports
+   `database  REPLACED (points at "postgres" …)`, which is the expected line here.
+   `deploy.sh` runs the same check before stopping anything and **aborts** on a secret
+   that is missing, a placeholder or publicly known.
 5. **Build:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml build`.
 6. **Up** (project name `-p <app>` ÚNICO, los 3 overlays; sin listar servicios,
    el profile inerte ya excluye `database`/`rabbitmq`; el alias de `frontend`
@@ -309,15 +312,45 @@ con `-v` agregado al comando de los 4 overlays.
 ## Variables de entorno
 
 Ver `.env.example` como referencia. Agrupadas por servicio:
-- **DB — standalone (en `.env`)**: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_VERSION` y `DATABASE_URL` (la lee Doctrine). Las credenciales de `DATABASE_URL` deben coincidir con los `POSTGRES_*` — es el mismo Postgres local.
-- **DB — infra compartida (override en `.env.backend`)**: `DATABASE_URL` viene comentado por default; se descomenta/setea solo en deploys con infra compartida (apunta al `postgres` compartido) y pisa al de `.env`.
+- **DB — standalone (en `.env`)**: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_VERSION` y `DATABASE_URL` (la lee Doctrine). `./oliva env init` deriva `DATABASE_URL` de los `POSTGRES_*`; `env check` avisa si dejan de coincidir.
+- **DB — infra compartida (también en `.env`, el del host)**: `DATABASE_URL` apunta al `postgres` compartido. `env check` lo anuncia como slot `REPLACED`.
 - **Mercure**: `MERCURE_URL`, `MERCURE_PUBLIC_URL`, `MERCURE_PUBLISHER_JWT_KEY`, `MERCURE_JWT_SECRET`, `CADDY_MERCURE_URL`, `CADDY_MERCURE_PUBLIC_URL`
 - **RabbitMQ**: `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_DSN`
 - **JWT**: `JWT_PASSPHRASE`
 
+## Environment contract (rules for whoever edits configuration)
+
+Since 1.6.0. Until then `.env.backend` (tracked, loaded after `.env`) carried `APP_SECRET`,
+`JWT_PASSPHRASE` and the Mercure keys, so every app ran on values that are public in git and
+whatever was written in `.env` was ignored, with no error anywhere. Design and reasons:
+`docs/roadmap/epics/E-config-contract.md`.
+
+- **A secret lives in `.env` and nowhere else.** Never in `.env.backend`, `.env.frontend`,
+  `backend/.env` or a compose file. A tracked file gets a placeholder at most.
+- **A variable "doesn't take"? Run `./oliva env check` before editing anything.** It reads what
+  Compose *resolves* for each service and says which layer wins. Do not "fix" a container that
+  won't start by copying the secret into a tracked file: CI goes red (job `env-contract`) and
+  the value is public from the first push.
+- **A new variable is declared in `env.manifest`** (the app's; `scripts/oliva/env.manifest` is
+  Oliva's) in the same commit that adds it to `.env.example`: `NAME SLOT KIND VALUE`. Kind
+  `secret` with `gen:hex32` if it can be generated, `secret` with `-` if a person provides it
+  (an API key), `plain` if it isn't secret. Then `env init` and `env check` cover it.
+- **`./oliva env init` instead of `cp .env.example .env`**, and again whenever `env check` says
+  so. It only touches what is missing, a placeholder or publicly known, and it re-encrypts the
+  JWT key when the passphrase changes. Never change `JWT_PASSPHRASE` by hand: the key stays
+  encrypted with the old one and every login fails with nothing wrong at boot.
+- **Database and broker passwords are bound to their data volume.** Changing the variable alone
+  locks the app out of its own data. `env init` won't do it once a volume exists and prints how.
+- **Production refuses public secrets.** `deploy.sh` aborts before `down` (the running stack
+  keeps serving), and the backend image refuses to start with `APP_ENV=prod`. There is no switch
+  to turn either off. The fix is always `./oliva env init` on that machine.
+- **A frontend variable goes in `.env.frontend`** (non-secret) or in `environment:`. The
+  frontend container does not load `.env`.
+
 ## Health check y CI
 
 - `GET /health` → `{"status": "ok"}` (`backend/src/Controller/HealthController.php`).
+- `.github/workflows/ci.yml`, job `env-contract` (sin build): `./oliva env init` + `env check` sobre los stacks dev y prod. Rojo si un archivo trackeado lleva un secreto real o pisa a `.env` con un placeholder o un valor públicamente conocido.
 - `.github/workflows/ci.yml`: build de imágenes, levanta los servicios, chequea `/health` y `/.well-known/mercure`, corre migraciones, valida el schema de Doctrine y corre PHPUnit. Job adicional de lint de Dockerfile con hadolint.
 
 ## Protocolo de explicaciones conceptuales
@@ -368,7 +401,8 @@ Correr al **inicio** de cada sesión antes de tocar código:
 ./oliva doctor
 ```
 
-Colapsa rama, status, log, `docker compose ps`, estado de migraciones, `deps.sh due`,
+Colapsa rama, status, log, `docker compose ps`, estado de migraciones, el entorno que Compose
+resuelve (`env check`: secretos faltantes o públicos, slots reemplazados), `deps.sh due`,
 acciones de upgrade pendientes en esta máquina (`sync.sh pending`; se reconocen con `./oliva ack`)
 y (si el repo es un fork, detectando el remote `oliva-upstream`) `sync.sh check` en
 una sola llamada read-only (lo único que escribe es `.oliva/acked-version` la primera vez, gitignored).

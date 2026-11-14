@@ -56,7 +56,8 @@ commit `chore(deps)`. Cuando toca:
    **`scripts/oliva/release.sh X.Y.Z`** (patch = solo deps; minor = features o pasos para forks;
    major = rompe algo que el fork tiene que reescribir). `git push origin main vX.Y.Z`.
 
-`verify.sh` es la red de seguridad de todo: levanta el stack dev con `--build`, chequea
+`verify.sh` es la red de seguridad de todo: chequea el entorno que Compose resuelve (`env`),
+levanta el stack dev con `--build`, chequea
 `/health`, **Mercure de punta a punta** (publish con JWT, el suscriptor con token recibe el
 privado y el anónimo no), migraciones al día, `schema:validate`, PHPUnit y build de las
 imágenes de prod. Cada paso se saltea con `OLIVA_VERIFY_SKIP="paso otro"`.
@@ -182,7 +183,7 @@ Si el cambio es específico del fork, se documenta en su `AGENTS.md` y se asume 
 | **Fork** | `src/`, `migrations/`, `tests/`, `docs/` (salvo `docs/oliva/`), `backend/php-extensions.txt`, todo lo demás | Oliva no los toca. |
 
 **Extension points** (para no editar archivos de Oliva): `backend/php-extensions.txt` (extensiones
-PHP de la app), `docker-compose.override.yml` (servicios de dev propios, ej. mailpit), `COMPOSE_PROFILES`
+PHP de la app), `env.manifest` (las variables propias de la app, para que `env init`/`env check` las cubran), `docker-compose.override.yml` (servicios de dev propios, ej. mailpit), `COMPOSE_PROFILES`
 (servicios opcionales), `OLIVA_VERIFY_SKIP` / variable de repo `OLIVA_CI_SKIP` (pasos en rojo conocido).
 Si un fork necesita cambiar un archivo de Oliva y no hay extension point, el extension point se
 agrega en Oliva.
