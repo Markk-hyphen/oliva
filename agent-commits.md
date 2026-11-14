@@ -797,3 +797,54 @@ in `backend` and `scheduler`, none in the public list; `frontend` receives no se
 the running container too); entrypoint with an empty key exits 1 with the fix; `verify` 9/9, its
 `mercure` step running on the key from `.env`. Not verified: CI (it still writes its own
 `.env.backend`; changes in phase 4).
+
+---
+
+## [1.6.0 · phase 2] feat(env): `./oliva env init` — manifests of variables per slot
+**Hash:** `a652e1f`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `scripts/oliva/env.manifest` | new | Oliva's variables: `NAME SLOT KIND VALUE`. Kinds `secret`, `stateful`, `derived`, `plain`; values `gen:hexN`, `same:VAR`, `-` or a `${VAR}` template. |
+| `env.manifest` | new | The app's extension point, shipped empty (same pattern as `backend/php-extensions.txt`). |
+| `scripts/oliva/env.sh` | new | `init`: creates `.env` from `.env.example` or repairs an existing one. |
+| `oliva` | modified | `env` command. |
+| `scripts/oliva/verify.sh`, `backend/frankenphp/docker-entrypoint.sh` | modified | Their "missing `.env`" / "empty key" messages now name `./oliva env init`. |
+| `scripts/oliva/owned-paths.txt` | modified | `env.manifest` listed as an extension point. |
+| `docs/roadmap/epics/E-config-contract.md` | modified | Three rules learned while testing (below) and one change of plan. |
+
+### Why
+Replaces `cp .env.example .env` plus filling four secrets by hand. Each rule below exists because
+the obvious implementation breaks something without an error.
+
+- *The JWT key is the upgrade path, not a corner case.* The private key is encrypted with
+  `JWT_PASSPHRASE`. Until 1.6.0 the effective passphrase was the committed one, so **every existing
+  key** is encrypted with it; after phase 1 the effective one becomes whatever `.env` holds, and
+  every login would start failing with nothing wrong at boot. `init` therefore re-encrypts any key
+  the passphrase of `.env` doesn't open (same key pair, nobody is logged out), looking for the old
+  passphrase in the previous `.env` and in the git history of the tracked env files. Keys created
+  by the container are root-owned, so that case goes through a container. It was live in this very
+  checkout: `secrets/jwt/private.pem` still opened with the public passphrase.
+- *A stateful secret is generated only while nothing stored it.* Postgres and RabbitMQ keep the
+  password of their first start in the data volume; rotating the variable alone locks the app out
+  of its own database. `init` asks Docker whether the slot's volume exists. No volume: generate.
+  Volume, or Docker unreachable: leave it and print how to rotate.
+- *A derived value that doesn't match its sources is external.* First version: recompute
+  `DATABASE_URL` whenever `POSTGRES_PASSWORD` changes. On a shared-infra host that rewrites the
+  provisioned URL to the local `database` service. Now it is recomputed only if the current value
+  equals what the old sources would have produced.
+- *If nothing opens a key, nothing changes* and the command exits 1: a new passphrase can't help
+  and could bury the one that works.
+
+**Change of plan:** `.env.example` stays hand-written instead of generated from the manifests. Its
+comments carry gotchas and apps add their own lines to it (it is a SHARED file); a lint will keep
+it in step with the manifests (phase 3).
+
+Verified: fresh clone → `init` → `verify` 9/9, second run "nothing to do"; old `.env` with the
+public values and a root-owned key (secrets replaced, key opens with the new passphrase and no
+longer with the public one, same public key); key with an unknown passphrase (exit 1, nothing
+changed); shared-infra `DATABASE_URL` untouched; without Docker; malformed manifest; app manifest;
+shellcheck clean. Not verified: an HTTP login (Oliva has no login endpoint) and a real host.
