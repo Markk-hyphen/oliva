@@ -16,7 +16,8 @@
 # an absent slot prints nothing. Errors: a secret that is missing, a placeholder or
 # publicly known; a secret in a tracked file; a secret reaching a service that doesn't own
 # it; a value that contradicts the ones it is derived from; a JWT key that the resolved
-# passphrase doesn't open. Stateful secrets (bound to a data volume) only warn: rotating
+# passphrase doesn't open. With CI=true, a secret that a person provides (value `-` in the
+# manifest) is not required: CI has no real value for it. Stateful secrets (bound to a data volume) only warn: rotating
 # them isn't one command, and the service isn't reachable from outside the app's network.
 #
 # What each variable is comes from the manifests: scripts/oliva/env.manifest (Oliva's) and
@@ -155,6 +156,14 @@ env_check() {
   host="$(_ec_url_host "${RES[RABBITMQ_DSN]:-}")"
   [[ -n "$host" && "$host" != rabbitmq ]] && REPLACED[queue]="$host"
 
+  # A URL that points at Oliva's own service while that service isn't in this stack goes
+  # nowhere (shared infra with the standalone DATABASE_URL still in .env). The backend
+  # would only find out at boot, after the old stack is down.
+  if [[ "$(_ec_url_host "${RES[DATABASE_URL]:-}")" == database && "$services" != *" database "* ]]; then
+    global_err+=("DATABASE_URL points at the local \"database\" service, but this stack doesn't run it (shared infra?) → set DATABASE_URL in .env to the external database")
+    errors=1
+  fi
+
   # _fix <name> <fix> → the fix to print. When the resolved value isn't the one in .env,
   # fixing .env can't help: something overrides it, and that is the trap this file exists for.
   _fix() {
@@ -180,7 +189,10 @@ env_check() {
     case "$kind" in
       secret)
         if why="$(oliva_unhealthy "$val" is)"; then
-          if [[ "$rule" == "-" ]]; then
+          if [[ "$rule" == "-" && "${CI:-}" == true ]]; then
+            # CI has no real value for a secret a person provides; everything else still applies.
+            _warn "$slot" "$name $why (a person provides it; not required in CI)"
+          elif [[ "$rule" == "-" ]]; then
             _err "$slot" "$name $why → $(_fix "$name" "set its real value in .env (a person provides this one)")"
           else
             _err "$slot" "$name $why → $(_fix "$name" "./oliva env init")"
