@@ -905,3 +905,74 @@ healthy deploy announces `database REPLACED`; with a public `APP_SECRET` it exit
 containers keep answering `/health`; a direct `docker compose up` with that secret fails with 1
 and the reason is in the backend log; `env init` then deploy brings it back. `verify` 10/10.
 `doctor` survives without Docker. Not verified: a real host, CI.
+
+---
+
+## [1.6.0 · phase 4] ci: environment through `./oliva env init`; job `env-contract`
+**Hash:** `856c08b`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `.github/workflows/ci.yml` | modified | `tests`: `./oliva env init` replaces `cp` + `sed` + a heredoc that rewrote `.env.backend`. New job `env-contract` (no build): `env init`, then `env check` on the dev and prod stacks. |
+| `scripts/lib/env-check.sh` | modified | With `CI=true`, a secret a person provides (`-` in the manifest) only warns. New error: `DATABASE_URL` pointing at the local `database` service in a stack that doesn't run it. |
+
+### Why
+- *CI was part of why the bug stayed hidden.* It overwrote the tracked `.env.backend` with its own
+  values on every run, so it never tested the file the apps actually shipped. It now runs the
+  command a newcomer runs.
+- *No separate `tracked-secrets` job* (the epic planned one): `env check` already includes the
+  tracked-files check and also catches the other half, a tracked file overriding `.env` with a
+  placeholder or a public value. One job, same code as `verify` and `deploy`.
+- *No `OLIVA_CI_SKIP` for it.* Same reason as no escape variable in the entrypoint.
+- *`CI=true` instead of a flag.* An app with an API key in its manifest would be red forever in
+  CI, which has no real value for it. A flag on `env init` that fills in throwaway values was the
+  alternative; it is exactly what would get used locally to quiet the check.
+- *The shared-infra case came from writing the upgrade notes:* a host that pulls 1.6.0 and
+  forgets to move its `DATABASE_URL` from `.env.backend` to `.env` resolves the standalone URL,
+  the database slot looks absent, and the check said nothing. Now it is an error before `down`.
+
+Verified locally by running the job's commands in a clone: clean branch passes; a real key
+committed in `.env.backend` fails; the same key moved to `.env` passes in CI and is required
+without `CI=true`; a placeholder in `.env.backend` overriding the real value in `.env` is named as
+an override; the old public `APP_SECRET` back in `.env.backend` fails. `actionlint` clean.
+Not verified: a real run on GitHub (CI only runs on `main`).
+
+---
+
+## [1.6.0 · phase 5] docs: the config contract in README, AGENTS.md, runbooks and UPGRADING
+**Hash:** `f8e9049`
+**Branch:** `feat/config-contract`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `AGENTS.md` | modified | New section "Environment contract"; structure list; shared-infra runbook steps 1, 2 and 4; env variables; `doctor` and CI descriptions. |
+| `README.md` | modified | Quickstart, production note, "silent before / loud now" rows, `./oliva` table, CI jobs, where env files live, project structure. |
+| `docs/oliva/UPGRADING.md` | modified | Section `## 1.6.0` and the note that sections are in English from here on. |
+| `scripts/lib/upgrade-guards.sh`, `scripts/oliva/sync.sh` | modified | Accept `**Action required` next to `**Acción requerida`, and the place `decision`. |
+| `docs/qa-y-staging.md` | modified | `verify` steps and CI jobs brought up to date (it said 8 steps and three jobs); stale note on advisories replaced. |
+| `docs/sanity-checks.md`, `docs/oliva/actualizaciones.md` | modified | `env` step and the `env.manifest` extension point. |
+| `docs/roadmap.md`, `docs/roadmap/epics/E-config-contract.md` | modified | Pointer from item 2 to the epic; status and what changed from the plan. |
+
+### Why
+- *`UPGRADING.md` in English, forward-only.* Roadmap item 5 left this decision open and called
+  forward-only the cheaper bet. A security release that every app must act on is the wrong one to
+  ship in a language a fork may not read. Old sections are untouched; the parser takes both
+  headings. The `sync.sh` of an app still on 1.5.1 prints whole sections, so it shows this one
+  as is (checked with its own awk).
+- *The upgrade actions are guarded where they can be.* `[local, guard: env]` is the `env` step of
+  `verify`; `[host, guard: env]` is the abort in `deploy.sh` plus the entrypoint. Only the
+  password-manager backup is unguarded and shows until `./oliva ack`.
+- *The host action asks to rotate before deploying* (`git pull && ./oliva env init &&
+  SKIP_PULL=1 ./scripts/deploy.sh`), and says what happens otherwise: that first deploy runs the
+  old script, so the entrypoint is what stops it, after the old stack is down.
+- `AGENTS.md` keeps its Spanish sections; only what this epic touches is in English. Translating
+  the whole file is item 5's own work and a larger merge for every app.
+
+Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulated app going
+1.5.1 → 1.6.0 lists only the unguarded item in `doctor` and on the host, and `ack` clears it;
+`verify` 10/10 on the final tree; shellcheck clean.
