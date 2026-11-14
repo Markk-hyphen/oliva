@@ -30,5 +30,6 @@ docker-compose.shared-infra.yml
 # backend/composer.json, backend/config/**, frontend/package.json, .env.example,
 # .env.backend, .gitignore, AGENTS.md, README.md, agent-commands.md.
 # Los locks (composer.lock, yarn.lock, symfony.lock) se regeneran con `sync.sh locks`.
-# Extension points del fork (nunca los cambia Oliva): backend/php-extensions.txt.
+# Extension points del fork (nunca los cambia Oliva): backend/php-extensions.txt,
+# env.manifest (the app's own variables; Oliva's are in scripts/oliva/env.manifest).
 # Logs de commits (agent-commits.md / commits.md): cada repo tiene el suyo; en un sync gana el del fork.

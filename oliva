@@ -17,6 +17,7 @@ Framework:
   ack                                          = sync ack (acciones de upgrade hechas en esta máquina)
   verify                                       scripts/oliva/verify.sh
   release X.Y.Z                                scripts/oliva/release.sh
+  env <init>                                   scripts/oliva/env.sh (crea o repara el .env: genera secretos)
 
 Operación:
   deploy                                       scripts/deploy.sh
@@ -40,6 +41,7 @@ case "$cmd" in
   ack)           exec scripts/oliva/sync.sh ack ;;
   verify)        exec scripts/oliva/verify.sh "$@" ;;
   release)       exec scripts/oliva/release.sh "$@" ;;
+  env)           exec scripts/oliva/env.sh "$@" ;;
   deploy)        exec scripts/deploy.sh "$@" ;;
   deploy-staging) exec scripts/deploy-staging.sh "$@" ;;
   down)          exec scripts/down.sh "$@" ;;

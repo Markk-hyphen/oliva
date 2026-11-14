@@ -73,7 +73,7 @@ flags and no installer.
 
 | File | Tracked | Holds |
 |---|---|---|
-| `.env.example` | yes | every variable with a placeholder; generated from the manifests |
+| `.env.example` | yes | every variable with a placeholder. Hand-written (its comments matter and apps add their own lines); a lint keeps it in step with the manifests |
 | `.env` | no | the machine's real values, secrets included. Also what Compose interpolates |
 | `.env.backend` | yes | non-secret backend defaults (`SERVER_NAME`, `HTTP_PORT`, `CADDY_*`, `MERCURE_URL`…) |
 | `.env.frontend` | yes | non-secret frontend defaults; the **only** env file of `frontend` |
@@ -119,12 +119,20 @@ Replaces `cp .env.example .env` in the README, the runbooks and CI.
 - No `.env`: creates it, generates every secret, derives every derived value.
 - Existing `.env`: touches only what is missing, a placeholder or a publicly
   known value. Never rewrites a healthy value. Idempotent.
-- Never rotates a `stateful` variable on an existing `.env`; prints the manual
-  procedure instead.
-- When it replaces `JWT_PASSPHRASE` and a key pair already exists, it
-  re-encrypts the private key with the new passphrase, so nobody is logged out
-  and login doesn't break. (To be proven in phase 2; if it can't be made
-  reliable, it stops and prints the fix.)
+- A `stateful` variable is generated only while nothing has stored it: no value
+  yet, or no data volume for its slot. Once a volume exists it is left alone and
+  the manual procedure is printed. If Docker can't be asked, it is left alone.
+- A derived value is rewritten only if it really was derived from its sources. A
+  `DATABASE_URL` that points somewhere else (shared infra) is never touched, even
+  when `POSTGRES_PASSWORD` is regenerated next to it.
+- Whenever the passphrase in `.env` doesn't open an existing JWT private key, the
+  key is re-encrypted with it (same key pair: nobody is logged out). This is the
+  upgrade case, not a corner: before 1.6.0 the committed passphrase was the
+  effective one, so every existing key is encrypted with it. The old passphrase
+  is looked for in the previous `.env` and in the git history of the tracked env
+  files. A key the container created as root is reached through a container. If
+  nothing opens the key, nothing is changed, the fix is printed and the command
+  exits 1.
 
 ### `./oliva env check`
 

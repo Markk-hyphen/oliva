@@ -30,7 +30,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 source "$(dirname "$0")/../lib/upgrade-guards.sh"
 require_repo_root
-[[ -f .env ]] || die "falta .env (cp .env.example .env)"
+[[ -f .env ]] || die "falta .env → ./oliva env init"
 
 SKIP=" ${OLIVA_VERIFY_SKIP:-} "
 RESULTS=()

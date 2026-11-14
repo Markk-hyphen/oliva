@@ -7,8 +7,8 @@ trap 'echo "Error on line $LINENO: $BASH_COMMAND"' ERR
 # key, with no error anywhere.
 if [ "$1" = 'frankenphp' ] && [ -z "${MERCURE_PUBLISHER_JWT_KEY:-}" ]; then
 	echo '!! MERCURE_PUBLISHER_JWT_KEY is empty: refusing to start the Mercure hub without a key.' >&2
-	echo '!! Fix: set MERCURE_PUBLISHER_JWT_KEY and MERCURE_JWT_SECRET (same value) in .env' >&2
-	echo '!!      (generate one with: openssl rand -hex 32) and recreate the container.' >&2
+	echo '!! Fix: run ./oliva env init (it generates the missing secrets in .env) and' >&2
+	echo '!!      recreate the container.' >&2
 	echo '!!      Secrets live in .env, never in .env.backend (it is tracked).' >&2
 	exit 1
 fi
