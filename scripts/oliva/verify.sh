@@ -8,6 +8,9 @@
 #   OLIVA_VERIFY_SKIP="schema prod-build" scripts/oliva/verify.sh
 #
 # Pasos (nombre entre corchetes = lo que acepta OLIVA_VERIFY_SKIP):
+#   [env]         el entorno que Compose resuelve es sano: ningún secreto faltante, placeholder
+#                 o públicamente conocido, ninguno en un archivo trackeado ni en el frontend
+#                 (scripts/lib/env-check.sh). Fix habitual: ./oliva env init
 #   [up]          docker compose up -d --build --wait (respeta COMPOSE_PROFILES del .env)
 #   [php-version] el PHP que CORRE coincide con el pin de backend/Dockerfile
 #   [health]      GET /health
@@ -29,6 +32,7 @@
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 source "$(dirname "$0")/../lib/upgrade-guards.sh"
+source "$(dirname "$0")/../lib/env-check.sh"
 require_repo_root
 [[ -f .env ]] || die "falta .env → ./oliva env init"
 
@@ -45,6 +49,7 @@ step() {
 
 be() { docker compose exec -T backend "$@"; }
 
+do_env()        { env_check full docker compose; }
 do_up()         { docker compose up -d --build --wait; }
 do_health()     { be curl -fsS http://localhost/health && echo; }
 do_migrations() { be bin/console doctrine:migrations:up-to-date; }
@@ -137,6 +142,7 @@ do_mercure() {
   return $rc
 }
 
+step env         do_env
 step up          do_up
 step php-version do_php_version
 step health      do_health

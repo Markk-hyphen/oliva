@@ -1,6 +1,6 @@
 # Epic — Config contract: every variable has an owner, a slot and a home
 
-> **Status:** 📋 designed, not started ·
+> **Status:** 🚧 phases 1–3 done on `feat/config-contract`; 4–6 pending ·
 > **Target version:** v1.6.0 (absorbs the unreleased 1.5.2 security bumps) ·
 > **Origin:** framework review, 2026-11-14.
 
@@ -136,7 +136,9 @@ Replaces `cp .env.example .env` in the README, the runbooks and CI.
 
 ### `./oliva env check`
 
-Read-only. For each active slot, on the **resolved** environment:
+Read-only (`./oliva env check`, or `--prod` for the standalone production
+stack; the deploy scripts check their own stack). For each active slot, on the
+**resolved** environment:
 
 | Finding | Example message ends with |
 |---|---|
@@ -146,7 +148,17 @@ Read-only. For each active slot, on the **resolved** environment:
 | secret present in a tracked file | `→ move it to .env, never commit it` |
 | derived value disagrees with its sources | `DATABASE_URL` vs `POSTGRES_*` |
 | secret reaches a service that doesn't own it | backend secrets in `frontend` |
-| slot replaced | `database: REPLACED (external host "postgres") — credentials not checked by Oliva` |
+| JWT key that the resolved passphrase doesn't open | `→ ./oliva env init` (re-encrypts it) |
+| slot replaced | `database  REPLACED (points at "postgres", not Oliva's database service): its credentials and data are not checked by Oliva` |
+
+When the resolved value isn't the one in `.env`, the fix printed is not
+`env init` but "something overrides `.env`: remove it there". That is the
+original incident, named.
+
+A `stateful` secret (database or broker password) that is a placeholder or
+publicly known only **warns**, in production too. Rotating it is not one
+command (the service must change it first), and the service is not reachable
+from outside the app's network. Everything else in the table is an error.
 
 Publicly known values are kept as SHA-256 hashes in
 `backend/frankenphp/known-public-secrets.sha256` (inside the backend build
@@ -160,8 +172,9 @@ ever committed and the CI ones, forever.
 | `doctor` | new step `env`; reports, never fails |
 | `verify` | step `env`; **fails** (this is the guard for the upgrade action) |
 | `deploy.sh` (prod) | **aborts before `down`** on a missing, placeholder or public secret: the old stack keeps serving |
-| `deploy-staging.sh` | warns |
-| backend entrypoint | with `APP_ENV=prod`, refuses to boot on a public or placeholder secret. Covers the standalone path that never runs `deploy.sh` |
+| `deploy-staging.sh` | warns, after the stack is up |
+| `deploy.sh`, when `up` fails | prints the last lines of the backend log, where the entrypoint's reason is |
+| backend entrypoint | with `APP_ENV=prod`, refuses to start on an empty, placeholder or public value of Oliva's four secrets; with `staging` it warns. Covers a plain `docker compose up`, the scheduler and the worker (same image), and the first deploy that brings 1.6.0, which still runs the old `deploy.sh`. No escape variable: there is no legitimate production on a public secret, and a switch is what an agent would flip to "fix" the boot |
 | CI, new job `tracked-secrets` | fails if a tracked file assigns a real value to a variable any manifest marks secret. Stops the regression where an agent "fixes" a boot error by committing the secret |
 
 This is the first guard that aborts a deploy. The rule from 1.5.0 (guards warn)

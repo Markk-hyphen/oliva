@@ -21,6 +21,7 @@ STAGING_PROJECT="${APP_NAME}-staging"
 source "$(dirname "$0")/lib/project-guard.sh"
 source "$(dirname "$0")/lib/docker-prune.sh"
 source "$(dirname "$0")/lib/upgrade-guards.sh"
+source "$(dirname "$0")/lib/env-check.sh"
 assert_not_staging_name "$APP_NAME"
 assert_project_owned_here "$STAGING_PROJECT"
 
@@ -64,6 +65,8 @@ echo ">> estado:"
 prune_build_leftovers
 
 run_upgrade_guards "${COMPOSE[@]}"
+# Staging only warns about its environment (its data is disposable); prod aborts (deploy.sh).
+guard_env "${COMPOSE[@]}" || true
 show_pending_upgrade_actions host || true
 
 echo ">> OK — staging corriendo en project '${STAGING_PROJECT}'."

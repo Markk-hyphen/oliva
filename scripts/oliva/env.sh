@@ -2,7 +2,12 @@
 #
 # The environment contract of this checkout (docs/roadmap/epics/E-config-contract.md).
 #
-#   scripts/oliva/env.sh init     # create or repair .env: generate secrets, derive values
+#   scripts/oliva/env.sh init            # create or repair .env: generate secrets, derive values
+#   scripts/oliva/env.sh check [--prod]  # read-only: is what Compose resolves a sound environment?
+#
+# `check` looks at the stack `docker compose` resolves here (dev: base + override, or
+# COMPOSE_FILE); --prod looks at the standalone production stack. Exits 1 on an error.
+# The deploy scripts run the same check on their own stack (scripts/lib/env-check.sh).
 #
 # `init` replaces `cp .env.example .env`. It is safe to run again at any time:
 #   - no .env        → created from .env.example, every secret generated, every derived
@@ -16,14 +21,11 @@
 # reach a JWT key that the container created as root.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
+source "$(dirname "$0")/../lib/env-check.sh"
 require_repo_root
 
 ENV_FILE=".env"
 ENV_TEMPLATE=".env.example"
-MANIFESTS=(scripts/oliva/env.manifest env.manifest)
-PUBLIC_LIST="backend/frankenphp/known-public-secrets.sha256"
-# Where the JWT private key can be: dev (bind mount of backend/config) and prod (./secrets).
-JWT_KEYS=(backend/config/jwt/private.pem secrets/jwt/private.pem)
 # Tracked files that have carried secret values: their git history is where a passphrase
 # that still encrypts an existing key can come from.
 SECRET_HISTORY_FILES=(.env.backend .env.example backend/.env)
@@ -33,23 +35,6 @@ declare -A OLDV=()      # the values it had before this run
 declare -A CHANGED=()   # names this run sets
 REPORT=()
 WARNINGS=()
-
-# ── Manifests ────────────────────────────────────────────────────────────────────
-# Prints NAME<TAB>SLOT<TAB>KIND<TAB>VALUE for every variable. Dies on a malformed line.
-manifest_rows() {
-  local f
-  for f in "${MANIFESTS[@]}"; do
-    [[ -f "$f" ]] || continue
-    awk -v f="$f" '
-      /^[[:space:]]*(#|$)/ { next }
-      { sub(/[[:space:]]+#.*$/, "") }
-      NF < 4 { printf "ERROR: %s:%d: expected NAME SLOT KIND VALUE\n", f, NR > "/dev/stderr"; bad = 1; next }
-      $3 !~ /^(secret|stateful|derived|plain)$/ {
-        printf "ERROR: %s:%d: unknown kind \"%s\" (secret, stateful, derived, plain)\n", f, NR, $3 > "/dev/stderr"; bad = 1; next }
-      { print $1 "\t" $2 "\t" $3 "\t" $4 }
-      END { exit bad }' "$f" || die "fix $f and run again."
-  done
-}
 
 # ── Env file ─────────────────────────────────────────────────────────────────────
 load_env() {
@@ -89,20 +74,8 @@ write_env() {
   chmod 600 "$ENV_FILE"
 }
 
-# ── What counts as "no secret at all" ────────────────────────────────────────────
-is_public() {
-  [[ -f "$PUBLIC_LIST" ]] || return 1
-  grep -q "^$(printf %s "$1" | sha256sum | cut -d' ' -f1) " "$PUBLIC_LIST"
-}
-is_placeholder() { [[ "$1" =~ ^(your_|generate_with_|changeme) || "$1" =~ _here$ || "$1" =~ ^\<.*\>$ ]]; }
-
-# unhealthy <value> → prints why and returns 0 if the value can't stand as a secret.
-unhealthy() {
-  if [[ -z "$1" ]]; then echo "was missing"
-  elif is_placeholder "$1"; then echo "was a placeholder"
-  elif is_public "$1"; then echo "was a publicly known value"
-  else return 1; fi
-}
+# ── Values ───────────────────────────────────────────────────────────────────────
+unhealthy() { oliva_unhealthy "$1" was; }
 
 generate() {   # gen:hexN
   [[ "$1" =~ ^gen:hex([0-9]+)$ ]] || die "manifest: unknown generator '$1' (use gen:hexN)"
@@ -128,23 +101,9 @@ warn_later() { WARNINGS+=("$1"); }
 # passphrase in .env doesn't open an existing key, the key is re-encrypted with it: same
 # key pair, nobody is logged out.
 #
-# Runs a shell snippet in the key's directory: directly when the files are ours, in a
-# container (as root) when the backend created them. Passphrases travel in the
-# environment (OLIVA_PIN / OLIVA_POUT), never on a command line.
-_in_keydir() {
-  local key="$1" script="$2" dir
-  dir="$(dirname "$key")"
-  if [[ -r "$key" && -w "$key" && -w "$dir" ]]; then
-    (cd "$dir" && sh -c "$script") </dev/null 2>/dev/null
-  else
-    docker run --rm -u 0 -e OLIVA_PIN -e OLIVA_POUT -v "$(realpath "$dir"):/k" -w /k \
-      --entrypoint sh "$(backend_base_image)" -c "$script" </dev/null 2>/dev/null
-  fi
-}
-key_opens() { OLIVA_PIN="$2" _in_keydir "$1" 'openssl rsa -in private.pem -passin env:OLIVA_PIN -noout'; }
+# shellcheck disable=SC2016  # the snippet is expanded by the inner shell
 key_reencrypt() {
-  # shellcheck disable=SC2016  # the snippet is expanded by the inner shell
-  OLIVA_PIN="$2" OLIVA_POUT="$3" _in_keydir "$1" '
+  OLIVA_PIN="$2" OLIVA_POUT="$3" oliva_in_keydir "$1" '
     openssl rsa -in private.pem -passin env:OLIVA_PIN -aes256 -passout env:OLIVA_POUT -out private.pem.oliva-new \
       && cat private.pem.oliva-new > private.pem; rc=$?; rm -f private.pem.oliva-new; exit $rc'
 }
@@ -160,16 +119,15 @@ passphrase_candidates() {
 handle_jwt_passphrase() {
   local rule="$1" current="${ENVV[JWT_PASSPHRASE]:-}" desired why="" key cand old
   local -a keys=() plan=() blocked=()
-  export OLIVA_PIN OLIVA_POUT
 
   if why="$(unhealthy "$current")"; then desired="$(generate "$rule")"; else desired="$current"; fi
-  for key in "${JWT_KEYS[@]}"; do [[ -e "$key" ]] && keys+=("$key"); done
+  for key in "${OLIVA_JWT_KEYS[@]}"; do [[ -e "$key" ]] && keys+=("$key"); done
 
   for key in "${keys[@]}"; do
-    key_opens "$key" "$desired" && continue
+    oliva_key_opens "$key" "$desired" && continue
     old=""
     while IFS= read -r cand; do
-      if key_opens "$key" "$cand"; then old="$cand"; break; fi
+      if oliva_key_opens "$key" "$cand"; then old="$cand"; break; fi
     done < <(passphrase_candidates "$current")
     if [[ -n "$old" ]]; then plan+=("$key"$'\t'"$old"); else blocked+=("$key"); fi
   done
@@ -189,7 +147,7 @@ handle_jwt_passphrase() {
   for cand in "${plan[@]}"; do
     key="${cand%%$'\t'*}"; old="${cand#*$'\t'}"
     # shellcheck disable=SC2015  # either step failing must stop here
-    key_reencrypt "$key" "$old" "$desired" && key_opens "$key" "$desired" \
+    key_reencrypt "$key" "$old" "$desired" && oliva_key_opens "$key" "$desired" \
       || die "could not re-encrypt $key. Nothing was written to $ENV_FILE."
     note "$key" "re-encrypted with the passphrase of $ENV_FILE (same key pair)"
   done
@@ -217,7 +175,7 @@ cmd_init() {
   local rows name slot kind rule why vol volrc target computed failed=0
   command -v openssl >/dev/null || die "openssl is required."
   command -v sha256sum >/dev/null || die "sha256sum is required."
-  rows="$(manifest_rows)"
+  rows="$(oliva_manifest_rows)" || die "fix the manifest and run again."
 
   FRESH=0
   if [[ ! -f "$ENV_FILE" ]]; then
@@ -313,7 +271,19 @@ cmd_init() {
   return $failed
 }
 
+# ── check ────────────────────────────────────────────────────────────────────────
+cmd_check() {
+  local compose=(docker compose)
+  case "${1:-}" in
+    --prod) compose=(docker compose -f docker-compose.yml -f docker-compose.prod.yml) ;;
+    "") ;;
+    *) die "usage: scripts/oliva/env.sh check [--prod]" ;;
+  esac
+  env_check full "${compose[@]}"
+}
+
 case "${1:-}" in
-  init) cmd_init ;;
-  *) sed -n '3,15p' "$0"; exit 1 ;;
+  init)  cmd_init ;;
+  check) shift; cmd_check "$@" ;;
+  *) sed -n '3,20p' "$0"; exit 1 ;;
 esac
