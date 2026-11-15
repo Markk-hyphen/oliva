@@ -1,6 +1,6 @@
 # Epic — The birth of an app: born as itself, not as a copy of Oliva
 
-> **Status:** 📝 designed, nothing built. The git mechanics were simulated on toy repos; the rest is a proposal ·
+> **Status:** 📝 design approved 2026-11-14, nothing built. How to finish it: [`E-app-birth-runbook.md`](E-app-birth-runbook.md) ·
 > **Target version:** v1.7.0 ·
 > **Origin:** friction log, triage group B (S3, T2, T3, S1, X3). First slice of roadmap item 3.
 
@@ -193,14 +193,10 @@ script, the app's history fills with merges that add and delete the same files,
 a new app is still born with everything and has to throw it away, and X3 stays
 open. It remains the fallback if `release` proves fragile in phase 1.
 
-## Open decisions
+## Decisions (taken 2026-11-14)
 
-1. **`release` branch (proposal) or the single-branch alternative.**
-2. **The command's name.** `./oliva init` (proposal). The roadmap reserved
-   `oliva new` for the installer; `init` runs inside a clone and can grow into
-   it.
-3. **The demo: removed by default (proposal), or kept unless `--no-demo`.**
-4. **`agent-commits.md` or `commits.md` at birth.** One detailed log by default
-   (proposal), or `init` asks.
-5. **How the three apps cross over, and when.** Not before one of them is next
-   worked on (proposal).
+1. A **`release` branch**; the single-branch alternative is the fallback only.
+2. The command is **`./oliva init`**.
+3. The **demo is removed by default**; `--demo` keeps it.
+4. A new app gets **`agent-commits.md`**; `init` does not ask.
+5. The three existing apps **cross over later**, each when it is next worked on.
