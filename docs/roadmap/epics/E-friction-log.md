@@ -1,6 +1,6 @@
 # Epic — Friction log: find the weak points by use, not by guess
 
-> **Status:** 🚧 phase 0 done, phase 1 (clean-room bootstrap) next ·
+> **Status:** 🚧 phases 0 and 1 done (log seeded, clean-room run 1 recorded), phase 2 (security pass) next ·
 > **Target version:** none of its own (it produces a backlog; fixes ship in their own releases) ·
 > **Origin:** roadmap item 1, chosen as the next epic on 2026-11-14.
 
