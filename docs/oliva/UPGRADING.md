@@ -27,6 +27,31 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.6.1 — 2026-11-14
+
+> **Security bumps.** Symfony published 14 advisories on 2026-11-04 (trusted proxies, HEAD
+> requests bypassing `methods`, forwarded headers in inline fragments, YAML parse times, among
+> others), all fixed in 7.4.23. Oliva 1.6.0 shipped on 7.4.21. This version also moves two base
+> images to releases that close HIGH/CRITICAL findings.
+
+**Action required in the app**
+
+None. `sync locks` re-applies the Symfony packages to your `composer.lock`, and the next build
+picks up the new images. If your app requires Symfony packages Oliva doesn't, run
+`./oliva deps audit` after the sync: they move with your own `composer update`, not with Oliva's.
+
+**What changed**
+
+- Composer, within the constraints: Symfony 7.4.21 → 7.4.23, Doctrine ORM 3.7.5 → 3.8.0, DBAL
+  4.5.0 → 4.6.0, PHPUnit 12.5.44, Foundry 2.16.0. `composer audit`: clean.
+- `caddy` 2.11.7 → 2.11.9 (frontend, production stage).
+- `dunglas/frankenphp` 1.13.4 → 1.13.5, PHP stays on 8.3.36.
+- CI: the Mercure reachability step no longer waits ~9.5 minutes for the hub to drop the SSE
+  stream; it cuts at 5 s and accepts the timeout when the answer was a 200.
+- Still reported by the audit, with no pinned release to move to yet: one HIGH in the caddy
+  binary (`golang.org/x/net`), kernel headers and zlib in the FrankenPHP base, npm's own
+  packages in `node:24-slim` (build stage only) and `gosu` in `pgvector/pgvector:pg15`.
+
 ## 1.6.0 — 2026-11-14
 
 > **Security release: rotate your secrets.** Until now `.env.backend` (tracked, and loaded
