@@ -1,6 +1,6 @@
 # Epic — The birth of an app: born as itself, not as a copy of Oliva
 
-> **Status:** 🚧 phase 1 done (prototype on copies of the three apps: the design holds, with one correction). Phases 2–5 to do: [`E-app-birth-runbook.md`](E-app-birth-runbook.md) ·
+> **Status:** 🚧 phases 1 and 2 done (prototype on copies of the three apps: the design holds, with one correction; the split is in). Phases 3–5 to do: [`E-app-birth-runbook.md`](E-app-birth-runbook.md) ·
 > **Target version:** v1.7.0 ·
 > **Origin:** friction log, triage group B (S3, T2, T3, S1, X3). First slice of roadmap item 3.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Deploy de una app Oliva sobre infra compartida (down + build + up).
-# Reemplaza la tira de comandos manuales del runbook de AGENTS.md.
+# Reemplaza la tira de comandos manuales del runbook de docs/oliva/agent-guide.md.
 #
 # Uso:
 #   ./scripts/deploy.sh            # app_name = nombre del directorio actual (ej. en ~/ong → "ong")

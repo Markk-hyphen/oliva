@@ -7,7 +7,9 @@ Read the epic first (10 minutes); this file is the how.
 **State (2026-11-14):** design approved, all five open decisions taken
 (below). **Phase 1 is done** and its results are at the end of the epic: read
 that section before phase 3, it changes what `sync.sh` has to do. Nothing is
-built yet: **resume at phase 2.** Branch `feat/app-birth`, local.
+built yet beyond the split. **Phase 2 is done too** (the guide is
+`docs/oliva/agent-guide.md`, Oliva has its own `AGENTS.md`, `project-paths.txt`
+exists). **Resume at phase 3.** Branch `feat/app-birth`, local.
 
 ## Decisions already taken (do not reopen)
 
@@ -119,7 +121,7 @@ worse than the single-branch alternative.
 
 **Done when:** the table exists and the second sync is clean in all three.
 
-## Phase 2 — The split (in Oliva, on `feat/app-birth`)
+## Phase 2 — The split (DONE)
 
 **Goal:** Oliva's files sorted into product and project, with Oliva itself
 still working.
@@ -146,6 +148,12 @@ still working.
 **Check:** `./oliva doctor` and `./oliva verify` pass; `shellcheck` clean; a
 fresh agent session in `~/oliva` shows both the new `AGENTS.md` and the guide in
 its loaded context.
+
+**Done 2026-11-14.** Checked: `doctor` runs; a fresh session with tools disabled
+named the guide's title and the release script, so both levels load. `verify`
+was not rerun: the only non-doc change is a comment in `scripts/deploy.sh`.
+**Left for phase 5:** `docs/oliva/actualizaciones.md` still describes `AGENTS.md`
+as a shared file (three mentions and the ownership table).
 
 ## Phase 3 — The cut and the sync
 

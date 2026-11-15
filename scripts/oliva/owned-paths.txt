@@ -9,6 +9,7 @@
 OLIVA_VERSION
 oliva
 CLAUDE.md
+agent-commands.md
 docs/oliva/
 scripts/oliva/
 scripts/lib/
@@ -28,7 +29,10 @@ docker-compose.shared-infra.yml
 
 # SHARED (informativo, sync.sh no lo usa): docker-compose.override.yml,
 # backend/composer.json, backend/config/**, frontend/package.json, .env.example,
-# .env.backend, .gitignore, AGENTS.md, README.md, agent-commands.md.
+# .env.backend, .gitignore.
+# The app's IDENTITY (never touched by Oliva, created by `./oliva init`): README.md,
+# AGENTS.md, agent-commits.md, docs/concepts.md. Oliva's own copies of those paths are
+# project files (project-paths.txt) and do not travel.
 # Los locks (composer.lock, yarn.lock, symfony.lock) se regeneran con `sync.sh locks`.
 # Extension points del fork (nunca los cambia Oliva): backend/php-extensions.txt,
 # env.manifest (the app's own variables; Oliva's are in scripts/oliva/env.manifest).

@@ -1,0 +1,16 @@
+# Oliva's own PROJECT files: what Oliva writes about itself. They live on `main`
+# and never travel to an app. `release.sh` removes them when it cuts the `release`
+# branch, which is what apps clone and sync from (docs/roadmap/epics/E-app-birth.md).
+#
+# One path per line; a path ending in / covers the whole directory.
+# Everything else on `main` is PRODUCT and reaches every app.
+#
+# Not here on purpose: CLAUDE.md (the one-line stub is product: an app needs it),
+# LICENCE, docs/oliva/ (the product's docs), docs/examples/, backend/docs/.
+
+README.md
+AGENTS.md
+agent-commits.md
+docs/roadmap.md
+docs/roadmap/
+docs/friction-log.md
