@@ -207,6 +207,7 @@ cmd_start() {
     info "Oliva cambió dependencias ($changed_manifests) → corré scripts/oliva/sync.sh locks"
   fi
   info "al terminar: scripts/oliva/sync.sh verify y, si pasa, git switch main && git merge --no-ff $branch"
+  is_app || warn "this app is not initialized (no $OLIVA_APP_MARKER). After the merge is committed: ./oliva init --adopt"
 }
 
 # ── locks ──────────────────────────────────────────────────────────────────────
