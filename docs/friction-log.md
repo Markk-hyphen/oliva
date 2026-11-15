@@ -33,9 +33,12 @@ fixed on the spot. *Measured* means reproduced or read from the repos;
 | X1 | Apps on 1.5.1 run on publicly known secrets | measured: `.env.backend` of both older apps. No app is in production | until each app syncs 1.6.0 | no since 1.6.0 (`env check`) | sync, when the app is next worked on | accepted |
 | X2 | An app with no `origin` has no CI and no alerts, and `doctor` shows **Oliva's** last CI run as if it were the app's | measured: `the third app` has only `oliva-upstream`; in run 1 the newborn app's `doctor` printed Oliva's green run | per app | yes | `doctor` reads CI from `origin` only, and says when there is none | open |
 | X3 | An app can be born between releases | measured: the README clones `main`; `the third app` is three commits past `v1.5.1` and reports 1.5.1. Sync is unaffected (drift uses the merge base) | per app | yes | the README clones a tag | open |
-| X4 | Oliva has 2 HIGH Dependabot alerts and an overdue CVE audit | measured: `doctor`, push output | — | no | epic phase 2 | open |
+| X4 | Oliva carries known CVEs: 14 Symfony advisories (fixed in 7.4.23, installed 7.4.21) and HIGH/CRITICAL with a fix in four of five base images | measured, run 2 | until the next deps cycle | no | `deps update` (Symfony is inside the range) and image bumps: caddy 2.11.9, FrankenPHP 1.13.5 | open |
 | X5 | The first integration test of a new app fails, twice | measured, run 1: a `WebTestCase` needs `KERNEL_CLASS` (no `.env.test` ships), then the `app_test` database does not exist. `verify` goes red without naming either fix. Across the three apps: 0 kernel or web tests in 22 test files | per app | no, but the fix is not named | ship `.env.test`, create the test database in `verify` and CI, and a web test of `/health` as the example | open |
 | X6 | The README's "Backend API" URL answers 404 | measured, run 1: `http://localhost:80/api` has no route on a fresh app | per app | yes | point it at `/health`, or drop the row | open |
+| X7 | A release can ship with known advisories | measured, run 2: `release.sh` does not run the audit and CI has no `composer audit`. 1.6.0 was published on 2026-11-14 with 14 Symfony advisories dated 2026-11-04 | every release | yes | `release.sh` refuses, or asks, when the audit is due or red | open |
+| T9 | The audit answers in 1,030 lines with no summary | measured, run 2: one verdict line at the end; severity is blank on every composer advisory; nothing says "one `deps update` fixes 14 of these" or which image findings are new since the last audit | every audit (7-day cadence) | no | a closing table: layer, count, fix available, new since last run | open |
+| X8 | The Dependabot signal disagrees with itself | measured, run 2: every push prints "2 high" while the alerts API lists 0 open (4 fixed). Not investigated | every push | no | find out which one is stale | open |
 
 ## What varies between apps
 
@@ -83,3 +86,21 @@ Confirmed from the inside: S3 (the new app carries 91 KB of Oliva's
 
 Not covered by this run: a cold build, a production `up`, the frontend dev
 loop, staging, and two apps up at once (T4).
+
+### Run 2 — security pass on Oliva, 2026-11-14
+
+`./oliva deps audit` on `main` + the Dependabot alerts API. About 2 minutes.
+
+| Layer | Result |
+|---|---|
+| Composer | **14 advisories in 9 Symfony packages**, all published 2026-11-04, all fixed in 7.4.23 (installed: 7.4.21, constraint `7.4.*`) |
+| Yarn | 0 in 255 packages |
+| `caddy:2.11.7` | 3 in the OS (1 critical, brotli), 7 in the caddy binary; 2.11.9 exists |
+| `dunglas/frankenphp:1.13.4` | 60 in the OS (59 are kernel headers, `linux-libc-dev`), 1 in the binary; 1.13.5 exists |
+| `node:24-slim` | 6, in npm's own packages (build stage only) |
+| `pgvector/pgvector:pg15` | 26 in `gosu` (Go stdlib); no newer pg15 tag was checked |
+| `rabbitmq:4-management` | 0 |
+| PHP runtime | 8.3.36, current |
+
+Nothing here is exploitable through an app that is not deployed, and none was
+fixed during the run. Findings about the tooling itself: X7, T9, X8.
