@@ -76,23 +76,42 @@ case "$cmd" in
     # Después de un sync es lo único que sigue mostrándolas: check ya da "al día".
     step "acciones de upgrade" scripts/oliva/sync.sh pending
 
-    # Último run del CI en main. Un build puede pasar verde local y romper en el CI
-    # (caso real: finanzas-ong estuvo rojo 9 syncs seguidos sin que nada avisara).
-    # Opcional: sin `gh` instalado y logueado, se omite sin quejarse.
+    # Last CI run on main, of THIS repo: the one `origin` points at. Asking `gh` without
+    # naming the repo let it fall back to another remote, so an app with no `origin`
+    # was shown Oliva's green run as if it were its own (friction log X2).
+    # Why it is here at all: a build can pass locally and break in CI (one app stayed
+    # red through nine syncs with nothing saying so). Without `gh`, it is skipped.
+    ci_repo() {
+      local url
+      url="$(git remote get-url origin 2>/dev/null)" || return 1
+      [[ "$url" =~ github\.com[:/]([^/]+/[^/]+)$ ]] || return 2
+      echo "${BASH_REMATCH[1]%.git}"
+    }
     ci_status() {
       local out
-      out="$(timeout 10 gh run list --branch main -L 1 \
+      out="$(timeout 10 gh run list -R "$1" --branch main -L 1 \
         --json conclusion,status,displayTitle,createdAt,databaseId \
         --jq '.[0] | "\(.conclusion // .status)\t\(.createdAt[:10])\t\(.displayTitle)\t\(.databaseId)"')" || return 1
-      [[ -n "$out" ]] || { echo "   (sin runs en main)"; return 0; }
+      [[ -n "$out" ]] || { echo "   (no runs on main in $1)"; return 0; }
       local concl date title id
       IFS=$'\t' read -r concl date title id <<< "$out"
       echo "   $concl  $date  $title"
-      [[ "$concl" == failure ]] && echo "   !! CI ROJO en main. Ver: gh run view $id --log-failed"
+      [[ "$concl" == failure ]] && echo "   !! CI ROJO en main. Ver: gh run view $id -R $1 --log-failed"
       return 0
     }
-    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-      step "CI (último run en main)" ci_status
+    repo=""; repo_rc=0
+    repo="$(ci_repo)" || repo_rc=$?
+    if (( repo_rc == 1 )); then
+      echo
+      echo "── CI (último run en main) ──"
+      echo "   !! no \`origin\` remote: this repo has no CI and no security alerts of its own."
+      echo "      Nothing checks what you push. Fix: git remote add origin <your-repo-url> && git push -u origin main"
+    elif (( repo_rc == 2 )); then
+      echo
+      echo "── CI (último run en main) ──"
+      echo "   (omitido: \`origin\` no es un repo de GitHub)"
+    elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+      step "CI (último run en main)" ci_status "$repo"
     else
       echo
       echo "── CI (último run en main) ──"

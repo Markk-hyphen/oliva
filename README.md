@@ -89,19 +89,36 @@ cd my-app
 git remote rename origin oliva-upstream     # this is how `oliva sync` finds Oliva
 git remote add origin <your-app-repo-url>
 ./oliva env init                            # creates .env: every secret generated, nothing to fill in by hand
-docker compose up
+docker compose up -d --wait                 # returns when every service is healthy
 ./oliva doctor
 ```
 
 | Service | URL (dev) |
 |---|---|
 | Frontend | http://localhost:3000 |
-| Backend API | http://localhost:80/api |
+| Backend | http://localhost/health answers `{"status":"ok"}`. Your routes go under `/api` (nothing is there yet) |
 | Mercure hub | http://localhost/.well-known/mercure |
 | RabbitMQ management (`queues` profile) | http://localhost:15672 |
 | Database | localhost:5432 |
 
 Hot reload is on: changes to `backend/src` and `frontend/src` show up without rebuilding. The live canvas demo (`backend/public/live.php` + `frontend/src/js/live.js`) shows Mercure working out of the box.
+
+### Your first feature
+
+```bash
+docker compose exec backend bin/console make:entity        # asks for the fields, writes src/Entity/
+docker compose exec backend bin/console make:migration     # diffs the schema into migrations/
+docker compose exec backend bin/console doctrine:migrations:migrate
+docker compose exec backend php vendor/bin/phpunit
+./oliva verify                                             # everything CI will check, before you push
+```
+
+A first integration test to copy is `backend/tests/Controller/HealthControllerTest.php`. Tests that boot the kernel use their own database (`<name>_test`); `./oliva verify` and CI create and migrate it for you (`scripts/lib/test-db.sh`, which you can also run by hand).
+
+Two things worth knowing before they cost you an afternoon:
+
+- **Only some backend paths are live-mounted** in dev: `src`, `tests`, `config`, `migrations`, `public`. Anything else (`composer.json`, `phpunit.dist.xml`) is baked into the image, so after editing it run `docker compose up -d --build backend`. Otherwise the container keeps the old copy and nothing tells you.
+- **Files a container writes belong to root** on your machine (a generated migration, `backend/config/jwt`). They stay editable; to delete or move them, `sudo chown -R "$USER" backend` first.
 
 > A one-command `oliva new` with only the pieces you ask for is on the roadmap (item 3). It waits until real use shows what actually varies between apps.
 

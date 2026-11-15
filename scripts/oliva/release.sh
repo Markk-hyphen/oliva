@@ -8,6 +8,8 @@
 # que sync.sh le muestra a cada fork, así que no se publica sin escribirlas. Desde 1.5.0
 # además valida que cada ítem de "Acción requerida" tenga su etiqueta [lugar(, guard: id)]
 # y que el guard exista (lib/upgrade-guards.sh, lint_upgrade_actions).
+# Since 1.6.2 it also refuses when `composer audit` reports advisories or when the full
+# audit (`deps.sh audit`) is older than OLIVA_AUDIT_DUE_DAYS (7).
 # Escribe OLIVA_VERSION, commitea y crea el tag anotado v1.2.0. NO pushea: imprime el comando.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
@@ -24,6 +26,23 @@ grep -qE "^## ${ver//./\\.}( |$)" docs/oliva/UPGRADING.md \
 lint_upgrade_actions "$ver" \
   || die "etiquetas de 'Acción requerida' inválidas en '## $ver' (formato: cabecera de docs/oliva/UPGRADING.md)."
 git rev-parse -q --verify "refs/tags/v$ver" >/dev/null && die "el tag v$ver ya existe."
+
+# A release does not go out on known advisories (friction log X7: 1.6.0 was published ten
+# days after the 14 Symfony advisories it carried, because nothing here looked).
+# Two checks, on purpose different:
+#   - composer audit, now: a red one always has a way out (`deps update`, or an accepted
+#     advisory in composer.json → config.audit.ignore), so it blocks.
+#   - the full audit (images, runtime): it must be RECENT, not clean. Base images carry
+#     findings with no release to move to yet; demanding zero would block every release.
+audit_state=".oliva/audit-state"; audit_max="${OLIVA_AUDIT_DUE_DAYS:-7}"
+[[ -f "$audit_state" ]] \
+  || die "the full audit never ran in this checkout. Run: scripts/oliva/deps.sh audit"
+audit_days=$(( ( $(date +%s) - $(date -d "$(awk '{print $1; exit}' "$audit_state")" +%s) ) / 86400 ))
+(( audit_days < audit_max )) \
+  || die "the last full audit is $audit_days days old (limit: $audit_max). Run: scripts/oliva/deps.sh audit"
+info "composer audit (a release does not ship known advisories)"
+run_composer audit --locked \
+  || die "composer audit reports advisories. Fix: scripts/oliva/deps.sh update — or accept one explicitly in backend/composer.json (config.audit.ignore) and say why in UPGRADING.md."
 
 printf '%s\n' "$ver" > OLIVA_VERSION
 git add OLIVA_VERSION

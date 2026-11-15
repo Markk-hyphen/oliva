@@ -1008,3 +1008,40 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   is, or with that app anonymised, is the maintainer's call.
 - Not covered by run 1: a cold build, a production `up`, the frontend dev loop, staging, two apps
   up at once.
+
+## [friction log · batch A] five small fixes out of the triage (for 1.6.2)
+**Hash:** `46bfb0d` (last of four on the branch)
+**Branch:** `fix/friction-batch-a`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `oliva` | modified | `doctor` asks for the CI of the repo `origin` points at (`gh -R`), and warns when there is no `origin`. |
+| `backend/phpunit.dist.xml` | modified | `KERNEL_CLASS`. |
+| `scripts/lib/test-db.sh` | new | Creates and migrates the test database when a test boots the kernel; exits otherwise. |
+| `scripts/oliva/verify.sh`, `.github/workflows/ci.yml` | modified | Call `test-db.sh` before PHPUnit. |
+| `backend/tests/Controller/HealthControllerTest.php` | new | Example web test; Oliva's first test. |
+| `scripts/oliva/deps.sh` | modified | `audit` closes with a summary table and records ids in `.oliva/audit-findings`. |
+| `scripts/oliva/release.sh` | modified | Audit gate before writing the version. |
+| `README.md`, `docs/oliva/UPGRADING.md`, `docs/oliva/actualizaciones.md`, `docs/friction-log.md` | modified | First-feature section, notes for 1.6.2, statuses. |
+
+### Why
+- *`KERNEL_CLASS` in `phpunit.dist.xml`, not in a `.env.test`.* The Symfony recipe uses
+  `.env.test`, but `backend/.dockerignore` excludes it and the Dockerfile copies files one by
+  one, so it would never reach the container. One line in a file that is already copied.
+- *`test-db.sh` looks for a test that boots the kernel before doing anything.* An app with unit
+  tests only pays nothing. The check is a grep for the base class names, so a test that boots the
+  kernel through a custom base class is not seen: it fails loudly on the missing database.
+- *The release gate asks for a recent full audit, not a clean one.* Four of five base images
+  carry findings with no release to move to; a clean requirement would block every release.
+  `composer audit` does block, because it always has a way out (`deps update`, or an advisory
+  accepted in `config.audit.ignore`). No switch turns the gate off.
+- *X3 (clone a tag) was left out.* `git clone --branch vX` leaves a detached `HEAD`, which is
+  worse for a newcomer than being three commits past a tag. It moved to the app-birth epic.
+- *T5 and T7 are documented, not fixed.* Baked files and root-owned files now have two lines in
+  the README; the fixes need decisions (which mounts, which user) and stay open in the log.
+- Checked: `verify` green with the new test; the gate in a scratch clone (audit never run, ten
+  days old, the 1.6.0 lock, clean); `doctor` with four kinds of `origin`; the summary with 14
+  advisories reported as new. **Not checked:** the CI change on GitHub, since nothing was pushed
+  (only `actionlint` and the same script run locally).

@@ -55,6 +55,9 @@ commit `chore(deps)`. Cuando toca:
    acciones etiquetadas, ver "Acciones de upgrade" abajo) y
    **`scripts/oliva/release.sh X.Y.Z`** (patch = solo deps; minor = features o pasos para forks;
    major = rompe algo que el fork tiene que reescribir). `git push origin main vX.Y.Z`.
+   `release.sh` refuses when `composer audit` reports advisories or when the full audit
+   (`deps.sh audit`) is more than 7 days old: 1.6.0 was published ten days after the
+   advisories it carried.
 
 `verify.sh` es la red de seguridad de todo: chequea el entorno que Compose resuelve (`env`),
 levanta el stack dev con `--build`, chequea
@@ -104,7 +107,9 @@ cuando el upstream **ya publicó** un patch más nuevo:
 - **FrankenPHP → aviso blando** (no falla el audit): solo frescura contra el último
   release de GitHub. Es un flag menor, presente pero sin pretender que resuelve advisories.
 
-`deps.sh audit` corre las cuatro; `deps.sh report` incluye las de Trivy y runtime en la
+`deps.sh audit` ends with a summary table (findings per layer, how many are new since the
+last audit in this checkout, the next command); the ids of each run are kept in
+`.oliva/audit-findings`, gitignored. `deps.sh audit` corre las cuatro; `deps.sh report` incluye las de Trivy y runtime en la
 foto completa; y el CI tiene un job `image-scan` (report-only) con la misma versión
 pinneada de Trivy.
 

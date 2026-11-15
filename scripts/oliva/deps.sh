@@ -211,6 +211,15 @@ scan_images() {
       "${ignore_flag[@]}" --exit-code 1 "$img" 2>&1)" || status=$?
     printf '%s\n' "$out" | sed 's/^/     /'
     if (( status != 0 )); then rc=1; fi
+    # One line per image for the closing summary of `audit` (see audit_summary):
+    # image, HIGH, CRITICAL, then the ids. Goes nowhere unless `audit` asked for it.
+    if [[ -n "${AUDIT_IMG_RECORD:-}" ]]; then
+      printf '%s\t%s\t%s\t%s\n' "$img" \
+        "$(printf '%s\n' "$out" | grep -oE 'HIGH: [0-9]+' | awk '{n+=$2} END{print n+0}')" \
+        "$(printf '%s\n' "$out" | grep -oE 'CRITICAL: [0-9]+' | awk '{n+=$2} END{print n+0}')" \
+        "$(printf '%s\n' "$out" | grep -oE '(CVE-[0-9]+-[0-9]+|GHSA(-[a-z0-9]{4}){3})' | sort -u | tr '\n' ' ')" \
+        >> "$AUDIT_IMG_RECORD"
+    fi
   done < <(base_images)
   return $rc
 }
@@ -337,30 +346,94 @@ cmd_report() {
 # Siempre deja la fecha en AUDIT_STATE (lo que mira `due`): el estado es "cuándo corriste
 # audit", no "quedó limpio" — los CVEs encontrados ya los viste en la salida.
 cmd_audit() {
-  local rc=0
+  local rc=0 tmp composer_rc=0 yarn_rc=0 images_rc=0 runtime_rc=0
+  tmp="$(mktemp -d)"
   echo "# Audit de seguridad — $(basename "$PWD") (Oliva $(local_oliva_version)) — $(date +%F)"
   echo
   echo "## Composer (CVEs)"
-  run_composer audit --locked || { rc=1; warn "composer audit reporta CVEs"; }
+  run_composer audit --locked 2>&1 | tee "$tmp/composer" || { composer_rc=1; warn "composer audit reporta CVEs"; }
   echo
   echo "## Frontend (yarn audit)"
-  run_yarn audit || { rc=1; warn "yarn audit reporta CVEs"; }
+  run_yarn audit 2>&1 | tee "$tmp/yarn" || { yarn_rc=1; warn "yarn audit reporta CVEs"; }
   echo
   echo "## Imágenes base (Trivy ${TRIVY_VERSION}, HIGH/CRITICAL con fix)"
-  scan_images || { rc=1; warn "Trivy reporta CVEs en imágenes base"; }
+  AUDIT_IMG_RECORD="$tmp/images" scan_images || { images_rc=1; warn "Trivy reporta CVEs en imágenes base"; }
   echo
   echo "## Runtime PHP / FrankenPHP (compilados del source — invisibles a Trivy)"
-  check_runtime || { rc=1; warn "runtime: PHP está atrás en su rama (ver arriba)"; }
+  check_runtime || { runtime_rc=1; warn "runtime: PHP está atrás en su rama (ver arriba)"; }
+  rc=$(( composer_rc | yarn_rc | images_rc | runtime_rc ))
+
+  echo
+  audit_summary "$tmp" "$composer_rc" "$yarn_rc" "$runtime_rc"
 
   mkdir -p "$(dirname "$AUDIT_STATE")"
   date +%F > "$AUDIT_STATE"
+  rm -rf "$tmp"
   echo
   if (( rc == 0 )); then
     info "audit limpio. Fecha guardada en $AUDIT_STATE."
   else
-    warn "audit encontró CVEs (ver arriba). Fecha guardada en $AUDIT_STATE."
+    warn "audit encontró CVEs (resumen arriba). Fecha guardada en $AUDIT_STATE."
   fi
   return $rc
+}
+
+# The closing table of `audit` (friction log T9: the answer used to be a thousand lines
+# and one verdict). Per layer: how many findings, how many are NEW since the last audit
+# in this checkout, and the next command. The ids of each run are kept in
+# .oliva/audit-findings (gitignored, like audit-state) so the next one can tell what moved.
+audit_summary() {
+  local tmp="$1" composer_rc="$2" yarn_rc="$3" runtime_rc="$4"
+  local prev="${AUDIT_STATE%/*}/audit-findings" cur="$1/findings" first=0 n img high crit ids
+  [[ -f "$prev" ]] || first=1
+  : > "$cur"
+
+  # new_in <layer> <ids...> → how many of those ids were not in the previous run
+  record() { local layer="$1"; shift; local id; for id in "$@"; do echo "$layer $id" >> "$cur"; done; }
+  new_in() {
+    local layer="$1"
+    if (( first )); then echo "-"; return; fi
+    grep -F "$layer " "$cur" | sort -u | comm -23 - <(sort -u "$prev") | wc -l | tr -d ' '
+  }
+  row() { printf '   %-38s %-28s %-6s %s\n' "$1" "$2" "$3" "$4"; }
+
+  echo "## Summary"
+  row "layer" "findings" "new" "next"
+
+  mapfile -t ids < <(grep -oE 'PKSA(-[a-z0-9]{4}){3}' "$tmp/composer" 2>/dev/null | sort -u)
+  record composer "${ids[@]}"
+  if (( ${#ids[@]} )); then
+    row "composer" "${#ids[@]} advisories" "$(new_in composer)" "scripts/oliva/deps.sh update (what remains needs a constraint change)"
+  elif (( composer_rc )); then
+    row "composer" "failed, see above" "?" "rerun; the audit could not read the advisories"
+  else
+    row "composer" "0" "$(new_in composer)" ""
+  fi
+
+  n="$(grep -oE '^[0-9]+ vulnerabilities found' "$tmp/yarn" 2>/dev/null | awk '{print $1; exit}')"
+  if [[ -z "$n" ]]; then
+    row "yarn" "$( (( yarn_rc )) && echo 'failed, see above' || echo '0')" "" ""
+  else
+    row "yarn" "$n" "" "$( (( n > 0 )) && echo 'scripts/oliva/deps.sh update')"
+  fi
+
+  if [[ -f "$tmp/images" ]]; then
+    while IFS=$'\t' read -r img high crit ids; do
+      # shellcheck disable=SC2086  # the ids are a space-separated list on purpose
+      record "$img" $ids
+      if (( high + crit > 0 )); then
+        row "$img" "$(( high + crit )) (HIGH $high, CRITICAL $crit)" "$(new_in "$img")" "scripts/oliva/deps.sh report: a newer tag? if none, it waits on upstream"
+      else
+        row "$img" "0" "$(new_in "$img")" ""
+      fi
+    done < "$tmp/images"
+  fi
+
+  row "runtime (PHP)" "$( (( runtime_rc )) && echo 'behind its branch' || echo 'ok')" "" "$( (( runtime_rc )) && echo 'bump the FROM in backend/Dockerfile')"
+  (( first )) && echo "   (new: no earlier audit recorded in this checkout to compare with)"
+
+  mkdir -p "$(dirname "$prev")"
+  sort -u "$cur" > "$prev"
 }
 
 # Solo las imágenes base (lo usa el CI). No toca paquetes ni el state file.
