@@ -11,6 +11,8 @@
 # Since 1.6.2 it also refuses when `composer audit` reports advisories or when the full
 # audit (`deps.sh audit`) is older than OLIVA_AUDIT_DUE_DAYS (7).
 # Escribe OLIVA_VERSION, commitea y crea el tag anotado v1.2.0. NO pushea: imprime el comando.
+# Since 1.7.0 the tag is NOT on main: it is on the `release` branch, which this script cuts
+# (main minus the paths in project-paths.txt). Apps clone and sync from `release`.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 source "$(dirname "$0")/../lib/upgrade-guards.sh"
@@ -44,12 +46,64 @@ info "composer audit (a release does not ship known advisories)"
 run_composer audit --locked \
   || die "composer audit reports advisories. Fix: scripts/oliva/deps.sh update — or accept one explicitly in backend/composer.json (config.audit.ignore) and say why in UPGRADING.md."
 
+# ── the cut ───────────────────────────────────────────────────────────────────────────
+# `release` = main without Oliva's own project files. It is how EVERY app receives Oliva,
+# so it fails closed: anything unexpected undoes the version commit and tags nothing.
+cut_release() {
+  local ver="$1" created=0 paths=() unmerged extra
+  mapfile -t paths < <(project_paths)
+  (( ${#paths[@]} )) || { echo "scripts/oliva/project-paths.txt is empty or missing"; return 1; }
+
+  if git show-ref -q --verify refs/heads/release; then
+    git switch -q release
+  elif git show-ref -q --verify refs/remotes/origin/release; then
+    git switch -q -c release origin/release
+  else
+    git switch -q -c release; created=1          # first cut: starts at main
+  fi
+
+  undo() {
+    git merge --abort 2>/dev/null || git reset -q --hard
+    git switch -q main
+    (( created )) && git branch -q -D release
+    return 0
+  }
+
+  # modify/delete conflicts on project paths are expected here: main keeps editing files
+  # that release deleted. `rm -f` because files main ADDED since the last cut arrive staged,
+  # and a plain `git rm` refuses those and aborts the whole command.
+  git merge --no-ff --no-commit main >/dev/null 2>&1 || true
+  git rm -rfq --ignore-unmatch -- "${paths[@]}"
+
+  unmerged="$(git diff --name-only --diff-filter=U)"
+  if [[ -n "$unmerged" ]]; then
+    echo "the cut left conflicts outside project-paths.txt (release must never have changes of its own):"
+    echo "$unmerged" | sed 's/^/   /'
+    undo; return 1
+  fi
+  # release must equal main except for the project paths, exactly.
+  extra="$(comm -3 <(git diff --cached --name-only main | sort) \
+                   <(git ls-tree -r --name-only main -- "${paths[@]}" | sort))"
+  if [[ -n "$extra" ]]; then
+    echo "release would differ from main in paths that are not project paths (or keep a project path):"
+    echo "$extra" | sed 's/^/   /'
+    undo; return 1
+  fi
+
+  git commit -q -m "release: Oliva $ver"
+  git tag -a "v$ver" -m "Oliva $ver"
+  git switch -q main
+}
+
 printf '%s\n' "$ver" > OLIVA_VERSION
 git add OLIVA_VERSION
 git commit -q -m "release: Oliva $ver"
-git tag -a "v$ver" -m "Oliva $ver"
+if ! cut_release "$ver"; then
+  git reset -q --hard HEAD~1      # the version commit: the tree was clean and it is ours
+  die "the release branch could not be cut. Nothing was tagged; main is back where it was."
+fi
 # Las acciones de la versión son para los forks: en el checkout de Oliva ya están hechas
 # (las escribió quien publica). Sin esto, `doctor` de Oliva las listaría como pendientes.
 mkdir -p "$(dirname "$OLIVA_ACK_FILE")" && echo "$ver" > "$OLIVA_ACK_FILE"
-info "Oliva $ver lista. Publicar: git push origin main v$ver"
-info "Después, en cada fork: scripts/oliva/sync.sh check"
+info "Oliva $ver lista. Publicar: git push origin main release v$ver"
+info "Después, en cada app: scripts/oliva/sync.sh check"

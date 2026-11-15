@@ -9,7 +9,9 @@ Read the epic first (10 minutes); this file is the how.
 that section before phase 3, it changes what `sync.sh` has to do. Nothing is
 built yet beyond the split. **Phase 2 is done too** (the guide is
 `docs/oliva/agent-guide.md`, Oliva has its own `AGENTS.md`, `project-paths.txt`
-exists). **Resume at phase 3.** Branch `feat/app-birth`, local.
+exists). **Phase 3 is done** (`release.sh` cuts `release` and fails closed;
+`sync.sh` follows it and applies the identity rule). **Resume at phase 4.**
+Branch `feat/app-birth`, local.
 
 ## Decisions already taken (do not reopen)
 
@@ -155,7 +157,7 @@ was not rerun: the only non-doc change is a comment in `scripts/deploy.sh`.
 **Left for phase 5:** `docs/oliva/actualizaciones.md` still describes `AGENTS.md`
 as a shared file (three mentions and the ownership table).
 
-## Phase 3 — The cut and the sync
+## Phase 3 — The cut and the sync (DONE, except steps 3–4's `doctor` line, moved to phase 4)
 
 **Goal:** `release.sh` builds `release` and cannot build a wrong one;
 `sync.sh` follows it.
@@ -207,6 +209,18 @@ it (delete a product file on `release` by hand) and confirm the cut refuses and
 leaves `main` and the tags as they were. Then the transition: a scratch copy of
 an app with the *old* `sync.sh` merges `main`, then with the new one merges
 `release`.
+
+**Done 2026-11-15.** Checked in a scratch clone of Oliva and scratch copies of
+the three apps, with the real scripts: two cuts (the second after changes to
+project and product files) left `release` equal to `main` minus the project
+paths; a `release` sabotaged by hand (a product file deleted) made the cut
+refuse, with `main`, the version file and the tags untouched; the first sync of
+each app kept its four identity files and left only the unrelated conflicts
+(`composer.lock` in one, `.env.backend` in another, none in the third); the
+second sync was `merge LIMPIO` in all three and brought product files only.
+**Not built here:** the `init --adopt` hook after a merge and `doctor`'s "not
+initialized" line: both need `init`, so they are part of phase 4. `sync.sh`
+falls back to `main`, saying so, when the upstream has no `release` branch.
 
 **Stop and ask if:** the fail-closed check cannot be made to distinguish a
 project path from a product path in some real case.
