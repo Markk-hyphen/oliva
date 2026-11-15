@@ -18,7 +18,8 @@
 #                 suscriptor anónimo NO (la regresión real de FrankenPHP 1.13.1)
 #   [migrations]  no hay migraciones pendientes
 #   [schema]      doctrine:schema:validate (CMP lo saltea: drift conocido de pgvector)
-#   [phpunit]     suite completa
+#   [phpunit]     suite completa (antes: scripts/lib/test-db.sh crea y migra la base de test
+#                 si algún test usa el kernel; sin esos tests no hace nada)
 #   [prod-build]  buildea las imágenes de prod (composer --no-dev, dump-env, vite build)
 #   [prod-worker] worker mode de FrankenPHP prendido en prod: la imagen hornea
 #                 FRANKENPHP_CONFIG y el .env de este checkout no lo pisa a vacío.
@@ -54,7 +55,7 @@ do_up()         { docker compose up -d --build --wait; }
 do_health()     { be curl -fsS http://localhost/health && echo; }
 do_migrations() { be bin/console doctrine:migrations:up-to-date; }
 do_schema()     { be bin/console doctrine:schema:validate; }
-do_phpunit()    { be php vendor/bin/phpunit; }
+do_phpunit()    { scripts/lib/test-db.sh && be php vendor/bin/phpunit; }
 do_prod_build() { docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend frontend; }
 
 # Tras el prod-build: worker mode tiene que quedar prendido en prod. Dos mitades, las dos

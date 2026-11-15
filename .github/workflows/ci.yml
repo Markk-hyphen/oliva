@@ -107,7 +107,11 @@ jobs:
       -
         name: Run PHPUnit
         if: ${{ !contains(vars.OLIVA_CI_SKIP, 'phpunit') }}
-        run: docker compose exec -T backend php vendor/bin/phpunit
+        # test-db.sh creates and migrates the test database when a test boots the
+        # kernel; with unit tests only it does nothing. Same call as `./oliva verify`.
+        run: |
+          scripts/lib/test-db.sh
+          docker compose exec -T backend php vendor/bin/phpunit
 
   prod-config:
     # Guarda barata (sin build, segundos): el stack prod solo se testea acá vía
