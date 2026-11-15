@@ -8,7 +8,7 @@
 # que sync.sh le muestra a cada fork, así que no se publica sin escribirlas. Desde 1.5.0
 # además valida que cada ítem de "Acción requerida" tenga su etiqueta [lugar(, guard: id)]
 # y que el guard exista (lib/upgrade-guards.sh, lint_upgrade_actions).
-# Since 1.6.2 it also refuses when `composer audit` reports advisories or when the full
+# Since 1.7.0 it also refuses when `composer audit` reports advisories or when the full
 # audit (`deps.sh audit`) is older than OLIVA_AUDIT_DUE_DAYS (7).
 # Escribe OLIVA_VERSION, commitea y crea el tag anotado v1.2.0. NO pushea: imprime el comando.
 # Since 1.7.0 the tag is NOT on main: it is on the `release` branch, which this script cuts

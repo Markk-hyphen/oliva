@@ -8,22 +8,21 @@ Read the epic first (10 minutes); this file is the how.
 Everything is committed on the local branch `feat/app-birth`. The phases below
 are kept as the record of how each was run and checked.
 
-## What is left (all of it needs the maintainer)
+## What is left
 
-1. **Merge `feat/app-birth` into `main`** (local, `--no-ff`).
-2. **Decide 1.6.2**: its notes are in `UPGRADING.md` and its code on `main`,
-   never released. Either release it first, or fold it into 1.7.0 (merge its
-   section's bullets into `## 1.7.0` and delete the heading).
-3. **Decide the name in the friction log**: it names an app with no public
-   repository. As is, or "the third app".
-4. `scripts/oliva/deps.sh audit` if the last one is more than 7 days old, then
-   `scripts/oliva/release.sh 1.7.0`. This is the **first real cut**: it creates
-   the `release` branch. Read its output; `git diff --stat main release` must
-   list only the paths of `project-paths.txt`.
-5. **Push**, when told: `git push origin main release v1.7.0`. Then check on
+Decided on 2026-11-15: the branch is merged into `main` (local); there is **one
+release, 1.7.0** (what was written as 1.6.2 is folded into its notes) and one
+crossing for the apps; the friction log says "the third app".
+
+1. **Cut 1.7.0, when the maintainer says so.** `scripts/oliva/deps.sh audit` if
+   the last one is more than 7 days old, then `scripts/oliva/release.sh 1.7.0`.
+   This is the **first real cut**: it creates the `release` branch. Read its
+   output; `git diff --stat main release` must list only the paths of
+   `scripts/oliva/project-paths.txt`.
+2. **Push, when told**: `git push origin main release v1.7.0`. Then check on
    GitHub: CI on `main` (the `test-db.sh` step has never run there), and that
    `git clone -b release` of the public repo plus `./oliva init` works.
-6. Not urgent: the three apps cross over, each in its own repo and session,
+3. Not urgent: the three apps cross over, each in its own repo and session,
    following `## 1.7.0` in `UPGRADING.md`. The first one is the first real test
    of those steps: record it in the friction log.
 
@@ -64,18 +63,6 @@ Claude Code was checked reading the split `AGENTS.md`.
     not stop a stack that is not yours.
   - `release.sh` now refuses unless `scripts/oliva/deps.sh audit` ran within 7
     days and `composer audit` is clean.
-
-## Open items inherited from before this epic
-
-Not part of the epic, but they sit in the way of its last phase:
-
-1. **1.6.2 is not cut.** Its `UPGRADING.md` section is written and its code is
-   on `main`. Either cut it first (`scripts/oliva/release.sh 1.6.2`, then push
-   when allowed) or fold it into 1.7.0 by renaming the section. Ask.
-2. **The friction log names an app that has no public repository.** Before any
-   push: leave as is, or replace with "the third app". Ask.
-3. The CI change of 1.6.2 (`scripts/lib/test-db.sh` before PHPUnit) has never
-   run on GitHub. The first push will show it.
 
 ---
 

@@ -20,7 +20,7 @@ compares them.
 ## Analysis: what the evidence already says
 
 Measured on 2026-11-14, read-only, on the three apps (`finanzas-ong` and
-`crypto-pulse` on 1.5.1, `the third app` born 2026-11-01 from `v1.5.1-3`). These
+`crypto-pulse` on 1.5.1, a third app born 2026-11-01 from `v1.5.1-3`). These
 are the seed entries of the log. "Reported" means taken from an agent's notes,
 not reproduced.
 
@@ -32,7 +32,7 @@ not reproduced.
 | T2 | `agent-commits.md` conflicts on every sync | the only conflict of the last `finanzas-ong` sync; one of four in `crypto-pulse` (reported) | every sync, by construction: both sides append to the same file |
 | T3 | Shared files rewritten by the app conflict forever | `README.md`: 241+/178− and 150+/193− against Oliva; `AGENTS.md` in `crypto-pulse`: 119+/295− | every sync that touches them |
 | T4 | Two apps cannot be up at once in dev | every app publishes 80, 3000 and 5432; noted independently in three agents' memories; `verify` in one app collides with another's stack (reported) | every time a second app is needed |
-| T5 | A file that is not bind-mounted goes stale inside the image, silently | `the third app`: a fixed `phpunit.dist.xml` kept failing in the container; cost a debugging session (reported) | whenever such a file is edited |
+| T5 | A file that is not bind-mounted goes stale inside the image, silently | the third app: a fixed `phpunit.dist.xml` kept failing in the container; cost a debugging session (reported) | whenever such a file is edited |
 | T6 | Upgrade actions an app must do by hand | 1.6.0: 5 actions, 2 with a guard | every release that has them |
 
 ### Spatial — shipped and never used
@@ -51,7 +51,7 @@ not reproduced.
 |---|---|---|
 | S1 | The demo is never removed | present in all three apps |
 | S2 | Unused services ship to every app | `rabbitmq` and `worker` blocks in all three, used by one |
-| S3 | An app is born with Oliva's identity | two weeks and three phases in, `the third app`'s `AGENTS.md` is byte-identical to Oliva's (title "Oliva"); it inherited 21 entries of Oliva's `agent-commits.md` and appends its own below them (the origin of T2), plus `docs/roadmap*`, 564 lines of `concepts.md` and Oliva's whole git history |
+| S3 | An app is born with Oliva's identity | two weeks and three phases in, the third app's `AGENTS.md` is byte-identical to Oliva's (title "Oliva"); it inherited 21 entries of Oliva's `agent-commits.md` and appends its own below them (the origin of T2), plus `docs/roadmap*`, 564 lines of `concepts.md` and Oliva's whole git history |
 
 S3 is the strongest single signal for item 3: the first thing that varies
 between apps is *who the app is*, and nothing in the bootstrap asks.
@@ -61,8 +61,8 @@ between apps is *who the app is*, and nothing in the bootstrap asks.
 | # | Friction | Evidence |
 |---|---|---|
 | X1 | Both older apps still run on publicly known secrets (none is in production) | 1.6.0 not synced yet; `crypto-pulse` also has an API key placeholder in tracked `.env.backend` |
-| X2 | An app with no `origin` has no CI and no alerts, and nothing says so | `the third app` has only the `oliva-upstream` remote |
-| X3 | An app can be born between releases | the README clones `main`; `the third app` carries three commits past `v1.5.1` while `OLIVA_VERSION` says 1.5.1. Sync is unaffected (drift uses the merge base, checked in `sync.sh`); the version shown is simply wrong |
+| X2 | An app with no `origin` has no CI and no alerts, and nothing says so | the third app has only the `oliva-upstream` remote |
+| X3 | An app can be born between releases | the README clones `main`; the third app carries three commits past `v1.5.1` while `OLIVA_VERSION` says 1.5.1. Sync is unaffected (drift uses the merge base, checked in `sync.sh`); the version shown is simply wrong |
 | X4 | Oliva itself: 2 HIGH Dependabot alerts, CVE audit overdue (17 days against a 7-day cadence) | `doctor`, push output |
 
 ## Sensitive points
@@ -87,7 +87,7 @@ between apps is *who the app is*, and nothing in the bootstrap asks.
    feature list.
 5. **No server exists.** The host axis (deploy, `[host]` actions, shared infra)
    can only be simulated locally. Entries from it are marked as simulated.
-6. **`the third app` has work in flight** (uncommitted, waiting on a human
+6. **The third app has work in flight** (uncommitted, waiting on a human
    check). It is not synced until that lands.
 7. **One variable at a time.** The planned test of syncing with a cheaper model
    changes who is at the keyboard. Mixed into a first sync run, a conflict
@@ -153,5 +153,5 @@ whether the app chose it or inherited it.
   1.13.5).
 - What changed from the plan: the apps left the critical path (none is in
   production), so no sync run was made; the evidence from them is read-only.
-- Next, from the triage: a batch of small fixes (1.6.2), then an epic on the
+- Next, from the triage: a batch of small fixes (shipped with 1.7.0), then an epic on the
   birth of an app, which is the first slice of roadmap item 3.

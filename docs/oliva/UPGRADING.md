@@ -62,6 +62,11 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
   `frontend/index.html`. Its backend half changed: `backend/public/live.php` is gone, replaced
   by `backend/src/Controller/LiveController.php` at `/api/live`. If you kept the demo, point
   `PUBLISH` in `live.js` at `/api/live` (the merge does it when you had not edited the file).
+- [merge] `backend/phpunit.dist.xml`: keep the new `KERNEL_CLASS` line if you resolve a conflict
+  here. Without it the first test that boots the kernel fails before it runs.
+- [decision] If `./oliva doctor` now says the repo has no `origin` remote, it has no CI and no
+  security alerts of its own, and until this version `doctor` was showing you Oliva's CI
+  instead. Add the remote, or accept it knowingly.
 - [decision] Oliva's own documents (`docs/roadmap.md`, `docs/roadmap/`,
   `docs/friction-log.md`) are deleted from your repo by this sync. If you had notes in them,
   recover them from your history before you look for them.
@@ -86,20 +91,8 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
   and answered `{"ok":true}` while delivering nothing. `/live.php` is gone from the frontend
   Caddyfile and the Vite proxy.
 
-## 1.6.2 — 2026-11-14
-
-> First batch out of the friction log (`docs/friction-log.md`): small things that were
-> silent or wrong.
-
-**Action required in the app**
-
-- [merge] `backend/phpunit.dist.xml`: keep the new `KERNEL_CLASS` line if you resolve a conflict
-  here. Without it the first test that boots the kernel fails before it runs.
-- [decision] If `./oliva doctor` now says the repo has no `origin` remote, it has no CI and no
-  security alerts of its own, and until this version `doctor` was showing you Oliva's CI
-  instead. Add the remote, or accept it knowingly.
-
-**What changed**
+Smaller fixes out of the friction log (`docs/friction-log.md` in Oliva's repository), in the
+same release:
 
 - `./oliva doctor` reads the last CI run from the repo `origin` points at, and says so when
   there is no `origin`. It used to let `gh` pick a remote, which in an app without `origin` was
@@ -112,7 +105,7 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
   the last audit in that checkout, and the next command.
 - `release.sh` (Oliva only) refuses to publish when `composer audit` reports advisories or the
   full audit is more than 7 days old.
-- README: a "Your first feature" section, `docker compose up -d --wait`, and the backend URL
+- README: a "Your first feature" section and `docker compose up -d --wait`; the backend URL
   that answered 404 is gone.
 
 ## 1.6.1 — 2026-11-14
