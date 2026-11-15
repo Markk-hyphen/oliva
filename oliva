@@ -81,7 +81,7 @@ case "$cmd" in
         [[ "$(head -1 AGENTS.md 2>/dev/null)" == "@docs/oliva/agent-guide.md" ]] \
           || echo "   !! AGENTS.md does not import the framework guide: its first line must be @docs/oliva/agent-guide.md"
       elif git remote get-url oliva-upstream >/dev/null 2>&1; then
-        echo "   !! not initialized: this repo follows Oliva but has no .oliva-app. Run: ./oliva init --adopt"
+        echo "   !! not initialized: this repo follows Oliva but has no .oliva-app. Run: ./oliva init --adopt (or ./oliva init \"<name>\" in a fresh clone of release)"
       else
         echo "   (this is Oliva itself)"
       fi

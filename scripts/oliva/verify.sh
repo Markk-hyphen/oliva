@@ -68,7 +68,7 @@ do_app() {
   elif [[ -e docs/roadmap.md ]]; then
     echo "Oliva itself"
   else
-    warn "not initialized: no $OLIVA_APP_MARKER. Run: ./oliva init --adopt"
+    warn "not initialized: no $OLIVA_APP_MARKER. Run: ./oliva init \"<name>\" (a new app) or ./oliva init --adopt (one that already exists)"
     return 1
   fi
 }
