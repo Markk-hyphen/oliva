@@ -81,7 +81,16 @@ jobs:
 
       -
         name: Check Mercure reachability
-        run: curl -v --fail-with-body "http://localhost/.well-known/mercure?topic=test"
+        # The hub answers a subscribe with an endless SSE stream, so a plain curl
+        # hangs until the hub drops the connection (~9.5 min per run, measured).
+        # The status line arrives in milliseconds: cut at 5 s and accept the
+        # timeout (curl exit 28) as long as the answer was a 200.
+        run: |
+          rc=0
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+            "http://localhost/.well-known/mercure?topic=test") || rc=$?
+          echo "HTTP $code (curl exit $rc; 28 = stream cut by --max-time, expected)"
+          [ "$code" = 200 ] && { [ "$rc" = 0 ] || [ "$rc" = 28 ]; }
 
       -
         name: Run migrations
