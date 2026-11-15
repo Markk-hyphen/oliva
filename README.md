@@ -101,7 +101,7 @@ docker compose up -d --wait                 # returns when every service is heal
 | RabbitMQ management (`queues` profile) | http://localhost:15672 |
 | Database | localhost:5432 |
 
-Hot reload is on: changes to `backend/src` and `frontend/src` show up without rebuilding. The live canvas demo (`backend/public/live.php` + `frontend/src/js/live.js`) shows Mercure working out of the box.
+Hot reload is on: changes to `backend/src` and `frontend/src` show up without rebuilding. The live canvas demo (`backend/src/Controller/LiveController.php` + `frontend/src/js/live.js`) shows Mercure working out of the box.
 
 ### Your first feature
 

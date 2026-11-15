@@ -1,6 +1,6 @@
 const HUB      = '/.well-known/mercure';
 const TOPIC    = 'https://oliva.dev/live';
-const PUBLISH  = '/live.php';
+const PUBLISH  = '/api/live';
 const myColor  = `hsl(${Math.floor(Math.random() * 360)}, 65%, 62%)`;
 const myId     = Math.random().toString(36).slice(2, 8);
 

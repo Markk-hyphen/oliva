@@ -14,10 +14,6 @@
         reverse_proxy http://backend:80
     }
 
-    handle /live.php {
-        reverse_proxy http://backend:80
-    }
-
     handle /health {
         reverse_proxy http://backend:80
     }

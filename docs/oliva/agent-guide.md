@@ -69,7 +69,7 @@ encolarían y nadie los consumiría. No es un cambio chico: el servicio tiene qu
 compartido) y en `staging.yml` (imagen y `APP_ENV` de staging), y va detrás del profile `queues`,
 así que necesitaba que el `down` de los deploys bajara todos los profiles (resuelto en 1.4.2 con `--profile '*'`).
 
-Mercure (`/.well-known/mercure`) está siempre activo vía el hub de Caddy (`backend/frankenphp/Caddyfile`); la demo de canvas en vivo (`backend/public/live.php` + `frontend/src/js/live.js`) muestra que funciona out of the box.
+Mercure (`/.well-known/mercure`) está siempre activo vía el hub de Caddy (`backend/frankenphp/Caddyfile`); la demo de canvas en vivo (`backend/src/Controller/LiveController.php` + `frontend/src/js/live.js`) muestra que funciona out of the box.
 
 ### Aislamiento por app: todo cuelga del project name
 

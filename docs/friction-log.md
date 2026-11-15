@@ -39,6 +39,7 @@ fixed on the spot. *Measured* means reproduced or read from the repos;
 | X7 | A release can ship with known advisories | measured, run 2: `release.sh` does not run the audit and CI has no `composer audit`. 1.6.0 was published on 2026-11-14 with 14 Symfony advisories dated 2026-11-04 | every release | yes | `release.sh` refuses, or asks, when the audit is due or red | fixed in 1.6.2 |
 | T9 | The audit answers in 1,030 lines with no summary | measured, run 2: one verdict line at the end; severity is blank on every composer advisory; nothing says "one `deps update` fixes 14 of these" or which image findings are new since the last audit | every audit (7-day cadence) | no | a closing table: layer, count, fix available, new since last run | fixed in 1.6.2 |
 | X8 | The Dependabot signal disagrees with itself | measured, run 2: every push prints "2 high" while the alerts API lists 0 open (4 fixed). Not investigated | every push | no | find out which one is stale | closed: the banner stopped with the 1.6.1 push; cause not established |
+| X9 | The live demo stopped publishing in 1.6.0 and kept answering `{"ok":true}` | measured 2026-11-15: `live.php` signed with the old public Mercure key written in the file; one event posted, zero delivered. The README still said it "shows Mercure working out of the box" | every app since 1.6.0 | yes | publish through the configured hub | fixed in 1.7.0: the endpoint is a controller under `/api/live` |
 
 ## What varies between apps
 

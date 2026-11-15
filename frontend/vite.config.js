@@ -34,10 +34,6 @@ export default defineConfig(({ mode }) => {
                     target: env.VITE_API_URL,
                     changeOrigin: true,
                 },
-                '/live.php': {
-                    target: env.VITE_API_URL,
-                    changeOrigin: true,
-                },
             },
         }
 }});
