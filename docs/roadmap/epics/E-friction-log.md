@@ -1,6 +1,6 @@
 # Epic — Friction log: find the weak points by use, not by guess
 
-> **Status:** 📝 analysis done, plan proposed, nothing executed ·
+> **Status:** 🚧 phase 0 done, phase 1 (clean-room bootstrap) next ·
 > **Target version:** none of its own (it produces a backlog; fixes ship in their own releases) ·
 > **Origin:** roadmap item 1, chosen as the next epic on 2026-11-14.
 
@@ -60,7 +60,7 @@ between apps is *who the app is*, and nothing in the bootstrap asks.
 
 | # | Friction | Evidence |
 |---|---|---|
-| X1 | Both older apps still run on publicly known secrets | 1.6.0 phase 6 not applied; `crypto-pulse` also has an API key placeholder in tracked `.env.backend` |
+| X1 | Both older apps still run on publicly known secrets (none is in production) | 1.6.0 not synced yet; `crypto-pulse` also has an API key placeholder in tracked `.env.backend` |
 | X2 | An app with no `origin` has no CI and no alerts, and nothing says so | `the third app` has only the `oliva-upstream` remote |
 | X3 | An app can be born between releases | the README clones `main`; `the third app` carries three commits past `v1.5.1` while `OLIVA_VERSION` says 1.5.1. Sync is unaffected (drift uses the merge base, checked in `sync.sh`); the version shown is simply wrong |
 | X4 | Oliva itself: 2 HIGH Dependabot alerts, CVE audit overdue (17 days against a 7-day cadence) | `doctor`, push output |
@@ -71,7 +71,7 @@ between apps is *who the app is*, and nothing in the bootstrap asks.
    pruned. Friction shows up in the *app's* sessions, while the backlog belongs
    to Oliva. Same shape as the sync reminder problem, same answer: it lives in
    the flow. Proposal in "Design".
-2. **Phase 2 touches real secrets and real data.** Rotating secrets in the two
+2. **A sync run touches real secrets and real data.** Rotating secrets in the two
    older apps involves the JWT key (re-encrypted with the new passphrase) and
    database passwords bound to volumes. `finanzas-ong`'s dev database holds
    manual test data, and `verify` there brings up the real dev stack, not a
@@ -90,7 +90,7 @@ between apps is *who the app is*, and nothing in the bootstrap asks.
 6. **`the third app` has work in flight** (uncommitted, waiting on a human
    check). It is not synced until that lands.
 7. **One variable at a time.** The planned test of syncing with a cheaper model
-   changes who is at the keyboard. Mixed into the first sync run, a conflict
+   changes who is at the keyboard. Mixed into a first sync run, a conflict
    count would no longer say whether the friction is Oliva's or the model's.
 8. **The retrospective evidence is biased** towards what an agent bothered to
    write down. The clean-room run (phase 1) exists to catch what nobody noted
@@ -104,7 +104,7 @@ per sync, per run), whether it is silent or loud, candidate fix, status
 (open, fixed in `<hash>`, accepted). Rows are never deleted; a fixed one keeps
 its hash. It starts with the tables above.
 
-**Where an app records friction.** In a file it owns: `docs/friction.md`,
+**Where an app records friction (deferred, see Decisions).** In a file it owns: `docs/friction.md`,
 free-form, appended by whoever hits something while working on the app. Oliva
 never syncs it. A session in Oliva harvests those files into the log and marks
 the harvested lines. One sentence in `agent-commands.md` tells the agent to
@@ -119,28 +119,27 @@ human decisions required, conflicts by class (`[OLIVA]`, `[LOCK]`,
 
 | Phase | What | Where | Touches |
 |---|---|---|---|
-| 0 | Create the log from this analysis; add the `docs/friction.md` convention | Oliva | docs only |
-| 1 | **Sync run**: bring 1.6.0 down to `crypto-pulse`, then `finanzas-ong` (closes 1.6.0 phase 6 and X1). Record everything | each app, one session each | the apps' secrets and env files |
-| 2 | **Clean-room bootstrap**: a throwaway app from tag `v1.6.0`, following the README literally, on other ports, up to a first entity, migration, test, `verify` and prod build. Then deleted | scratch directory | nothing permanent |
-| 3 | **Security pass**: `deps audit`, the two Dependabot alerts, `/security-review` on what audit can't see | Oliva first, then apps | deps |
-| 4 | **Triage**: rank by frequency × cost, silent ones first. Write the table of what varies between apps. Each chosen fix becomes its own change or epic; the queue-slot epic is re-ranked here against the rest | Oliva | docs only |
+| 0 | Create the log from this analysis | Oliva | docs only |
+| 1 | **Clean-room bootstrap**: a throwaway app from tag `v1.6.0`, following the README literally, on other ports, up to a first entity, migration, test, `verify` and prod build. Then deleted | scratch directory | nothing permanent |
+| 2 | **Security pass** on Oliva: `deps audit`, the two Dependabot alerts, `/security-review` on what audit can't see | Oliva | deps |
+| 3 | **Triage**: rank by frequency × cost, silent ones first. Write the table of what varies between apps. Each chosen fix becomes its own change or epic; the queue-slot epic is re-ranked here against the rest | Oliva | docs only |
 
-Phase 1 goes before the clean-room run because it closes a live security hole
-and is friction that has to be paid anyway. `the third app` joins phase 1 once
-its work in flight is committed.
+**The apps are not on the critical path** (decided 2026-11-14). None of them is
+in production, so their public secrets (X1) are not a live hole and bringing
+1.6.0 down to them is not urgent. The apps stay what they were in the analysis:
+a read-only source of evidence. A sync run is recorded in the log whenever an
+app is next worked on for its own reasons; it is not a phase of this epic.
 
-**Exit criterion.** Item 3 may start when the log holds: the two sync runs, one
-clean-room run, and a table stating, per slot and per shared file, what was
-different in each app and whether the app chose it or inherited it.
+**Exit criterion.** Item 3 may start when the log holds one clean-room run and a
+table stating, per slot and per shared file, what is different in each app and
+whether the app chose it or inherited it.
 
-## Open decisions
+## Decisions
 
-1. **Where apps record friction**: a file of their own harvested by Oliva (the
-   proposal), or only what an Oliva session observes.
-2. **Order**: sync run first (proposal), or clean-room first.
-3. **Fix policy during runs**: record and continue, except silent security
-   failures (proposal).
-4. **Cheaper-model sync test**: keep it out of the first app and use it on the
-   second (proposal), or leave it for a later release.
-5. **Phase 3 timing**: the audit is already overdue; it can run now,
-   independently of this epic.
+1. **Order** (decided): the epic runs inside Oliva; clean-room first, no app
+   syncs as part of it.
+2. **Fix policy during runs** (proposal, in use): record and continue, except
+   silent security failures.
+3. **Where apps record friction** (open, not needed yet): a `docs/friction.md`
+   of their own, harvested by an Oliva session. Deferred with the apps.
+4. **Cheaper-model sync test** (deferred with the apps).
