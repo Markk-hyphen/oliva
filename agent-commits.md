@@ -976,3 +976,35 @@ Not verified: a real run on GitHub (CI only runs on `main`).
 Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulated app going
 1.5.1 → 1.6.0 lists only the unguarded item in `doctor` and on the host, and `ack` clears it;
 `verify` 10/10 on the final tree; shellcheck clean.
+
+## [friction log · phases 0–3] docs: the friction log, two runs and a triage
+**Hash:** `12df40e` (last of five on the branch; 1.6.1 is `38d9422`, the CI fix `9ab188d`)
+**Branch:** `feat/friction-log`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docs/friction-log.md` | new | 20 entries (temporal, spatial, security), run 1 (clean-room bootstrap), run 2 (audit), the table of what varies between apps and a ranked triage. |
+| `docs/roadmap/epics/E-friction-log.md` | new | Analysis, sensitive points, phases, decisions, outcome. |
+| `docs/roadmap.md` | modified | Item 1 points at the log. |
+| `.github/workflows/ci.yml` | modified (on `main`) | Mercure reachability step cut at 5 s; it waited ~9.5 min per run. |
+| `backend/composer.lock`, `frontend/yarn.lock`, both Dockerfiles, `docs/oliva/UPGRADING.md`, `OLIVA_VERSION` | modified (on `main`) | Dependency cycle released as 1.6.1 after run 2. |
+
+### Why
+- *The apps left the critical path.* The first plan opened with bringing 1.6.0 down to the two
+  older apps, because they run on public secrets. None is in production, so that is not a live
+  hole; the maintainer cut it. The apps are read-only evidence and no sync run was made.
+- *Record, do not fix, during a run.* Run 1 found the first integration test broken and `doctor`
+  showing Oliva's CI in an app with no `origin`. Both were left as rows. The one exception was
+  taken after run 2, on request: the audit was red (14 Symfony advisories), so a dependency cycle
+  ran and shipped as 1.6.1.
+- *The tooling findings outrank the CVE list.* 1.6.0 was published ten days after the advisories
+  it carried, because `release.sh` does not look at the audit. That is entry X7, ranked second.
+- *The triage groups four entries into one problem*: an app is a clone, so it is born with
+  Oliva's name, log, roadmap and demo, and pays in conflicts on every sync. That is proposed as
+  the next epic and as the first slice of roadmap item 3, ahead of the queue-slot epic.
+- *Not pushed.* The log names an app that has no public repository. Whether it goes to `main` as
+  is, or with that app anonymised, is the maintainer's call.
+- Not covered by run 1: a cold build, a production `up`, the frontend dev loop, staging, two apps
+  up at once.
