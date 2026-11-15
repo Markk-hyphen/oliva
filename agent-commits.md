@@ -978,7 +978,7 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
 `verify` 10/10 on the final tree; shellcheck clean.
 
 ## [friction log · phases 0–3] docs: the friction log, two runs and a triage
-**Hash:** `12df40e` (last of five on the branch; 1.6.1 is `38d9422`, the CI fix `9ab188d`)
+**Hash:** `4f32a74` (last of five on the branch; 1.6.1 is `38d9422`, the CI fix `9ab188d`)
 **Branch:** `feat/friction-log`
 **Date:** 2026-11-14
 
@@ -1010,7 +1010,7 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   up at once.
 
 ## [friction log · batch A] five small fixes out of the triage (for 1.6.2)
-**Hash:** `46bfb0d` (last of four on the branch)
+**Hash:** `05a36e0` (last of four on the branch)
 **Branch:** `fix/friction-batch-a`
 **Date:** 2026-11-14
 
@@ -1047,7 +1047,7 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   (only `actionlint` and the same script run locally).
 
 ## [app birth · phases 1–2] prototype on copies of the apps; the split into product and project
-**Hash:** `4d9b841`
+**Hash:** `f27893c`
 **Branch:** `feat/app-birth`
 **Date:** 2026-11-14
 
@@ -1078,7 +1078,7 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   `UPGRADING.md` for 1.7.0. The runbook has each step.
 
 ## [app birth · phases 3–5] the cut, the identity rule, `./oliva init`, notes for 1.7.0
-**Hash:** `92e6200` (last of the series; not released)
+**Hash:** `36deb24` (last of the series; not released)
 **Branch:** `feat/app-birth`
 **Date:** 2026-11-15
 
