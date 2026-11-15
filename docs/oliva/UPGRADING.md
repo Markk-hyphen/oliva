@@ -27,6 +27,35 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.6.2 — 2026-11-14
+
+> First batch out of the friction log (`docs/friction-log.md`): small things that were
+> silent or wrong.
+
+**Action required in the app**
+
+- [merge] `backend/phpunit.dist.xml`: keep the new `KERNEL_CLASS` line if you resolve a conflict
+  here. Without it the first test that boots the kernel fails before it runs.
+- [decision] If `./oliva doctor` now says the repo has no `origin` remote, it has no CI and no
+  security alerts of its own, and until this version `doctor` was showing you Oliva's CI
+  instead. Add the remote, or accept it knowingly.
+
+**What changed**
+
+- `./oliva doctor` reads the last CI run from the repo `origin` points at, and says so when
+  there is no `origin`. It used to let `gh` pick a remote, which in an app without `origin` was
+  Oliva's.
+- Integration tests work out of the box: `KERNEL_CLASS` is set in `phpunit.dist.xml`, and
+  `./oliva verify` and CI call the new `scripts/lib/test-db.sh`, which creates and migrates the
+  test database when a test boots the kernel and does nothing otherwise. An example ships in
+  `backend/tests/Controller/HealthControllerTest.php`.
+- `./oliva deps audit` ends with a summary table: findings per layer, how many are new since
+  the last audit in that checkout, and the next command.
+- `release.sh` (Oliva only) refuses to publish when `composer audit` reports advisories or the
+  full audit is more than 7 days old.
+- README: a "Your first feature" section, `docker compose up -d --wait`, and the backend URL
+  that answered 404 is gone.
+
 ## 1.6.1 — 2026-11-14
 
 > **Security bumps.** Symfony published 14 advisories on 2026-11-04 (trusted proxies, HEAD
