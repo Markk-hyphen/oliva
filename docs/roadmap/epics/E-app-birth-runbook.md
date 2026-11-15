@@ -4,8 +4,10 @@ Everything needed to take [`E-app-birth.md`](E-app-birth.md) from "designed" to
 released, written so that a session with no memory of the design can pick it up.
 Read the epic first (10 minutes); this file is the how.
 
-**State when this was written (2026-11-14):** design approved, all five open
-decisions taken (below), nothing built. Branch `feat/app-birth`, local.
+**State (2026-11-14):** design approved, all five open decisions taken
+(below). **Phase 1 is done** and its results are at the end of the epic: read
+that section before phase 3, it changes what `sync.sh` has to do. Nothing is
+built yet: **resume at phase 2.** Branch `feat/app-birth`, local.
 
 ## Decisions already taken (do not reopen)
 
@@ -55,7 +57,7 @@ Not part of the epic, but they sit in the way of its last phase:
 
 ---
 
-## Phase 1 — Prototype on copies (decides everything else)
+## Phase 1 — Prototype on copies (DONE, kept as the record of how it was run)
 
 **Goal:** the conflict counts of the epic's table, on the real repos. Nothing
 is committed to Oliva in this phase except its results.
@@ -169,9 +171,20 @@ its loaded context.
 2. `scripts/oliva/sync.sh`:
    - `fetch_upstream` fetches `release` (variable `OLIVA_BRANCH`, default
      `release`); every use of the upstream ref follows.
-   - In the conflict loop: a `modify/delete` on a path of `project-paths.txt`
-     is resolved for the app (`git add` the app's version) and printed as
-     `[YOURS]  <path>  → Oliva no longer ships it; kept yours`.
+   - **The identity rule** (from phase 1; git moves the app's `AGENTS.md` into
+     `docs/oliva/agent-guide.md` by rename detection, which cannot be turned
+     off). Record `pre=$(git rev-parse HEAD)` before the merge. After it,
+     whether it conflicted or not:
+     ```bash
+     git checkout "$ref" -- docs/oliva/                       # product: Oliva's
+     for f in README.md AGENTS.md agent-commits.md docs/concepts.md; do
+       git cat-file -e "$pre:$f" 2>/dev/null && git checkout "$pre" -- "$f"   # identity: the app's
+     done
+     ```
+     Print each restored path as `[YOURS]  <path>  → kept yours`. The identity
+     list lives in one place (`lib.sh`, `identity_paths()`), next to
+     `project_paths()`. Tried on copies of the three apps: first sync leaves
+     only unrelated conflicts, second sync has none.
    - After a merge, if `.oliva-app` is missing: run `./oliva init --adopt`
      (phase 4) before anything else and say so.
 3. `scripts/oliva/lib.sh`: `is_app()` (true when `.oliva-app` exists) and
@@ -235,7 +248,13 @@ refuse). Record the run in `docs/friction-log.md` under "Runs".
 ## Phase 5 — Docs and release
 
 1. `docs/oliva/UPGRADING.md`, section `## 1.7.0`, in English, with the crossing
-   for existing apps as labelled actions:
+   for existing apps as labelled actions. **The first one is new, from phase 1,
+   and must come first:**
+   - `[merge]` before `sync start`, take Oliva's tooling alone and commit it:
+     `git fetch oliva-upstream release && git checkout FETCH_HEAD -- oliva
+     scripts/oliva scripts/lib && git commit -m "chore: Oliva 1.7.0 tooling
+     before the sync"`. The old `sync.sh` does not know the identity rule and
+     lets git move your `AGENTS.md` into a file Oliva owns;
    - `[merge]` the first sync comes from `release`; identity conflicts are
      resolved for you, here is what was deleted and why;
    - `[merge]` cut the framework sections out of your `AGENTS.md` and put the

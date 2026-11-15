@@ -1,6 +1,6 @@
 # Epic — The birth of an app: born as itself, not as a copy of Oliva
 
-> **Status:** 📝 design approved 2026-11-14, nothing built. How to finish it: [`E-app-birth-runbook.md`](E-app-birth-runbook.md) ·
+> **Status:** 🚧 phase 1 done (prototype on copies of the three apps: the design holds, with one correction). Phases 2–5 to do: [`E-app-birth-runbook.md`](E-app-birth-runbook.md) ·
 > **Target version:** v1.7.0 ·
 > **Origin:** friction log, triage group B (S3, T2, T3, S1, X3). First slice of roadmap item 3.
 
@@ -200,3 +200,60 @@ open. It remains the fallback if `release` proves fragile in phase 1.
 3. The **demo is removed by default**; `--demo` keeps it.
 4. A new app gets **`agent-commits.md`**; `init` does not ask.
 5. The three existing apps **cross over later**, each when it is next worked on.
+
+## Phase 1 results (2026-11-14)
+
+A prototype `release` branch built in a scratch clone of Oliva (the split done
+roughly, six project paths removed) and merged into scratch copies of the three
+apps, two of them on 1.5.1. The real repos were not touched.
+
+### What git did on the first sync, left alone
+
+| | App 1 | App 2 | App 3 (never edited its identity files) |
+|---|---|---|---|
+| `README.md` | modify/delete conflict | modify/delete conflict | **deleted** |
+| `agent-commits.md` | modify/delete conflict | modify/delete conflict | modify/delete conflict |
+| `AGENTS.md` | **moved away**: git saw a rename to `docs/oliva/agent-guide.md`, carried the app's edits into that file and left a content conflict there | same | renamed away, no conflict: the app is left with **no `AGENTS.md` and no `README.md`** |
+| `docs/concepts.md` | renamed to `docs/oliva/concepts.md`, silently | same | same |
+| Unrelated, from 1.6.x | `composer.lock` | `.env.backend` | none |
+
+**The correction to the design.** The toy simulation did not have renames. On
+the real files git detects them, and that is worse than a conflict: the app's
+own `AGENTS.md` is taken to a path Oliva owns. Rename detection cannot be
+switched off here (git 2.43: neither `-X no-renames` nor `merge.renames=false`
+changed the result). So the sync does not rely on the merge result for these
+paths; it applies a rule after it:
+
+1. everything under `docs/oliva/` is taken from Oliva;
+2. every identity path (`README.md`, `AGENTS.md`, `agent-commits.md`,
+   `docs/concepts.md`) that existed in the app before the merge is restored
+   from the app's pre-merge commit, existence included.
+
+### With the rule
+
+| | App 1 | App 2 | App 3 |
+|---|---|---|---|
+| First sync, conflicts left for a person | 1 (`composer.lock`, unrelated) | 1 (`.env.backend`, unrelated) | 0 |
+| Identity files after it | the app's | the app's | Oliva's old ones, still titled "Oliva": this is what `init --adopt` is for |
+| **Second sync** (after a second cut with changes to one product file and four project files) | **0 conflicts** | **0 conflicts** | **0 conflicts** |
+| What the second sync brought | the two product files, nothing else | same | same |
+
+The fail-closed check of the cut (`release` differs from `main` only in project
+paths) passed on the second cut.
+
+### The guide still reaches the agent
+
+Checked with a real session and tools disabled: `CLAUDE.md` → `@AGENTS.md` →
+`@docs/oliva/agent-guide.md` loads all three levels. A fact present only in the
+guide was in the agent's context. This holds for Claude Code; another agent
+gets a plain first line telling it to read the guide, which is not verified.
+
+### Consequences for the next phases
+
+- The rule above is part of `sync.sh` (phase 3), not an edge case.
+- **The first sync of an existing app must run the *new* `sync.sh`.** With the
+  old one the rule is missing and the app's `AGENTS.md` is carried away. The
+  crossing-over note in `UPGRADING.md` therefore starts with taking Oliva's
+  tooling alone, in its own commit, before the sync.
+- `project-paths.txt` needed no correction. `docs/concepts.md` joins the
+  identity paths.
