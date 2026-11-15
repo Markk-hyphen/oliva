@@ -33,29 +33,85 @@ fixed on the spot. *Measured* means reproduced or read from the repos;
 | X1 | Apps on 1.5.1 run on publicly known secrets | measured: `.env.backend` of both older apps. No app is in production | until each app syncs 1.6.0 | no since 1.6.0 (`env check`) | sync, when the app is next worked on | accepted |
 | X2 | An app with no `origin` has no CI and no alerts, and `doctor` shows **Oliva's** last CI run as if it were the app's | measured: `the third app` has only `oliva-upstream`; in run 1 the newborn app's `doctor` printed Oliva's green run | per app | yes | `doctor` reads CI from `origin` only, and says when there is none | open |
 | X3 | An app can be born between releases | measured: the README clones `main`; `the third app` is three commits past `v1.5.1` and reports 1.5.1. Sync is unaffected (drift uses the merge base) | per app | yes | the README clones a tag | open |
-| X4 | Oliva carries known CVEs: 14 Symfony advisories (fixed in 7.4.23, installed 7.4.21) and HIGH/CRITICAL with a fix in four of five base images | measured, run 2 | until the next deps cycle | no | `deps update` (Symfony is inside the range) and image bumps: caddy 2.11.9, FrankenPHP 1.13.5 | open |
+| X4 | Oliva carries known CVEs: 14 Symfony advisories (fixed in 7.4.23, installed 7.4.21) and HIGH/CRITICAL with a fix in four of five base images | measured, run 2 | until the next deps cycle | no | `deps update` (Symfony is inside the range) and image bumps: caddy 2.11.9, FrankenPHP 1.13.5 | fixed `38d9422` (1.6.1): Symfony, caddy, FrankenPHP. The rest waits on upstream images: accepted |
 | X5 | The first integration test of a new app fails, twice | measured, run 1: a `WebTestCase` needs `KERNEL_CLASS` (no `.env.test` ships), then the `app_test` database does not exist. `verify` goes red without naming either fix. Across the three apps: 0 kernel or web tests in 22 test files | per app | no, but the fix is not named | ship `.env.test`, create the test database in `verify` and CI, and a web test of `/health` as the example | open |
 | X6 | The README's "Backend API" URL answers 404 | measured, run 1: `http://localhost:80/api` has no route on a fresh app | per app | yes | point it at `/health`, or drop the row | open |
 | X7 | A release can ship with known advisories | measured, run 2: `release.sh` does not run the audit and CI has no `composer audit`. 1.6.0 was published on 2026-11-14 with 14 Symfony advisories dated 2026-11-04 | every release | yes | `release.sh` refuses, or asks, when the audit is due or red | open |
 | T9 | The audit answers in 1,030 lines with no summary | measured, run 2: one verdict line at the end; severity is blank on every composer advisory; nothing says "one `deps update` fixes 14 of these" or which image findings are new since the last audit | every audit (7-day cadence) | no | a closing table: layer, count, fix available, new since last run | open |
-| X8 | The Dependabot signal disagrees with itself | measured, run 2: every push prints "2 high" while the alerts API lists 0 open (4 fixed). Not investigated | every push | no | find out which one is stale | open |
+| X8 | The Dependabot signal disagrees with itself | measured, run 2: every push prints "2 high" while the alerts API lists 0 open (4 fixed). Not investigated | every push | no | find out which one is stale | closed: the banner stopped with the 1.6.1 push; cause not established |
 
 ## What varies between apps
 
-Read-only measurement, 2026-11-14. Input for roadmap item 3.
+Read-only measurement, 2026-11-14. Input for roadmap item 3. *Chosen* means the
+app did something to have it (code, config, a line in a file); *inherited* means
+it is there only because Oliva ships it.
 
 | | finanzas-ong | crypto-pulse | the third app |
 |---|---|---|---|
-| Messenger / RabbitMQ / worker | unused | used | unused |
-| Cron (crontab lines) | 2 | 4 | 0 |
-| Mercure (backend) | used | used | unused |
-| pgvector types | unused | used | unused |
-| PHP extensions | `bcmath` | none | `bcmath` |
-| Extra dev services | mailpit | none | none |
-| Live demo | still there | still there | still there |
+| Messenger / RabbitMQ / worker | inherited, unused | **chosen** (4 classes, `queues` profile) | inherited, unused. Queues avoided on purpose, because of the missing production worker |
+| Cron | **chosen** (2 tasks) | **chosen** (4 tasks, `cron` profile) | inherited, unused |
+| Mercure | **chosen** | **chosen** | inherited, unused |
+| pgvector | inherited, unused | **chosen** | inherited, unused |
+| PHP extensions | **chosen** (`bcmath`) | none | **chosen** (`bcmath`) |
+| Extra dev services | **chosen** (mailpit) | none | none |
+| Integration tests | none | none | none |
+| Live demo | inherited, never removed | inherited, never removed | inherited, never removed |
+| `AGENTS.md` | Oliva's plus 44 lines | rewritten (119+/295−) | Oliva's, untouched |
+| `README.md` | rewritten | rewritten | Oliva's, one line changed |
+| `agent-commits.md` | Oliva's entries plus its own | Oliva's entries plus its own | Oliva's entries plus its own |
 | `origin` remote / CI | yes | yes | no |
 
-Still missing: whether each difference was chosen or inherited (epic phase 3).
+Three readings:
+
+1. **Every optional service is chosen by at least one app and inherited unused by
+   at least one.** That is the case for install-time flags, and it is now measured
+   rather than assumed.
+2. **What every app changes is its identity** (`README.md`, `AGENTS.md`, its own
+   log), and those are exactly the files that conflict on every sync.
+3. **Nobody chose the demo, and nobody removed it.**
+
+## Triage
+
+Ranked 2026-11-14 by frequency × cost, silent ones first. Three apps and one
+maintainer: this orders the pain, it does not prove generality.
+
+**A. Small, and silent or wrong today. One batch, no design needed.**
+
+| Order | Entry | Why here | Size |
+|---|---|---|---|
+| 1 | X2 `doctor` shows Oliva's CI in an app with no `origin` | a green that belongs to someone else, in the tool meant to be trusted | a few lines in `oliva` |
+| 2 | X7 a release does not gate on the audit | it already happened once (1.6.0) | a few lines in `release.sh` |
+| 3 | X5 the first integration test fails twice | zero integration tests in three apps is the measured consequence; also gives Oliva its first real test | `.env.test`, test database in `verify` and CI, one example test |
+| 4 | X6, X3, T8 README: 404 URL, clone a tag, a "first feature" section | first contact of every new app | docs |
+| 5 | T9 the audit has no summary | paid every 7 days, by whoever reads 1,030 lines | a closing table in `deps.sh` |
+
+**B. The birth of an app. One epic, and the first slice of roadmap item 3.**
+
+S3, T2, T3 and S1 are one problem: an app is a clone of Oliva, so it starts with
+Oliva's name, log, roadmap and demo, and pays for it in conflicts on every sync.
+A birth step that resets identity (an empty log, an `AGENTS.md` split into
+Oliva's part and the app's, the demo and Oliva's own docs left behind) removes
+the two conflicts that happen on *every* sync, and it is the smallest honest
+version of `oliva new`: no service flags yet, only "who is this app". X3 (born
+from a tag) and X2 (no `origin`) land in the same step.
+
+**C. Dev ergonomics. Each needs a decision, none is urgent.**
+
+| Entry | Open question |
+|---|---|
+| T4 two apps cannot be up at once | host ports from variables, or no published ports by default |
+| T7 root-owned files on the host | run dev containers as the host user: touches the entrypoint and every mount |
+| T5 stale baked files | mount more, or have `doctor` compare; X5's fix needs one of the two for `.env.test` |
+
+**D. Waits for item 3, as planned.** S2 (unused services shipped). The
+queue-slot epic belongs here too: one app uses queues, none is in production, and
+it should be built as a slot the birth step can leave out, not before it.
+
+**Accepted.** X1 (apps on old secrets, not in production), T6 (upgrade actions:
+keep preferring guards), the residue of X4.
+
+**Recommendation.** Batch A as 1.6.2, then epic B. The exit criterion of the
+friction-log epic is met: one clean-room run and the table above.
 
 ## Runs
 

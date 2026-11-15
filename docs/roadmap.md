@@ -114,6 +114,11 @@ Axes to watch while doing it:
 The output feeds everything below — especially the scaffolding work, which
 should not be designed until this signal exists.
 
+The log exists since 2026-11-14: [`friction-log.md`](friction-log.md), with a first
+clean-room run, a security pass, the table of what varies between apps and a
+ranked triage ([`epics/E-friction-log.md`](roadmap/epics/E-friction-log.md)). It
+stays open: every later friction is a row there.
+
 ## 2. Composable services: every role optional and replaceable
 
 The destination from the first guiding principle, made concrete.

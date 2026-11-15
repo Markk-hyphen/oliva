@@ -1,6 +1,6 @@
 # Epic — Friction log: find the weak points by use, not by guess
 
-> **Status:** 🚧 phases 0 and 1 done (log seeded, clean-room run 1 recorded), phase 2 (security pass) next ·
+> **Status:** ✅ phases 0–3 done on 2026-11-14. The log is `docs/friction-log.md`; it stays open, the epic does not ·
 > **Target version:** none of its own (it produces a backlog; fixes ship in their own releases) ·
 > **Origin:** roadmap item 1, chosen as the next epic on 2026-11-14.
 
@@ -143,3 +143,15 @@ whether the app chose it or inherited it.
 3. **Where apps record friction** (open, not needed yet): a `docs/friction.md`
    of their own, harvested by an Oliva session. Deferred with the apps.
 4. **Cheaper-model sync test** (deferred with the apps).
+
+## Outcome
+
+- Log: 20 entries, two runs, the table of what varies and a ranked triage, in
+  [`docs/friction-log.md`](../../friction-log.md).
+- Fixed along the way: the CI wait on Mercure (`9ab188d`) and, after run 2, a
+  dependency cycle released as 1.6.1 (Symfony 7.4.23, caddy 2.11.9, FrankenPHP
+  1.13.5).
+- What changed from the plan: the apps left the critical path (none is in
+  production), so no sync run was made; the evidence from them is read-only.
+- Next, from the triage: a batch of small fixes (1.6.2), then an epic on the
+  birth of an app, which is the first slice of roadmap item 3.
