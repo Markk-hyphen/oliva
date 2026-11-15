@@ -256,9 +256,14 @@ This is the v2.0 destination the README already names. Every slot state from
 item 2 becomes a choice made here: default by omission, absent or replaced by
 flag. Shared-infra is just one more flag.
 
-> **Do not build this yet.** An installer is expensive and will be designed
-> wrong if built before item 1 reveals what actually varies between forks.
-> Earn the signal first.
+> **Its first slice shipped in 1.7.0**, and only that slice: `./oliva init` gives a
+> new app its identity (name, its own README, `AGENTS.md`, log and glossary, no
+> demo), born from a `release` branch that carries the framework without Oliva's
+> own files ([`epics/E-app-birth.md`](roadmap/epics/E-app-birth.md)). The friction
+> log asked for exactly this first: identity is what every app changes.
+>
+> **Service flags are still not built**, for the reason that stood before: which
+> services an app carries at birth needs the slots of item 2 unbundled first.
 
 ## 4. Agent layer: one entry point, vendor-neutral spec
 

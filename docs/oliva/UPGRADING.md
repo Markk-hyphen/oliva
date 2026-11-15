@@ -27,6 +27,65 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.7.0 — 2026-11-15
+
+> **An app is no longer a copy of Oliva.** Until now an app was born with `git clone`, so it
+> carried Oliva's own README, `AGENTS.md`, commit log and roadmap, and conflicted with them on
+> every sync. From this version Oliva publishes a `release` branch (the framework without
+> Oliva's own files), apps follow it, and `./oliva init` gives an app its identity. Crossing
+> over is done once per app. After it, a sync brings product files only.
+
+**Action required in the app**
+
+- [merge] **Before** `./oliva sync start`, take Oliva's tooling alone and commit it:
+  ```bash
+  git fetch oliva-upstream release
+  git checkout FETCH_HEAD -- oliva scripts/oliva scripts/lib
+  git commit -m "chore: Oliva 1.7.0 tooling before the sync"
+  ```
+  The `sync.sh` you have does not know the identity rule. Without it, git treats the move of
+  Oliva's guide as a rename and carries **your own** `AGENTS.md` into `docs/oliva/agent-guide.md`,
+  a file Oliva owns, leaving you without one. With the new script your `README.md`, `AGENTS.md`,
+  `agent-commits.md` and `docs/concepts.md` are kept as they are and listed as `[YOURS]`.
+- [merge, guard: app] After the merge is committed and before `./oliva sync verify` (its new
+  `app` step fails until this is done): `./oliva init --adopt`. It writes the
+  marker `.oliva-app`, creates any identity file you lack, and never overwrites or deletes one
+  of yours. An `AGENTS.md` or `README.md` still titled "Oliva" is set aside as
+  `*.pre-oliva-1.7.md` and a new one is written: move what is yours across, then delete the
+  old file. `./oliva doctor` keeps saying so until you do.
+- [merge] Your `AGENTS.md` should now hold only what is yours. The framework sections it
+  carried (commands, services, shared infra, runbooks, environment contract, sanity checks)
+  live in `docs/oliva/agent-guide.md`, imported by its first line. Cut your copies: they will
+  not be updated again.
+- [decision] The live demo. If you never used it, remove `frontend/src/js/live.js`, its import
+  and `initLive` call in `frontend/src/main.js`, and the "live" section of
+  `frontend/index.html`. Its backend half changed: `backend/public/live.php` is gone, replaced
+  by `backend/src/Controller/LiveController.php` at `/api/live`. If you kept the demo, point
+  `PUBLISH` in `live.js` at `/api/live` (the merge does it when you had not edited the file).
+- [decision] Oliva's own documents (`docs/roadmap.md`, `docs/roadmap/`,
+  `docs/friction-log.md`) are deleted from your repo by this sync. If you had notes in them,
+  recover them from your history before you look for them.
+
+**What changed**
+
+- **`release` branch.** `release.sh` builds it at each version: `main` minus the paths in the
+  new `scripts/oliva/project-paths.txt`. It refuses, and tags nothing, if `release` would
+  differ from `main` in anything else. Tags are on `release`. `sync.sh` fetches `release`
+  (`OLIVA_BRANCH` to change it) and falls back to `main`, saying so, on an older upstream.
+- **`./oliva init "<name>"`** (`--origin <url>`, `--demo`) for a new app, in a clone of
+  `release`; `./oliva init --adopt` for an existing one. Templates in `scripts/oliva/templates/`.
+- **The agent guide is product**: `AGENTS.md` → `docs/oliva/agent-guide.md`. Also moved to
+  `docs/oliva/`: `concepts.md` (the framework's glossary; an app's own stays at
+  `docs/concepts.md`), `qa-y-staging.md`, `sanity-checks.md`. `agent-commands.md` is now owned
+  by Oliva.
+- **The identity rule in `sync.sh`**: after every merge, `docs/oliva/` is taken from Oliva and
+  the app's identity files are restored from its pre-merge commit.
+- **`./oliva doctor`** has an "app" line: the app's name and the Oliva it was born on or
+  adopted on, what is left of an adoption, or "not initialized".
+- **The live demo publishes again.** Since 1.6.0 it signed with a key that no longer exists
+  and answered `{"ok":true}` while delivering nothing. `/live.php` is gone from the frontend
+  Caddyfile and the Vite proxy.
+
 ## 1.6.2 — 2026-11-14
 
 > First batch out of the friction log (`docs/friction-log.md`): small things that were

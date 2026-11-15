@@ -84,14 +84,14 @@ Going further, several apps can share one Postgres, RabbitMQ and reverse proxy i
 ### Start an app on Oliva
 
 ```bash
-git clone https://github.com/Markk-hyphen/oliva.git my-app
+git clone -b release https://github.com/Markk-hyphen/oliva.git my-app
 cd my-app
-git remote rename origin oliva-upstream     # this is how `oliva sync` finds Oliva
-git remote add origin <your-app-repo-url>
-./oliva env init                            # creates .env: every secret generated, nothing to fill in by hand
+./oliva init "My App"                       # optional: --origin <your-app-repo-url>
 docker compose up -d --wait                 # returns when every service is healthy
 ./oliva doctor
 ```
+
+`release` is Oliva as an app receives it: the framework, without Oliva's own README, log and roadmap. `./oliva init` is the birth of the app. It asks for one thing, the name, and then: points the `oliva-upstream` remote at Oliva (that is how `oliva sync` finds it), writes the app's own `README.md`, `AGENTS.md`, `agent-commits.md` and `docs/concepts.md`, removes the live demo (`--demo` keeps it), creates `.env` with every secret generated, and makes the first commit. From then on Oliva never writes to those files again, so they never conflict in a sync.
 
 | Service | URL (dev) |
 |---|---|
@@ -101,7 +101,7 @@ docker compose up -d --wait                 # returns when every service is heal
 | RabbitMQ management (`queues` profile) | http://localhost:15672 |
 | Database | localhost:5432 |
 
-Hot reload is on: changes to `backend/src` and `frontend/src` show up without rebuilding. The live canvas demo (`backend/src/Controller/LiveController.php` + `frontend/src/js/live.js`) shows Mercure working out of the box.
+Hot reload is on: changes to `backend/src` and `frontend/src` show up without rebuilding. With `--demo`, the live canvas (`backend/src/Controller/LiveController.php` + `frontend/src/js/live.js`) shows Mercure working out of the box.
 
 ### Your first feature
 
@@ -120,7 +120,7 @@ Two things worth knowing before they cost you an afternoon:
 - **Only some backend paths are live-mounted** in dev: `src`, `tests`, `config`, `migrations`, `public`. Anything else (`composer.json`, `phpunit.dist.xml`) is baked into the image, so after editing it run `docker compose up -d --build backend`. Otherwise the container keeps the old copy and nothing tells you.
 - **Files a container writes belong to root** on your machine (a generated migration, `backend/config/jwt`). They stay editable; to delete or move them, `sudo chown -R "$USER" backend` first.
 
-> A one-command `oliva new` with only the pieces you ask for is on the roadmap (item 3). It waits until real use shows what actually varies between apps.
+> Choosing at birth which services an app carries (`--queues`, `--no-realtime`) is on the roadmap (item 3). `init` is its first slice: identity only.
 
 ### Production
 

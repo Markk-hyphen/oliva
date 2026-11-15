@@ -17,6 +17,8 @@
 #   [mercure]     publish con JWT + suscriptor CON token recibe el update privado y
 #                 suscriptor anónimo NO (la regresión real de FrankenPHP 1.13.1)
 #   [migrations]  no hay migraciones pendientes
+#   [app]         the repo is an initialized app (marker .oliva-app, AGENTS.md imports the
+#                 framework guide), or Oliva itself
 #   [schema]      doctrine:schema:validate (CMP lo saltea: drift conocido de pgvector)
 #   [phpunit]     suite completa (antes: scripts/lib/test-db.sh crea y migra la base de test
 #                 si algún test usa el kernel; sin esos tests no hace nada)
@@ -51,6 +53,25 @@ step() {
 be() { docker compose exec -T backend "$@"; }
 
 do_env()        { env_check full docker compose; }
+# An app carries the marker written by `./oliva init`. A repo that received Oliva 1.7.0 and
+# has none is still wearing Oliva's identity: say how to fix it. Oliva's own repository is
+# told apart by its project files, which never reach an app. Costs nothing otherwise.
+do_app() {
+  local f
+  if is_app; then
+    echo "$(sed -n 's/^name=//p' "$OLIVA_APP_MARKER")"
+    for f in AGENTS.pre-oliva-1.7.md README.pre-oliva-1.7.md; do
+      [[ -f "$f" ]] && warn "$f is still here: move what is yours into ${f%.pre-oliva-1.7.md}.md, then delete it"
+    done
+    [[ "$(head -1 AGENTS.md 2>/dev/null)" == "@docs/oliva/agent-guide.md" ]] \
+      || { warn "AGENTS.md does not import the framework guide: its first line must be @docs/oliva/agent-guide.md"; return 1; }
+  elif [[ -e docs/roadmap.md ]]; then
+    echo "Oliva itself"
+  else
+    warn "not initialized: no $OLIVA_APP_MARKER. Run: ./oliva init --adopt"
+    return 1
+  fi
+}
 do_up()         { docker compose up -d --build --wait; }
 do_health()     { be curl -fsS http://localhost/health && echo; }
 do_migrations() { be bin/console doctrine:migrations:up-to-date; }
@@ -144,6 +165,7 @@ do_mercure() {
 }
 
 step env         do_env
+step app         do_app
 step up          do_up
 step php-version do_php_version
 step health      do_health

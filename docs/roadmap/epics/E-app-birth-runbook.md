@@ -4,14 +4,32 @@ Everything needed to take [`E-app-birth.md`](E-app-birth.md) from "designed" to
 released, written so that a session with no memory of the design can pick it up.
 Read the epic first (10 minutes); this file is the how.
 
-**State (2026-11-14):** design approved, all five open decisions taken
-(below). **Phase 1 is done** and its results are at the end of the epic: read
-that section before phase 3, it changes what `sync.sh` has to do. Nothing is
-built yet beyond the split. **Phase 2 is done too** (the guide is
-`docs/oliva/agent-guide.md`, Oliva has its own `AGENTS.md`, `project-paths.txt`
-exists). **Phase 3 is done** (`release.sh` cuts `release` and fails closed;
-`sync.sh` follows it and applies the identity rule). **Resume at phase 4.**
-Branch `feat/app-birth`, local.
+**State (2026-11-15): phases 1 to 5 are done, except the release itself.**
+Everything is committed on the local branch `feat/app-birth`. The phases below
+are kept as the record of how each was run and checked.
+
+## What is left (all of it needs the maintainer)
+
+1. **Merge `feat/app-birth` into `main`** (local, `--no-ff`).
+2. **Decide 1.6.2**: its notes are in `UPGRADING.md` and its code on `main`,
+   never released. Either release it first, or fold it into 1.7.0 (merge its
+   section's bullets into `## 1.7.0` and delete the heading).
+3. **Decide the name in the friction log**: it names an app with no public
+   repository. As is, or "the third app".
+4. `scripts/oliva/deps.sh audit` if the last one is more than 7 days old, then
+   `scripts/oliva/release.sh 1.7.0`. This is the **first real cut**: it creates
+   the `release` branch. Read its output; `git diff --stat main release` must
+   list only the paths of `project-paths.txt`.
+5. **Push**, when told: `git push origin main release v1.7.0`. Then check on
+   GitHub: CI on `main` (the `test-db.sh` step has never run there), and that
+   `git clone -b release` of the public repo plus `./oliva init` works.
+6. Not urgent: the three apps cross over, each in its own repo and session,
+   following `## 1.7.0` in `UPGRADING.md`. The first one is the first real test
+   of those steps: record it in the friction log.
+
+Known gaps, written down rather than fixed: CI runs on pushes to `main` only,
+so a push to `release` alone triggers nothing (they always go together); only
+Claude Code was checked reading the split `AGENTS.md`.
 
 ## Decisions already taken (do not reopen)
 
@@ -225,7 +243,7 @@ falls back to `main`, saying so, when the upstream has no `release` branch.
 **Stop and ask if:** the fail-closed check cannot be made to distinguish a
 project path from a product path in some real case.
 
-## Phase 4 — `./oliva init`
+## Phase 4 — `./oliva init` (DONE: run 3 in the friction log)
 
 **Goal:** an app is born as itself, and a clean-room run proves it.
 
@@ -267,7 +285,7 @@ only the app's entries, `AGENTS.md` titles the app, no demo file, `verify`
 green.** Also run `init` twice (must refuse) and `init` inside Oliva (must
 refuse). Record the run in `docs/friction-log.md` under "Runs".
 
-## Phase 5 — Docs and release
+## Phase 5 — Docs and release (docs DONE; the release is "What is left")
 
 1. `docs/oliva/UPGRADING.md`, section `## 1.7.0`, in English, with the crossing
    for existing apps as labelled actions. **The first one is new, from phase 1,

@@ -73,7 +73,7 @@ case "$cmd" in
     # of an adoption that a person has to finish.
     app_state() {
       if [[ -f .oliva-app ]]; then
-        echo "   $(sed -n 's/^name=//p' .oliva-app) (born on Oliva $(sed -n 's/^born_on=//p' .oliva-app))"
+        echo "   $(sed -n 's/^name=//p' .oliva-app) ($(sed -n 's/^\(born\|adopted\)_on=\(.*\)/\1 on Oliva \2/p' .oliva-app))"
         local f
         for f in AGENTS.pre-oliva-1.7.md README.pre-oliva-1.7.md; do
           [[ -f "$f" ]] && echo "   !! $f is still here: move what is yours into ${f%.pre-oliva-1.7.md}.md, then delete it."

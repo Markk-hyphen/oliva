@@ -1,6 +1,6 @@
 # Epic — The birth of an app: born as itself, not as a copy of Oliva
 
-> **Status:** 🚧 phases 1–3 done (prototype, the split, the cut and the sync). Phases 4–5 to do: [`E-app-birth-runbook.md`](E-app-birth-runbook.md) ·
+> **Status:** ✅ built and checked on 2026-11-15, on branch `feat/app-birth`. **Not released**: cutting 1.7.0 and pushing wait for the maintainer ([runbook](E-app-birth-runbook.md), "What is left") ·
 > **Target version:** v1.7.0 ·
 > **Origin:** friction log, triage group B (S3, T2, T3, S1, X3). First slice of roadmap item 3.
 
@@ -257,3 +257,25 @@ gets a plain first line telling it to read the guide, which is not verified.
   tooling alone, in its own commit, before the sync.
 - `project-paths.txt` needed no correction. `docs/concepts.md` joins the
   identity paths.
+
+## Outcome, and what changed from the plan
+
+Built: `project-paths.txt`, the guide in `docs/oliva/`, the cut in `release.sh`,
+the identity rule in `sync.sh`, `./oliva init` with `--adopt`, the "app" line in
+`doctor`, the demo as a controller. Checked by clean-room run 3 in
+`docs/friction-log.md` and on scratch copies of the three apps.
+
+- **The identity rule replaced "resolve the modify/delete conflicts".** Phase 1
+  showed git renames instead of conflicting. The rule restores identity files
+  after every merge whatever git did.
+- **`sync.sh` does not run `init --adopt` itself.** It warns, and `doctor` keeps
+  warning. With the identity rule the silent loss of `AGENTS.md` that justified
+  running it automatically no longer happens, and `init` needs a clean tree,
+  which a merge in progress is not.
+- **`--adopt` sets aside instead of deciding.** It cannot tell an untouched copy
+  of Oliva's `AGENTS.md` from one with the app's notes appended (one app has
+  exactly that). A file still titled "Oliva" is kept as `*.pre-oliva-1.7.md`.
+- **The demo was already broken** (friction log X9). Moving it under `/api` to
+  unwire it from product files is also what fixed it.
+- **The crossing of an existing app starts with taking Oliva's tooling alone**,
+  because the app's old `sync.sh` lacks the rule.

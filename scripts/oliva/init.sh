@@ -49,8 +49,8 @@ render() {  # render <template> <destination>
       -e "s|{{OLIVA_VERSION}}|$(local_oliva_version)|g" \
       -e "s|{{DATE}}|$(date +%F)|g" "$1" > "$2"
 }
-write_marker() {
-  printf 'name=%s\nborn_on=%s\ndate=%s\n' "$name" "$(local_oliva_version)" "$(date +%F)" > "$OLIVA_APP_MARKER"
+write_marker() {  # write_marker born_on|adopted_on
+  printf 'name=%s\n%s=%s\ndate=%s\n' "$name" "$1" "$(local_oliva_version)" "$(date +%F)" > "$OLIVA_APP_MARKER"
 }
 
 # ── adopt ──────────────────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ if (( adopt )); then
     if [[ "$f" == agent-commits.md && -f commits.md ]]; then echo "   kept      commits.md"; continue; fi
     if [[ -f "$f" ]]; then echo "   kept      $f"; else render "$TPL/${pair%%:*}.tpl" "$f"; echo "   created   $f"; fi
   done
-  write_marker
+  write_marker adopted_on
   git add -A
   git commit -q -m "init: adopt $name as an app on Oliva $(local_oliva_version)"
   info "done: $OLIVA_APP_MARKER written and committed."
@@ -134,7 +134,7 @@ else
   render "$TPL/frontend/style.css.tpl" frontend/src/style.css
 fi
 
-write_marker
+write_marker born_on
 [[ -f .env ]] || scripts/oliva/env.sh init
 git add -A
 git commit -q -m "init: $name on Oliva $(local_oliva_version)"
