@@ -6,6 +6,11 @@
 OLIVA_REMOTE="${OLIVA_REMOTE:-oliva-upstream}"
 OLIVA_REMOTE_URL="${OLIVA_REMOTE_URL:-https://github.com/Markk-hyphen/oliva.git}"
 
+# The branch an app clones and syncs from: `main` minus Oliva's own project files, cut by
+# release.sh at each version (docs/roadmap/epics/E-app-birth.md). `main` is where Oliva is
+# developed; it carries Oliva's README, log and roadmap, which are not an app's.
+OLIVA_BRANCH="${OLIVA_BRANCH:-release}"
+
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo ">> $*"; }
 warn() { echo "!! $*" >&2; }
@@ -19,6 +24,17 @@ require_clean_tree() {
   git diff --quiet && git diff --cached --quiet \
     || die "hay cambios sin commitear en archivos versionados. Commitealos o stasheálos antes."
 }
+
+# Oliva's own project files: never reach an app (release.sh removes them from `release`).
+project_paths() { grep -vE '^[[:space:]]*(#|$)' scripts/oliva/project-paths.txt 2>/dev/null || true; }
+
+# The paths that are an app's IDENTITY: written by the app, never by Oliva. A sync keeps
+# the app's version of each, whatever the merge did (see apply_identity_rule in sync.sh).
+identity_paths() { printf '%s\n' README.md AGENTS.md agent-commits.md commits.md docs/concepts.md; }
+
+# An initialized app carries this tracked marker (written by `./oliva init`).
+OLIVA_APP_MARKER=".oliva-app"
+is_app() { [[ -f "$OLIVA_APP_MARKER" ]]; }
 
 # Versión de Oliva sobre la que está este checkout (archivo OLIVA_VERSION, desde 1.1.0).
 local_oliva_version() { cat OLIVA_VERSION 2>/dev/null || echo "0.0.0"; }

@@ -1045,3 +1045,73 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   days old, the 1.6.0 lock, clean); `doctor` with four kinds of `origin`; the summary with 14
   advisories reported as new. **Not checked:** the CI change on GitHub, since nothing was pushed
   (only `actionlint` and the same script run locally).
+
+## [app birth · phases 1–2] prototype on copies of the apps; the split into product and project
+**Hash:** `4d9b841`
+**Branch:** `feat/app-birth`
+**Date:** 2026-11-14
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docs/roadmap/epics/E-app-birth.md`, `E-app-birth-runbook.md` | new | Design, the five decisions, phase 1 results, and how to finish. |
+| `AGENTS.md` → `docs/oliva/agent-guide.md` | moved | The framework guide becomes product. The "keeping Oliva alive" bullet left it. |
+| `AGENTS.md` | new | Oliva's own: the three kinds of file, maintenance, where direction lives. Imports the guide. |
+| `docs/concepts.md`, `docs/qa-y-staging.md`, `docs/sanity-checks.md` → `docs/oliva/` | moved | Product docs. |
+| `scripts/oliva/project-paths.txt` | new | What never travels to an app. |
+| `scripts/oliva/owned-paths.txt` | modified | `agent-commands.md` owned; identity paths described. |
+| `README.md`, `scripts/deploy.sh` | modified | References. |
+
+### Why
+- *A `release` branch instead of cleaning up after each merge.* Simulated first on toy repos,
+  then on scratch copies of the three apps: from `main`, identity files conflict on every sync;
+  from `release`, once for an existing app and never for a new one.
+- *The prototype corrected the design.* On the real files git detects the move of `AGENTS.md` as
+  a rename and carries the app's own file into `docs/oliva/`. On git 2.43 neither
+  `-X no-renames` nor `merge.renames=false` changed that. So `sync.sh` will restore identity
+  paths from the pre-merge commit and take `docs/oliva/` from Oliva, whatever the merge did.
+  With that rule the second sync was clean in all three copies.
+- *The split depends on a nested import* (`CLAUDE.md` → `AGENTS.md` → the guide). Checked with
+  a real session and tools disabled, in a scratch directory and then in this repository. Only
+  Claude Code was checked; another agent gets a plain first line.
+- Not done yet: the cut in `release.sh`, the rule in `sync.sh`, `./oliva init`, the demo,
+  `UPGRADING.md` for 1.7.0. The runbook has each step.
+
+## [app birth · phases 3–5] the cut, the identity rule, `./oliva init`, notes for 1.7.0
+**Hash:** `92e6200` (last of the series; not released)
+**Branch:** `feat/app-birth`
+**Date:** 2026-11-15
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `scripts/oliva/release.sh` | modified | Cuts `release` (main minus `project-paths.txt`), fails closed, tags on `release`. |
+| `scripts/oliva/sync.sh` | modified | Follows `release` (falls back to `main`); identity rule after every merge; warns when not initialized. |
+| `scripts/oliva/lib.sh` | modified | `OLIVA_BRANCH`, `project_paths`, `identity_paths`, `is_app`. |
+| `scripts/oliva/init.sh`, `scripts/oliva/templates/` | new | Birth and `--adopt`; identity templates and a starter frontend. |
+| `oliva` | modified | `init`; "app" line in `doctor`. |
+| `scripts/oliva/verify.sh` | modified | Step `app`. |
+| `backend/src/Controller/LiveController.php` | new | The demo's endpoint, at `/api/live`, through `HubInterface`. |
+| `backend/public/live.php` | deleted | It signed with a key that no longer exists. |
+| `frontend/Caddyfile`, `frontend/vite.config.js`, `frontend/src/js/live.js` | modified | `/live.php` route gone. |
+| `README.md`, `docs/oliva/UPGRADING.md`, `docs/oliva/actualizaciones.md`, `docs/oliva/agent-guide.md`, `docs/roadmap.md`, `docs/friction-log.md`, both epic docs | modified | 1.7.0 notes, the three kinds of file, run 3, outcome, what is left. |
+
+### Why
+- *The cut fails closed with one comparison*: the staged difference against `main` must be
+  exactly the project paths. A `release` sabotaged by hand made it refuse, with `main`, the
+  version file and the tags untouched.
+- *The identity rule runs after every merge, not only on conflicts.* git resolves the move of
+  the guide as a rename without conflict in an app that never edited its `AGENTS.md`; a rule
+  tied to conflicts would miss exactly that case.
+- *`sync.sh` warns instead of running `init --adopt`.* `init` needs a clean tree and a merge
+  in progress is not one; and with the rule in place nothing is lost by waiting.
+- *`--adopt` sets aside a file still titled "Oliva"* instead of replacing it: one real app has
+  its own notes appended to Oliva's `AGENTS.md`, and the two cases look the same from outside.
+- *The demo moved under `/api` to get out of the product files, and that fixed it.* It had
+  answered `{"ok":true}` and delivered nothing since 1.6.0 (checked before and after).
+- *The `app` step of `verify` exists so the adoption note has a guard*: `release.sh` rejects
+  a guard that does not exist.
+- Checked: clean-room run 3 (birth, first feature, `verify` green, two syncs with zero
+  conflicts); `--adopt` on scratch copies of the three apps; the `app` step in three states.
+  **Not checked:** the first real cut and push, CI on GitHub, the real crossing of an app, and
+  any agent other than Claude Code.

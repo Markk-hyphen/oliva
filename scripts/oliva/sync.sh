@@ -22,16 +22,54 @@ source "$(dirname "$0")/lib.sh"
 source "$(dirname "$0")/../lib/upgrade-guards.sh"
 require_repo_root
 
-UP="${OLIVA_REMOTE}/main"
+UP="${OLIVA_REMOTE}/${OLIVA_BRANCH}"
 
 ensure_remote() {
   git remote get-url "$OLIVA_REMOTE" >/dev/null 2>&1 \
     || die "no existe el remote '$OLIVA_REMOTE'. Agregalo: git remote add $OLIVA_REMOTE $OLIVA_REMOTE_URL"
 }
 
+# Apps follow `release` (see OLIVA_BRANCH in lib.sh). An upstream older than 1.7.0 has no
+# such branch: fall back to `main`, out loud, so a sync never silently follows nothing.
 fetch_upstream() {
+  if git fetch -q "$OLIVA_REMOTE" "$OLIVA_BRANCH" 2>/dev/null; then return 0; fi
+  if git rev-parse -q --verify "refs/remotes/$UP" >/dev/null; then
+    warn "no pude hacer fetch de $OLIVA_REMOTE (¿sin red?). Uso lo último conocido."
+    return 0
+  fi
+  warn "$OLIVA_REMOTE has no '$OLIVA_BRANCH' branch (an Oliva older than 1.7.0?). Falling back to main."
+  UP="${OLIVA_REMOTE}/main"
   git fetch -q "$OLIVA_REMOTE" main 2>/dev/null \
     || warn "no pude hacer fetch de $OLIVA_REMOTE (¿sin red?). Uso lo último conocido."
+}
+
+# The identity rule. Applied after EVERY merge of Oliva, whether it conflicted or not.
+#   - docs/oliva/ is product: taken from Oliva.
+#   - each identity path the app had before the merge is restored from that commit,
+#     existence included.
+# Why not trust the merge: when Oliva moved its guide from AGENTS.md to docs/oliva/, git saw a
+# rename and carried each app's OWN AGENTS.md into the file Oliva owns, leaving the app
+# without one; an app that had never edited README.md simply lost it. Rename detection
+# cannot be switched off on the git versions in use (tried on 2.43). Measured on copies of
+# three real apps: with this rule the first sync leaves only unrelated conflicts and the
+# next ones none.
+apply_identity_rule() {
+  local pre="$1" ref="$2" f restored=0
+  if git cat-file -e "$ref:docs/oliva" 2>/dev/null; then
+    git checkout -q "$ref" -- docs/oliva/
+  fi
+  while IFS= read -r f; do
+    git cat-file -e "$pre:$f" 2>/dev/null || continue
+    if [[ -e "$f" ]] && git diff --quiet "$pre" -- "$f" 2>/dev/null \
+       && ! git diff --name-only --diff-filter=U | grep -qxF "$f"; then
+      continue    # untouched by the merge
+    fi
+    git checkout -q "$pre" -- "$f"
+    (( restored )) || { echo; echo "── Identity: these files are this app's, Oliva does not write them ──"; }
+    echo "   [YOURS]  $f  → kept yours"
+    restored=1
+  done < <(identity_paths)
+  return 0
 }
 
 upstream_version() { git show "${1:-$UP}:OLIVA_VERSION" 2>/dev/null || echo "0.0.0"; }
@@ -78,7 +116,7 @@ cmd_start() {
   [[ ! -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]] || die "ya hay un merge en curso. Terminalo (o git merge --abort)."
   require_clean_tree
   fetch_upstream
-  local ref="${1:-$UP}" mine theirs branch
+  local ref="${1:-$UP}" mine theirs branch pre
   mine="$(local_oliva_version)"; theirs="$(upstream_version "$ref")"
   (( $(git rev-list --count HEAD.."$ref") > 0 )) || { info "nada para traer: ya incluye $ref."; return 0; }
 
@@ -100,8 +138,19 @@ cmd_start() {
   # la versión de antes del sync, así lo que trae el merge queda pendiente en `doctor`.
   seed_acked_version
 
-  if git merge --no-ff --no-edit -m "merge: sync Oliva ${theirs} into $(basename "$PWD")" "$ref"; then
+  pre="$(git rev-parse HEAD)"
+  local merged=0 msg
+  msg="merge: sync Oliva ${theirs} into $(basename "$PWD")"
+  git merge --no-ff --no-edit -m "$msg" "$ref" && merged=1
+  apply_identity_rule "$pre" "$ref"
+  if (( merged )); then
+    # The rule may have changed files after a clean merge: they belong in the merge commit.
+    git diff --quiet HEAD && git diff --cached --quiet HEAD || git commit -q --amend --no-edit
     info "merge LIMPIO."
+  elif [[ -z "$(git diff --name-only --diff-filter=U)" ]]; then
+    # Only identity paths (or docs/oliva/) conflicted, and the rule settled them.
+    git commit -q --no-edit
+    info "merge completo: los únicos conflictos eran de identidad y se resolvieron por regla."
   else
     echo
     echo "── Conflictos ──"
@@ -158,6 +207,7 @@ cmd_start() {
     info "Oliva cambió dependencias ($changed_manifests) → corré scripts/oliva/sync.sh locks"
   fi
   info "al terminar: scripts/oliva/sync.sh verify y, si pasa, git switch main && git merge --no-ff $branch"
+  is_app || warn "this app is not initialized (no $OLIVA_APP_MARKER). After the merge is committed: ./oliva init --adopt"
 }
 
 # ── locks ──────────────────────────────────────────────────────────────────────

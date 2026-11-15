@@ -49,7 +49,7 @@ not reproduced.
 
 | # | Friction | Evidence |
 |---|---|---|
-| S1 | The demo is never removed | present in all three apps, including one that is two years old |
+| S1 | The demo is never removed | present in all three apps |
 | S2 | Unused services ship to every app | `rabbitmq` and `worker` blocks in all three, used by one |
 | S3 | An app is born with Oliva's identity | two weeks and three phases in, `the third app`'s `AGENTS.md` is byte-identical to Oliva's (title "Oliva"); it inherited 21 entries of Oliva's `agent-commits.md` and appends its own below them (the origin of T2), plus `docs/roadmap*`, 564 lines of `concepts.md` and Oliva's whole git history |
 

@@ -54,7 +54,7 @@ Some of what is loud today:
 
 Guards cost nothing when they don't apply: an empty crontab or no PHP extensions means no output at all.
 
-The operating rules travel with the code. [`AGENTS.md`](AGENTS.md) is the open format that Claude Code, Codex, Cursor, Gemini CLI, Copilot, Aider, Zed and others read natively. A one-line `CLAUDE.md` stub imports it. `./oliva` is the single entry point, so docs never depend on script paths, and `./oliva doctor` is the read-only status check an agent runs before touching code. New to the project? [`docs/sanity-checks.md`](docs/sanity-checks.md) walks through every check, how they correlate, and what each one does — with a run-it-yourself ✅/❌ checklist.
+The operating rules travel with the code. [`docs/oliva/agent-guide.md`](docs/oliva/agent-guide.md) is the operating guide, imported by `AGENTS.md`, the open format that Claude Code, Codex, Cursor, Gemini CLI, Copilot, Aider, Zed and others read natively. A one-line `CLAUDE.md` stub imports it. `./oliva` is the single entry point, so docs never depend on script paths, and `./oliva doctor` is the read-only status check an agent runs before touching code. New to the project? [`docs/oliva/sanity-checks.md`](docs/oliva/sanity-checks.md) walks through every check, how they correlate, and what each one does — with a run-it-yourself ✅/❌ checklist.
 
 ### 3. Staying patched is the default
 
@@ -84,14 +84,14 @@ Going further, several apps can share one Postgres, RabbitMQ and reverse proxy i
 ### Start an app on Oliva
 
 ```bash
-git clone https://github.com/Markk-hyphen/oliva.git my-app
+git clone -b release https://github.com/Markk-hyphen/oliva.git my-app
 cd my-app
-git remote rename origin oliva-upstream     # this is how `oliva sync` finds Oliva
-git remote add origin <your-app-repo-url>
-./oliva env init                            # creates .env: every secret generated, nothing to fill in by hand
+./oliva init "My App"                       # optional: --origin <your-app-repo-url>
 docker compose up -d --wait                 # returns when every service is healthy
 ./oliva doctor
 ```
+
+`release` is Oliva as an app receives it: the framework, without Oliva's own README, log and roadmap. `./oliva init` is the birth of the app. It asks for one thing, the name, and then: points the `oliva-upstream` remote at Oliva (that is how `oliva sync` finds it), writes the app's own `README.md`, `AGENTS.md`, `agent-commits.md` and `docs/concepts.md`, removes the live demo (`--demo` keeps it), creates `.env` with every secret generated, and makes the first commit. From then on Oliva never writes to those files again, so they never conflict in a sync.
 
 | Service | URL (dev) |
 |---|---|
@@ -101,7 +101,7 @@ docker compose up -d --wait                 # returns when every service is heal
 | RabbitMQ management (`queues` profile) | http://localhost:15672 |
 | Database | localhost:5432 |
 
-Hot reload is on: changes to `backend/src` and `frontend/src` show up without rebuilding. The live canvas demo (`backend/public/live.php` + `frontend/src/js/live.js`) shows Mercure working out of the box.
+Hot reload is on: changes to `backend/src` and `frontend/src` show up without rebuilding. With `--demo`, the live canvas (`backend/src/Controller/LiveController.php` + `frontend/src/js/live.js`) shows Mercure working out of the box.
 
 ### Your first feature
 
@@ -120,7 +120,7 @@ Two things worth knowing before they cost you an afternoon:
 - **Only some backend paths are live-mounted** in dev: `src`, `tests`, `config`, `migrations`, `public`. Anything else (`composer.json`, `phpunit.dist.xml`) is baked into the image, so after editing it run `docker compose up -d --build backend`. Otherwise the container keeps the old copy and nothing tells you.
 - **Files a container writes belong to root** on your machine (a generated migration, `backend/config/jwt`). They stay editable; to delete or move them, `sudo chown -R "$USER" backend` first.
 
-> A one-command `oliva new` with only the pieces you ask for is on the roadmap (item 3). It waits until real use shows what actually varies between apps.
+> Choosing at birth which services an app carries (`--queues`, `--no-realtime`) is on the roadmap (item 3). `init` is its first slice: identity only.
 
 ### Production
 
@@ -169,7 +169,7 @@ PostgreSQL          RabbitMQ ── worker / scheduler
 
 The frontend proxies `/api/*` to the backend over the app's private network. In production nothing behind the frontend has a public port.
 
-[`docs/concepts.md`](docs/concepts.md) explains the less obvious pieces (pgvector, AMQP, Mercure, the sync model). `docs/examples/` has reference skeletons of a queue producer/consumer and a Mercure publisher.
+[`docs/oliva/concepts.md`](docs/oliva/concepts.md) explains the less obvious pieces (pgvector, AMQP, Mercure, the sync model). `docs/examples/` has reference skeletons of a queue producer/consumer and a Mercure publisher.
 
 ### Optional services (Compose profiles)
 
@@ -232,7 +232,7 @@ The full reasoning, the slot contracts and the sequencing are in [`docs/roadmap.
 - **Docker lint:** hadolint.
 - **Image scan:** Trivy, report-only.
 
-An app can skip a step that legitimately doesn't apply to it, with `OLIVA_VERIFY_SKIP` locally or the `OLIVA_CI_SKIP` repo variable in CI. [`docs/qa-y-staging.md`](docs/qa-y-staging.md) covers what this verifies, the staging stack, and what Oliva deliberately does *not* check.
+An app can skip a step that legitimately doesn't apply to it, with `OLIVA_VERIFY_SKIP` locally or the `OLIVA_CI_SKIP` repo variable in CI. [`docs/oliva/qa-y-staging.md`](docs/oliva/qa-y-staging.md) covers what this verifies, the staging stack, and what Oliva deliberately does *not* check.
 
 ### Adding PHP extensions
 
@@ -275,7 +275,7 @@ oliva/
 ├── oliva                   # the CLI: ./oliva <command>
 ├── OLIVA_VERSION
 ├── env.manifest            # the app's own variables (Oliva's are in scripts/oliva/env.manifest)
-├── AGENTS.md / CLAUDE.md   # operating guide for agents (+ one-line stub)
+├── AGENTS.md / CLAUDE.md   # the repo's own agent notes; first line imports docs/oliva/agent-guide.md (+ one-line stub)
 ├── agent-commands.md       # chat commands for the agent
 ├── backend/                # Symfony app (FrankenPHP + Caddy)
 │   ├── src/DataFixtures/   # Foundry fixtures, grouped by env
@@ -284,10 +284,9 @@ oliva/
 │   └── frankenphp/         # Caddy and PHP runtime config
 ├── frontend/               # Vite app + production Caddyfile
 ├── docs/
-│   ├── roadmap.md          # where Oliva is heading and why
-│   ├── concepts.md         # cumulative glossary
-│   ├── qa-y-staging.md     # QA guarantees + staging stack
-│   ├── oliva/              # framework docs that ship to every app (sync system, UPGRADING)
+│   ├── roadmap.md          # where Oliva is heading and why (Oliva's own: does not ship to apps)
+│   ├── oliva/              # framework docs that ship to every app: agent guide, glossary,
+│   │                       #   sync system, UPGRADING, QA and staging, sanity checks
 │   └── examples/           # reference skeletons (not live code)
 ├── scripts/
 │   ├── oliva/              # deps, sync, verify, release, env, owned-paths.txt

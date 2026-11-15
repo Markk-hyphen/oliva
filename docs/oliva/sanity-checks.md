@@ -162,12 +162,12 @@ worked, ❌ if you got stuck or confused (note *why* — that's the useful signa
 
 This guide is the on-ramp. When you need more:
 
-- **[`AGENTS.md`](../AGENTS.md)** → section "Chequeos de sanidad" — the same
+- **[`agent-guide.md`](agent-guide.md)** → section "Chequeos de sanidad" — the same
   routine, written for an AI agent, with the open/close protocol in detail.
-- **[`docs/oliva/actualizaciones.md`](oliva/actualizaciones.md)** — the full
+- **[`actualizaciones.md`](actualizaciones.md)** — the full
   dependency + fork-sync system (the TOCA → report → update → release cycle, and
   check → start → locks for forks).
-- **[`docs/qa-y-staging.md`](qa-y-staging.md)** — exactly what guarantees the
+- **[`qa-y-staging.md`](qa-y-staging.md)** — exactly what guarantees the
   framework offers (verify, the CI jobs, staging) and what it does **not** cover.
 - **[`README.md`](../README.md)** → the `./oliva` reference table — one line per
   command.

@@ -122,6 +122,7 @@ la v0.69.4 estuvo comprometida en un incidente de supply-chain).
 
 ## Lado fork: traer Oliva
 
+Una app nueva nace con `git clone -b release` + `./oliva init "<nombre>"` (ver README).
 Requisitos: remote `oliva-upstream` → `https://github.com/Markk-hyphen/oliva.git`, y el fork
 ya mergeó Oliva ≥ 1.1.0 al menos una vez (ese primer merge trae los scripts; ver
 `UPGRADING.md` 1.1.0).
@@ -132,7 +133,8 @@ ya mergeó Oliva ≥ 1.1.0 al menos una vez (ese primer merge trae los scripts; 
    `chore/oliva-sync-<versión>`, mergea y **clasifica cada conflicto**:
    - `[OLIVA]`: archivo del framework (`owned-paths.txt`) → tomar el de Oliva (`git checkout --theirs`).
    - `[LOCK]`: `composer.lock`/`yarn.lock` → no tocar a mano, lo resuelve `locks`.
-   - `[MANUAL]`: archivo compartido (`AGENTS.md`, override, `config/**`…) → combinar.
+   - `[MANUAL]`: archivo compartido (override, `config/**`, `.env.example`…) → combinar.
+   - `[YOURS]`: archivo de identidad de la app → ya resuelto, queda el de la app.
 
    También lista el **drift**: archivos de Oliva que el fork editó desde el último sync. Cada uno
    es un conflicto futuro asegurado: o se documenta por qué, o se devuelve a Oliva.
@@ -177,13 +179,34 @@ excepción: se lleva a Oliva (commit propio, citando el hash del fork) y baja a 
 próximo sync. Al llegar, el archivo queda idéntico en el fork y el drift desaparece solo.
 Si el cambio es específico del fork, se documenta en su `AGENTS.md` y se asume el conflicto.
 
+## Three kinds of file, and the `release` branch (since 1.7.0)
+
+Oliva is developed on `main`, and `main` carries what Oliva writes about itself: its README,
+its `AGENTS.md`, its commit log, the roadmap, the friction log. None of that is an app's. So
+`release.sh` cuts a second branch, **`release`: `main` minus the paths in
+`scripts/oliva/project-paths.txt`**, and that is what an app clones and syncs from. The cut
+fails closed: if `release` would differ from `main` in any other path, nothing is tagged.
+
+| Kind | Examples | Reaches an app |
+|---|---|---|
+| Product | compose files, Dockerfiles, `scripts/`, CI, `docs/oliva/` | on every sync |
+| Oliva's own project | the paths in `project-paths.txt` | never |
+| The app's identity | its `README.md`, `AGENTS.md`, `agent-commits.md`/`commits.md`, `docs/concepts.md` | written once by `./oliva init`, then only by the app |
+
+After every merge `sync.sh` applies the **identity rule**: `docs/oliva/` is taken from Oliva,
+and each identity file the app had is restored from its pre-merge commit. It does not trust
+the merge for these paths because git detects Oliva's moves as renames and would carry the
+app's own `AGENTS.md` into a file Oliva owns (measured on copies of three apps; rename
+detection could not be turned off). Design and measurements: `docs/roadmap/epics/E-app-birth.md`
+in Oliva's repository.
+
 ## Propiedad de archivos (`scripts/oliva/owned-paths.txt`)
 
 | Dueño | Qué | En un sync |
 |---|---|---|
 | **Oliva** | Dockerfiles, `backend/frankenphp/`, los 4 compose salvo el override, `scripts/` de deploy y `scripts/oliva/`, CI, `docs/oliva/`, `OLIVA_VERSION` | Gana Oliva. Si un fork necesita otra cosa, se agrega a Oliva como opción (env var, profile) y baja a todos. |
-| **Compartido** | `docker-compose.override.yml`, `composer.json`, `package.json`, `config/**`, `.env.example`, `.env.backend`, `.gitignore`, `AGENTS.md`, `README.md`, `agent-commands.md` | Se combina a mano; `rerere` lo aprende. |
-| **Log del proyecto** | `agent-commits.md`, `commits.md` | Gana el del fork (`git checkout --ours`): Oliva registra lo suyo en su propio archivo. |
+| **Compartido** | `docker-compose.override.yml`, `composer.json`, `package.json`, `config/**`, `.env.example`, `.env.backend`, `.gitignore` | Se combina a mano; `rerere` lo aprende. |
+| **Identidad de la app** | `README.md`, `AGENTS.md`, `agent-commits.md`/`commits.md`, `docs/concepts.md` | Siempre los de la app: `sync.sh` los restaura solo (regla de identidad, desde 1.7.0). |
 | **Locks** | `composer.lock`, `yarn.lock` | `sync.sh locks`. `symfony.lock`: unión a mano (raro). |
 | **Fork** | `src/`, `migrations/`, `tests/`, `docs/` (salvo `docs/oliva/`), `backend/php-extensions.txt`, todo lo demás | Oliva no los toca. |
 

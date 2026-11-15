@@ -12,6 +12,8 @@ usage() {
 Uso: oliva <comando> [args...]
 
 Framework:
+  init "<name>" [--origin <url>] [--demo]       scripts/oliva/init.sh (the birth of an app, in a clone of `release`)
+  init --adopt                                 the same for an app that already exists
   deps <due|report|update|audit|scan-images>   scripts/oliva/deps.sh
   sync <check|start|locks|verify|pending|ack>  scripts/oliva/sync.sh
   ack                                          = sync ack (acciones de upgrade hechas en esta máquina)
@@ -36,6 +38,7 @@ cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift
 
 case "$cmd" in
+  init)          exec scripts/oliva/init.sh "$@" ;;
   deps)          exec scripts/oliva/deps.sh "$@" ;;
   sync)          exec scripts/oliva/sync.sh "$@" ;;
   ack)           exec scripts/oliva/sync.sh ack ;;
@@ -65,6 +68,26 @@ case "$cmd" in
     step "rama" git branch --show-current
     step "status" git status -s
     step "log" git log --oneline -3
+    # An app is born with ./oliva init (marker .oliva-app). A repo that follows Oliva
+    # without it is a clone carrying Oliva's identity; say so, and say what is left
+    # of an adoption that a person has to finish.
+    app_state() {
+      if [[ -f .oliva-app ]]; then
+        echo "   $(sed -n 's/^name=//p' .oliva-app) ($(sed -n 's/^\(born\|adopted\)_on=\(.*\)/\1 on Oliva \2/p' .oliva-app))"
+        local f
+        for f in AGENTS.pre-oliva-1.7.md README.pre-oliva-1.7.md; do
+          [[ -f "$f" ]] && echo "   !! $f is still here: move what is yours into ${f%.pre-oliva-1.7.md}.md, then delete it."
+        done
+        [[ "$(head -1 AGENTS.md 2>/dev/null)" == "@docs/oliva/agent-guide.md" ]] \
+          || echo "   !! AGENTS.md does not import the framework guide: its first line must be @docs/oliva/agent-guide.md"
+      elif git remote get-url oliva-upstream >/dev/null 2>&1; then
+        echo "   !! not initialized: this repo follows Oliva but has no .oliva-app. Run: ./oliva init --adopt (or ./oliva init \"<name>\" in a fresh clone of release)"
+      else
+        echo "   (this is Oliva itself)"
+      fi
+      return 0
+    }
+    step "app" app_state
     step "docker compose ps" docker compose ps
     step "migraciones" docker compose exec backend bin/console doctrine:migrations:status
     # Lo que Compose RESUELVE para cada servicio (no lo que dice el .env): secretos
