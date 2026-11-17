@@ -1239,3 +1239,41 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   through the shared broker); staging through `deploy-staging.sh` (worker on the `:staging`
   image); cross-consumption reproduced, then gone once staging had its own vhost (production's
   message stayed queued until production's worker drained it).
+
+## [queue slot · phase 3] the queue guards: abort before `down`, red in verify, shown in doctor
+**Hash:** `1bb3c83c66d15c13d5a06890cd6119196d6b6d27`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `scripts/lib/queue-guard.sh` | new | `queue_guard` (async routes and no worker; a worker on `/` of an external broker) and `queue_guard_staging` (staging on production's broker and vhost). Static: messenger.yaml, `#[AsMessage]`, and the resolved environment. |
+| `scripts/deploy.sh` | modified | `queue check` after the env check, before `down`: aborts with the old stack serving. |
+| `scripts/deploy-staging.sh` | modified | The same, plus the comparison with production's resolved configuration. |
+| `scripts/oliva/verify.sh` | modified | Step `queue` (static, before `up`): red. |
+| `oliva` | modified | `doctor` step "colas": informs, and announces a declared external consumer. |
+| `.env.example` | modified | `OLIVA_QUEUE_CONSUMER=external`, commented, with when to use it. |
+
+### Why
+- *Abort, not warn* (decided with the maintainer): neither failure shows at boot, a warning
+  protects only whoever reads it, and processing a backlog later does not undo a late effect.
+  Aborting before `down` costs nothing: the running stack keeps serving and the fix is one
+  line of `.env`.
+- *Static, so it can run before `down`*: the new image does not exist yet at that point. The
+  guard reads messenger.yaml and the attributes, and resolves each `%env(NAME)%` against what
+  Compose resolves for the backend, the reader `env-check.sh` already had.
+- *Only asynchronous routes are evidence*: a route to `sync://` or `in-memory://` needs no
+  worker, so it must not stop a deploy. The vhost check looks at every AMQP transport, not only
+  the routed ones, because `--all` consumes them all.
+- *The declared exception is a replaced slot*: it passes and is announced on every run, the
+  roadmap's rule for replacements.
+- *Not registered in `UPGRADE_GUARDS`*: those run after `up` and only warn. The verify step
+  named `queue` makes `guard: queue` a valid label for `UPGRADING.md`.
+- Proven, on a local shared-infra setup through the real deploy scripts: worker on `/` →
+  aborted, stack untouched; a vhost of its own → deployed; staging inheriting production's
+  vhost → aborted, staging untouched; staging on its own vhost → deployed; async routes with the
+  profile off → aborted, the old worker kept consuming; the same with the declaration → deployed
+  and announced; `verify` red (exit 1) and green on the same states; sync-only routes and no
+  routes → silent. The parser was unit-tested on inline and nested transports, scalar, inline
+  and block-list routes, comments, a `when@prod` block, and single- and multi-line attributes.

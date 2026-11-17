@@ -132,6 +132,16 @@ case "$cmd" in
       return 0
     }
     step "usuario del backend (dev)" uid_match
+
+    # Queues: routed and unconsumed, or a worker on someone else's vhost (queue slot epic).
+    # Same check that aborts a deploy and turns verify red; here it only informs.
+    queue_board() {
+      # shellcheck source=/dev/null
+      source scripts/lib/env-check.sh && source scripts/lib/queue-guard.sh || return 0
+      if queue_guard docker compose; then echo "   ok: nothing routed asynchronously without a worker"; fi
+      return 0
+    }
+    step "colas" queue_board
     # Lo que Compose RESUELVE para cada servicio (no lo que dice el .env): secretos
     # faltantes/públicos, slots reemplazados. Informa; el exit code no corta a doctor.
     env_board() { scripts/oliva/env.sh check || true; }
