@@ -184,6 +184,7 @@ COPY --link frankenphp/conf.d/20-app.dev.ini $PHP_INI_DIR/app.conf.d/
 # montan, a diferencia de phpunit.dist.xml). `./oliva doctor` compara estos hashes
 # contra los del host y avisa "rebuildeá la imagen" si driftearon. Va al final del
 # stage dev (no en base) para no invalidar el layer caro de xdebug al tocarlo.
+# hadolint ignore=DL4006
 RUN --mount=type=bind,source=php-extensions.txt,target=/run/oliva/php-extensions.txt \
 	set -eux; \
 	mkdir -p /usr/local/share/oliva; \
