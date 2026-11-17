@@ -90,6 +90,48 @@ case "$cmd" in
     step "app" app_state
     step "docker compose ps" docker compose ps
     step "migraciones" docker compose exec backend bin/console doctrine:migrations:status
+
+    # T5 — inputs de build horneados que, editados en el host, no surten efecto sin
+    # rebuild (composer.*/symfony.lock/php-extensions.txt). La imagen dev hornea sus
+    # hashes en /usr/local/share/oliva/build-inputs.sha256; acá se comparan con el host.
+    build_inputs_drift() {
+      local baked host
+      baked="$(docker compose exec -T backend cat /usr/local/share/oliva/build-inputs.sha256 2>/dev/null)" \
+        || { echo "   (backend no está arriba o la imagen no trae el manifiesto; se omite)"; return 0; }
+      host="$( cd backend 2>/dev/null && sha256sum composer.json composer.lock symfony.lock php-extensions.txt 2>/dev/null \
+        | awk '{n=$2; sub(/.*\//,"",n); print $1"  "n}' | sort -k2 )"
+      if [ "$baked" = "$host" ]; then
+        echo "   imagen al día con composer.json/lock, symfony.lock, php-extensions.txt"
+      else
+        echo "   !! un input de build cambió desde el último build de la imagen:"
+        diff <(printf '%s\n' "$baked") <(printf '%s\n' "$host") 2>/dev/null \
+          | awk '/^>/ {print "      cambió: "$3}'
+        echo "      Rebuildeá: docker compose build backend   (editar esos archivos no surte efecto sin rebuild)"
+      fi
+      return 0
+    }
+    step "imagen vs fuente" build_inputs_drift
+
+    # T7 — en dev el backend corre como el usuario del host (HOST_UID/HOST_GID) para que
+    # lo que escribe (JWT, migración generada, var) quede tuyo y no root-owned. Avisa si
+    # el UID del container no coincide con el tuyo (ej. HOST_UID sin setear en un host != 1000).
+    uid_match() {
+      local cuid huid
+      cuid="$(docker compose exec -T backend id -u 2>/dev/null)" \
+        || { echo "   (backend no está arriba; se omite)"; return 0; }
+      huid="$(id -u)"
+      if [ "$cuid" = "$huid" ]; then
+        echo "   backend corre como tu UID ($huid): los archivos que genera quedan tuyos"
+      elif [ "$cuid" = "0" ]; then
+        echo "   !! backend corre como root: lo que genera (JWT, migraciones, var) queda root-owned."
+        echo "      En dev, poné HOST_UID=$huid y HOST_GID=$(id -g) en tu .env y recreá: docker compose up -d"
+      else
+        echo "   !! backend corre como UID $cuid, el tuyo es $huid: puede escribir archivos ajenos."
+        echo "      Ajustá HOST_UID/HOST_GID en tu .env a $huid/$(id -g) y recreá: docker compose up -d"
+      fi
+      return 0
+    }
+    step "usuario del backend (dev)" uid_match
     # Lo que Compose RESUELVE para cada servicio (no lo que dice el .env): secretos
     # faltantes/públicos, slots reemplazados. Informa; el exit code no corta a doctor.
     env_board() { scripts/oliva/env.sh check || true; }

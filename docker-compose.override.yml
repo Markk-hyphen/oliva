@@ -4,18 +4,25 @@
 # name de Compose (directorio, `-p` o COMPOSE_PROJECT_NAME) los hace únicos por
 # app: un tag fijo (`app-backend-dev:1.0`) es global al host y el build de una
 # app pisaba la imagen de otra. Misma convención en prod.yml/staging.yml.
+#
+# Puertos del host por variable (con el default de siempre): dos apps Oliva en
+# dev publicaban las dos los mismos 80/3000/5432 → la segunda fallaba con "port
+# is already allocated". Ahora el lado-host sale de ${*_PORT:-default}: una sola
+# app no cambia nada; para una segunda, poné otros valores en SU `.env` (ver el
+# bloque "Dev host ports" de .env.example). El lado-container queda fijo.
 services:
   database:
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
 
   rabbitmq:
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
 
   worker:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ver backend: usuario del host en dev
     profiles: ["queues"]
     build:
       context: ./backend
@@ -36,6 +43,7 @@ services:
       - ./backend/src:/app/src
       - ./backend/migrations:/app/migrations
       - ./backend/config:/app/config
+      - ./backend/var:/app/var
     environment:
       APP_ENV: dev
     healthcheck:
@@ -50,6 +58,7 @@ services:
 
   scheduler:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ver backend: usuario del host en dev
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -66,6 +75,7 @@ services:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
       - ./backend/config:/app/config
+      - ./backend/var:/app/var
       - ./backend/scheduler/crontab:/etc/supercronic/crontab:ro
     environment:
       APP_ENV: dev
@@ -82,20 +92,47 @@ services:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
     build:
       target: frankenphp_dev
+    # Corre como el usuario del host (default = el UID/GID típico de Linux, 1000).
+    # Antes corría como root → los archivos que escribe en los bind-mounts (claves
+    # JWT en config/jwt, migración generada, cache en var) quedaban root-owned en el
+    # host y no se podía borrar el dir sin `sudo chown`. Si tu `id -u` NO es 1000,
+    # poné HOST_UID/HOST_GID en tu `.env`. Solo dev: prod.yml no define `user:` (el
+    # entrypoint necesita root ahí para el setfacl que comparte var con www-data).
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
-      - "80:80"
+      - "${BACKEND_PORT:-80}:80"
     volumes:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
       - ./backend/migrations:/app/migrations
       - ./backend/public:/app/public
       - ./backend/tests:/app/tests
+      # var bind-mounteado (en vez del volumen anónimo, que nace root y no es
+      # escribible por el usuario del host): así cache/log quedan host-owned y se
+      # esquiva el gotcha de Docker "escrituras a un path VOLUME tras declararlo se
+      # pierden". El dir existe en el host por var/.gitkeep (si no, Docker lo crea
+      # como root). Gitignored salvo el .gitkeep. En prod var sigue siendo el VOLUME.
+      - ./backend/var:/app/var
+      # phpunit.dist.xml se hornea en la imagen pero NO se bind-mountea → editarlo en
+      # el host no tenía efecto dentro del container hasta rebuildear (friction T5).
+      # Es config que solo se lee: montarlo lo hace surtir efecto al instante. Los
+      # inputs de build (composer.json/lock, php-extensions.txt) NO se montan a
+      # propósito: cambiarlos pide rebuild, no copiar el archivo; `doctor` los compara.
+      - ./backend/phpunit.dist.xml:/app/phpunit.dist.xml:ro
       - ./backend/frankenphp/Caddyfile:/etc/caddy/Caddyfile
       - ./backend/frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro
       - ./backend/config:/app/config
     environment:
       XDEBUG_MODE: "${XDEBUG_MODE:-off}"
       APP_ENV: dev
+      # Caddy/Mercure escriben su storage (mercure.db, certs, config autosave) en
+      # $XDG_DATA_HOME/$XDG_CONFIG_HOME, que la imagen fija en /data y /config: dos
+      # VOLUMEs root-owned que el usuario del host (user: arriba) NO puede escribir
+      # → el hub Mercure fallaba con "permission denied" en /data/caddy/mercure.db.
+      # Redirigidos a /app/var (bind-mount host-owned, ya montado): Caddy crea ahí sus
+      # subdirs sin problema. Solo dev; en prod corre como root y usa /data|/config.
+      XDG_DATA_HOME: /app/var/caddy-data
+      XDG_CONFIG_HOME: /app/var/caddy-config
     extra_hosts:
       - host.docker.internal:host-gateway
     tty: true
@@ -110,7 +147,7 @@ services:
       - VITE_API_URL=http://backend:80
       - NODE_ENV=development
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/usr/src/app
       - /usr/src/app/node_modules
