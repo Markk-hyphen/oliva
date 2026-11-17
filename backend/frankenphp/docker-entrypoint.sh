@@ -84,8 +84,13 @@ if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 		fi
 	fi
 
-	setfacl -R -m u:www-data:rwX -m u:"$(whoami)":rwX var
-	setfacl -dR -m u:www-data:rwX -m u:"$(whoami)":rwX var
+	# `id -u` (UID numérico), NO `whoami`: en dev el container corre como el usuario
+	# del host (docker-compose.override.yml), un UID que no tiene entrada en el
+	# /etc/passwd de la imagen → `whoami` falla con "no passwd entry" y, con `set -e`,
+	# mata el entrypoint. El UID numérico no necesita passwd y el dueño de `var` (host
+	# en dev vía bind-mount, root en prod) puede setear su propia ACL. Sirve para ambos.
+	setfacl -R -m u:www-data:rwX -m u:"$(id -u)":rwX var
+	setfacl -dR -m u:www-data:rwX -m u:"$(id -u)":rwX var
 
 	echo 'PHP app ready!'
 fi

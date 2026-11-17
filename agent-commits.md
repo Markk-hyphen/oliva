@@ -1115,3 +1115,51 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   conflicts); `--adopt` on scratch copies of the three apps; the `app` step in three states.
   **Not checked:** the first real cut and push, CI on GitHub, the real crossing of an app, and
   any agent other than Claude Code.
+
+## [friction-log C] dev ergonomics: host ports, host-user containers, baked files (T4/T7/T5)
+**Hash:** `edfbc05cb46ae9e6b21593af7874e2d4095c67dc`
+**Branch:** `feat/dev-ergonomics`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docker-compose.override.yml` | modified | T4: the 5 published dev ports come from `${*_PORT:-default}`. T7: `user: ${HOST_UID:-1000}:${HOST_GID:-1000}` on backend/scheduler/worker; `./backend/var` bind-mounted; `XDG_DATA_HOME`/`XDG_CONFIG_HOME` → `/app/var`. T5: `phpunit.dist.xml` mounted `:ro`. |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | T7: `setfacl` uses `$(id -u)` instead of `$(whoami)` — a host uid has no `/etc/passwd` entry and `whoami` failed under `set -e`. |
+| `backend/Dockerfile` | modified | T5: the `frankenphp_dev` stage bakes `build-inputs.sha256` (hashes of composer.json/lock, symfony.lock, php-extensions.txt) for `doctor` to compare. At the stage tail so the xdebug layer stays cached. |
+| `backend/.gitignore` | modified | T7: `var/` → `var/*` + `!var/.gitkeep` so the dir is tracked and exists host-owned. |
+| `backend/var/.gitkeep` | new | T7: makes `./backend/var` exist before the bind-mount (else Docker creates it root-owned). |
+| `oliva` | modified | T5/T7: `doctor` steps "imagen vs fuente" (baked-input drift → rebuild) and "usuario del backend (dev)" (container uid vs host uid). |
+| `.env.example` | modified | Documented blocks "Dev host ports" (T4) and "Dev container user" (T7), commented with the defaults. |
+| `docs/oliva/agent-guide.md` | modified | Dev section: two apps at once (T4), host-user in dev (T7), baked-vs-mounted files (T5). |
+
+### Why
+- *Group C of the friction-log triage; each friction was decided with Marcos.* They ship
+  together because T4/T7/T5 are intertwined in the same three shared files (the override,
+  `.env.example`, the guide); splitting them into separate commits would need fragile
+  hunk-level staging for no real gain. The friction log keeps the three rows open.
+- *T4 — ports from variables, defaults unchanged.* Inline `:-` defaults mean a single app
+  behaves exactly as before; a second app sets the ports in its own `.env`. prod.yml's
+  standalone `80:80` was left alone: it is not the measured friction (dev) and shared-infra
+  already overrides it.
+- *T7 — run as the host user, not chown-after.* The real pain is bind-mounted writes (JWT,
+  generated migrations, var) owned by root, so the app dir cannot be deleted. Three decisions
+  the mechanism forced: `var` is **bind-mounted** (not the anonymous VOLUME, which is born
+  root-owned and cannot be chowned past Docker's "writes after VOLUME are discarded" rule);
+  the entrypoint uses the **numeric uid** (a host uid has no passwd entry → `whoami` broke the
+  boot); Caddy/Mercure storage is redirected to `/app/var` via **XDG_*_HOME** (its `/data` and
+  `/config` VOLUMEs are root-owned and the hub died on `permission denied` for mercure.db).
+  Default uid is 1000 (the usual Linux first user, and Marcos's); other hosts set HOST_UID in
+  `.env` and `doctor` flags the mismatch. prod is untouched (no `user:`; root runs the setfacl
+  that shares var with www-data). The frontend stays root for now — its `node_modules` is an
+  anonymous volume, off the host, so its T7 cost is near zero.
+- *T5 — split by file class, because the two options were never alternatives.* A file that is
+  only read at runtime (`phpunit.dist.xml`) is **mounted**, so an edit takes effect without a
+  rebuild — this kills the exact reported case. A build input (composer.*, symfony.lock,
+  php-extensions.txt) must NOT be mounted: changing it needs `composer install` / a recompile,
+  and a live mount would make the manifest disagree with the baked `vendor/` silently — worse
+  than today. So the image bakes their hashes and `doctor` compares and says "rebuild".
+- Proven on a real build + `up`: backend healthy as uid 1000, JWT and `var/` host-owned,
+  `/health` ok, `doctor`'s two new steps green, drift correctly flagged when php-extensions.txt
+  changed, stack torn down leaving no new root-owned files. **Not checked:** a non-1000 host,
+  the frontend as host user, and the real crossing of a fork.

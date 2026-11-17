@@ -22,6 +22,12 @@ docker compose up
 ```
 El `docker-compose.override.yml` se aplica automáticamente: monta el código fuente con hot-reload, expone el backend en `:80` y el frontend en `:3000`.
 
+**Dos apps a la vez en dev:** los puertos del host (`:80`, `:3000`, `:5432`, y los de RabbitMQ) salen de variables con esos defaults. Una sola app no configura nada. Para levantar una segunda app Oliva en paralelo —que si no choca con *"port is already allocated"*— poné `BACKEND_PORT`, `FRONTEND_PORT`, `DB_PORT` (y, con el profile `queues`, `RABBITMQ_PORT`/`RABBITMQ_MANAGEMENT_PORT`) con otros valores en el `.env` de esa app. Ver el bloque "Dev host ports" en `.env.example`.
+
+**Usuario del host en dev:** los containers del backend corren como `${HOST_UID:-1000}:${HOST_GID:-1000}`, así lo que generan (claves JWT en `config/jwt`, la migración que creás con `migrations:diff`, el cache de `var/`) queda tuyo en el host y no root-owned (antes había que `sudo chown` para borrar el dir). Si tu `id -u` no es `1000`, poné `HOST_UID`/`HOST_GID` en tu `.env`; `./oliva doctor` lo chequea y avisa si no coinciden. Prod corre como root a propósito (no define `user:`). El frontend sigue como root (su `node_modules` es un volumen anónimo, no toca el host).
+
+**Archivos horneados que no se montan:** `phpunit.dist.xml` se bind-mountea, así que editarlo surte efecto sin rebuild. Los *inputs de build* (`composer.json`/`.lock`, `symfony.lock`, `php-extensions.txt`) NO se montan a propósito: cambiarlos pide `composer install` o recompilar extensiones, no copiar el archivo. `./oliva doctor` (paso "imagen vs fuente") compara sus hashes con la imagen y te dice "rebuildeá" si driftearon — así no corrés con una imagen vieja sin darte cuenta.
+
 ### Producción
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d

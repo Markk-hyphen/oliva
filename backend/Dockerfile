@@ -178,6 +178,19 @@ RUN --mount=type=bind,from=ghcr.io/php/pie:1.5.3-bin,source=/pie,target=/usr/loc
 
 COPY --link frankenphp/conf.d/20-app.dev.ini $PHP_INI_DIR/app.conf.d/
 
+# T5 — manifiesto de los inputs de build que se HORNEAN pero NO se bind-mountean en dev:
+# editarlos en el host no surte efecto hasta rebuildear, porque cambiarlos pide
+# `composer install` / recompilar extensiones, no copiar el archivo (por eso no se
+# montan, a diferencia de phpunit.dist.xml). `./oliva doctor` compara estos hashes
+# contra los del host y avisa "rebuildeá la imagen" si driftearon. Va al final del
+# stage dev (no en base) para no invalidar el layer caro de xdebug al tocarlo.
+RUN --mount=type=bind,source=php-extensions.txt,target=/run/oliva/php-extensions.txt \
+	set -eux; \
+	mkdir -p /usr/local/share/oliva; \
+	{ sha256sum composer.json composer.lock symfony.lock | awk '{n=$2; sub(/.*\//,"",n); print $1"  "n}'; \
+	  sha256sum /run/oliva/php-extensions.txt | awk '{print $1"  php-extensions.txt"}'; \
+	} | sort -k2 > /usr/local/share/oliva/build-inputs.sha256
+
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--watch" ]
 
 # Prod FrankenPHP image
