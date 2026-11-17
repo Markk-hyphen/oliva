@@ -27,6 +27,15 @@ services:
     # setup del entrypoint se saltea a propósito (solo el backend migra/genera).
     command: ["supercronic", "/etc/supercronic/crontab"]
 
+  # El worker de producción (hasta 1.8.0 no existía). Comando, profile `queues`,
+  # depends_on y healthcheck vienen de docker-compose.yml; acá solo imagen y entorno.
+  worker:
+    image: ${COMPOSE_PROJECT_NAME}-backend:prod
+    build:
+      target: frankenphp_prod
+    environment:
+      - APP_ENV=prod
+
   frontend:
     image: ${COMPOSE_PROJECT_NAME}-frontend:prod
     build:

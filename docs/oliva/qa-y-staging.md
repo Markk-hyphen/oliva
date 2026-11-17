@@ -37,6 +37,7 @@ scripts/oliva/verify.sh
 | `phpunit` | la suite de tests |
 | `prod-build` | las imágenes de **producción** buildean (no solo las de dev) |
 | `prod-worker` | worker mode de FrankenPHP queda prendido en prod (la imagen lo hornea y el `.env` no lo pisa) |
+| `queue` | messages routed to an asynchronous transport have a queue worker to consume them (not FrankenPHP's worker mode: that is `prod-worker`) |
 | `ci-build` | solo si `backend/php-extensions.txt` tiene extensiones: rebuild con el driver buildx del CI |
 
 **Cada step es un incidente pasado convertido en assertion.** Eso explica por qué hay dos
@@ -185,9 +186,11 @@ Para no leer más garantías de las que hay:
   responde; el frontend solo se verifica en que buildea y sirve.
 - **No hay gate de cobertura.** PHPUnit corre, pero nada falla por cobertura baja.
 - **No hay tests de carga ni de performance.**
-- **No hay `worker` de producción.** `docker-compose.override.yml` (dev) define uno con
-  `messenger:consume`, pero no hay equivalente en prod. Si tu app usa Messenger en serio,
-  hay que agregarlo antes de ir a producción.
+- **The worker's round trip is not tested on every run.** Since 1.8.0 every environment has a
+  production worker, and `verify`/CI check it structurally (it resolves, it is healthy, nothing
+  routed is left without it). That a dispatched message is actually handled was proven once,
+  when it was built (`docs/roadmap/epics/E-queue-slot.md`); it would need a dispatch entry
+  point in every app.
 - **El audit de CVEs depende de que alguien lo corra.** `./oliva doctor` avisa a los 7 días
   (`deps.sh audit`: composer, yarn, Trivy y el runtime de PHP), pero nada lo ejecuta solo ni
   bloquea un deploy.

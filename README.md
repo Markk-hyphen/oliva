@@ -133,7 +133,7 @@ The frontend is served by Caddy on **http://localhost**. Backend, database and R
 
 Run `./oliva env check --prod` before the first `up`. In production the backend refuses to start on a secret that is missing, a placeholder or publicly known, and `./oliva deploy` checks the same before it stops the running stack. The fix is always `./oliva env init` on that machine.
 
-> **Known gap:** there's no production `worker` service yet. If your app uses Messenger queues for real, add one to `docker-compose.prod.yml` (image `${COMPOSE_PROJECT_NAME}-backend:prod`, command `messenger:consume`, no exposed ports) before going live.
+> **Queues:** with the `queues` profile, every environment runs a `worker` that consumes every transport except the failure one (since 1.8.0; until then it existed only in dev). On a shared broker, give each app and each environment a vhost of its own: they all inherit the same queue names.
 
 ---
 
@@ -178,7 +178,7 @@ The frontend proxies `/api/*` to the backend over the app's private network. In 
 | Profile | Adds | You must also set |
 |---|---|---|
 | _(none)_ | `backend`, `frontend`, `database` | `DATABASE_URL`, `APP_SECRET`, JWT + Mercure keys |
-| `queues` | `rabbitmq`, `worker` (dev) | `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_DSN` |
+| `queues` | `rabbitmq`, `worker` | `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_DSN`; `WORKER_CONSUME_ARGS` (optional, `.env.backend`) |
 | `cron` | `scheduler` | nothing, but `backend/scheduler/crontab` must have jobs |
 
 ```bash
@@ -186,7 +186,7 @@ COMPOSE_PROFILES=queues,cron docker compose up -d
 ```
 
 - **Enabling a profile doesn't configure it.** A missing DSN or key crashes the service at boot, which at least is loud.
-- **Forgetting a profile:** the deploy scripts catch it for `cron`. There's no equivalent guard for `queues` yet.
+- **Forgetting a profile:** the deploy scripts catch it for `cron` (a warning) and for `queues` (they abort before stopping anything when messages are routed to an asynchronous transport and no worker would consume them).
 - **Removing a profile from `COMPOSE_PROFILES` doesn't stop a container that's already running.** Use `docker compose stop <service>` or `down`.
 - **Adding a new optional service:** give it `profiles: ["<name>"]`, and never let a core service `depends_on` it, or Compose pulls it back up with the profile off. Then add a row above and a line in `.env.example`.
 

@@ -17,6 +17,7 @@ source "$(dirname "$0")/lib/project-guard.sh"
 source "$(dirname "$0")/lib/docker-prune.sh"
 source "$(dirname "$0")/lib/upgrade-guards.sh"
 source "$(dirname "$0")/lib/env-check.sh"
+source "$(dirname "$0")/lib/queue-guard.sh"
 assert_not_staging_name "$APP_NAME"
 assert_project_owned_here "$APP_NAME"
 
@@ -36,8 +37,8 @@ if [[ "${SKIP_PULL:-0}" != "1" ]]; then
   git pull
 fi
 
-# The one guard that ABORTS a deploy (every other guard only warns, see upgrade-guards.sh).
-# A production stack on a secret that is missing, a placeholder or publicly known has no
+# The guards that ABORT a deploy, both before `down` (every other guard only warns, see
+# upgrade-guards.sh). A production stack on a secret that is missing, a placeholder or publicly known has no
 # secret at all: going on IS the damage. It runs before `down`, so the stack that is
 # serving now keeps serving. Checked on what Compose resolves for THIS stack.
 echo ">> env check"
@@ -55,6 +56,17 @@ if ! env_check quiet "${COMPOSE[@]}"; then
 !! ================================================================
 
 EOF
+  exit 1
+fi
+
+# Queues (lib/queue-guard.sh): messages routed to an asynchronous transport with no worker
+# to consume them, or a worker on the default vhost of the shared broker, where it would
+# consume other apps' messages. Neither fails at boot, and a late effect is not undone by
+# processing the backlog later, so it stops here too, with the old stack serving.
+echo ">> queue check"
+if ! queue_guard "${COMPOSE[@]}"; then
+  echo "!! DEPLOY ABORTED (see above). Nothing was stopped: the current stack is still running." >&2
+  echo "!! After the fix: SKIP_PULL=1 ./scripts/deploy.sh" >&2
   exit 1
 fi
 

@@ -68,6 +68,49 @@ services:
     depends_on:
       database:
         condition: service_healthy
+    # Healthcheck propio, en el base para que lo hereden todos los overlays. Sin esto
+    # hereda el HEALTHCHECK de la imagen (curl :2019/metrics), que solo pasa donde corre
+    # FrankenPHP: acá corre supercronic, así que el check fallaba siempre y el scheduler
+    # de prod quedaba `unhealthy` sin que nada lo dijera (el deploy no usa --wait).
+    # PID 1 es el proceso mismo (el entrypoint hace exec): "PID 1 vivo" es el mínimo honesto.
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app_network
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # Consumidor de Messenger. Opt-in con el profile `queues`, el mismo que `rabbitmq`:
+    # broker y consumidor van juntos. Hasta 1.8.0 el worker existía solo en dev, y una app
+    # con colas en prod encolaba mensajes que nadie procesaba, sin ningún error.
+    profiles: ["queues"]
+    restart: unless-stopped
+    # oliva-consume (backend/frankenphp/consume-messages.sh): consume todos los transports
+    # menos el de fallos de la app y recicla el proceso por tiempo/memoria. La app lo cambia con
+    # WORKER_CONSUME_ARGS en .env.backend; no hace falta tocar este archivo (es de Oliva).
+    command: ["oliva-consume"]
+    env_file:
+      - .env
+      - .env.backend
+    # Espera al backend sano, o sea migrado: el entrypoint del backend migra antes de
+    # levantar FrankenPHP. Por eso el worker no corre el setup (ni migra) él mismo.
+    depends_on:
+      backend:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - app_network
 

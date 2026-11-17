@@ -163,7 +163,7 @@ second default when someone owns its net, not before.
 | Realtime | Mercure hub | HTTP publish with a JWT, SSE subscribe | independent | embedded in the backend |
 | Database | Postgres + pgvector | `DATABASE_URL`, Postgres ≥ 15 with `vector` | backend-tied | always on locally; external via shared-infra |
 | Queue | RabbitMQ (`queues`) | AMQP DSN | backend-tied | optional; external via shared-infra |
-| Worker | Messenger consumer | an image and a long-running command | backend-tied | dev only, no prod definition |
+| Worker | Messenger consumer | an image and a long-running command | backend-tied | optional (`queues`), every environment since 1.8.0; a declared external consumer is announced |
 | Scheduler | supercronic (`cron`) | runs commands on a schedule | backend-tied | optional; built from the backend image |
 
 **Two kinds of replacement.** An *independent* slot can be swapped and no other

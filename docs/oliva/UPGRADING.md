@@ -27,6 +27,64 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.8.0 — 2026-11-17
+
+> **Queues work in production, and dev stops writing files as root.** Until now the queue
+> worker existed only in dev: an app with queues in production enqueued messages that nothing
+> consumed. From this version every environment runs it with the `queues` profile, and the
+> deploys refuse the setups that lose messages silently. Dev also gets host ports from
+> variables (two apps at once) and runs the backend as your user.
+
+**Action required in the app**
+
+- [merge] `docker-compose.override.yml`: the `worker` service moved to `docker-compose.yml`.
+  If your override has a `worker` block, keep only your dev additions (mounts, environment)
+  and drop `profiles`, `command`, `restart`, `env_file`, `depends_on`, `healthcheck` and
+  `networks`: they come from the base, and a `command` left there overrides `oliva-consume`
+  and `WORKER_CONSUME_ARGS`. The `scheduler` block loses its `healthcheck` the same way.
+- [merge] `backend/.gitignore`: `var/` becomes `var/*` plus `!var/.gitkeep`, and
+  `backend/var/.gitkeep` arrives. Keep both: the dev backend bind-mounts `backend/var`, and
+  without the file Docker creates the directory as root.
+- [local] The dev backend, scheduler and worker run as `${HOST_UID:-1000}:${HOST_GID:-1000}`.
+  If `id -u` or `id -g` is not 1000 on this machine, set `HOST_UID`/`HOST_GID` in `.env`.
+  `./oliva doctor` ("usuario del backend (dev)") says when they don't match.
+- [local] Give back to your user what the old root containers wrote:
+  ```bash
+  docker run --rm -v "$PWD/backend:/b" alpine chown -R "$(id -u):$(id -g)" \
+    /b/config /b/migrations /b/src /b/tests /b/var
+  ```
+  Without it the backend may not read `config/jwt/private.pem` (root, mode 600): nothing fails
+  at boot, every login does. `./oliva doctor` ("archivos de root (dev)") lists them.
+- [host, guard: queue] If the app routes messages to an asynchronous transport:
+  `COMPOSE_PROFILES=queues` (or `queues,cron`) in the `.env` of every host that runs it.
+  Production now starts a worker with it, and `deploy*.sh` abort without it.
+- [host] Shared infra with queues: a vhost of its own per app and per environment, from
+  `~/infra`: `./scripts/provision-rabbitmq.sh <app> <app>_user` (its `RABBITMQ_DSN` in `.env`)
+  and `./scripts/provision-rabbitmq.sh <app>_staging <app>_staging_user` (in `.env.staging`).
+  Every app inherits the same queue names: on a shared vhost a worker consumes someone else's
+  messages. The deploys abort on the default vhost and when staging shares production's.
+
+**What changed**
+
+- **Queue worker in every environment** (`docs/roadmap/epics/E-queue-slot.md`): service of the
+  base stack behind `queues`; command `oliva-consume` (every transport except the failure one,
+  whose name it asks Symfony for; recycled hourly or at 128M); `WORKER_CONSUME_ARGS` in
+  `.env.backend` replaces its arguments; it starts after a healthy, migrated backend and never
+  runs the entrypoint's setup.
+- **Healthchecks of their own for `worker` and `scheduler`.** They inherited the image's HTTP
+  check, which always fails without FrankenPHP: the production scheduler was `unhealthy`.
+- **Queue guards** (`scripts/lib/queue-guard.sh`): async routes with no worker, a worker on the
+  default vhost of an external broker, staging on production's vhost → the deploys abort
+  before `down`; `verify` step `queue`; `doctor` step "colas". `OLIVA_QUEUE_CONSUMER=external`
+  declares a consumer outside the stack. `.env.staging.example` asks for its own vhost.
+- **Dev ergonomics** (friction log T4, T7, T5): host ports from `BACKEND_PORT`,
+  `FRONTEND_PORT`, `DB_PORT` and the RabbitMQ ones; the backend containers run as the host
+  user, with `backend/var` bind-mounted and Caddy's storage under it; `phpunit.dist.xml` is
+  mounted, and `doctor` ("imagen vs fuente") says when composer files or
+  `php-extensions.txt` changed since the image was built.
+- **CI:** the `prod-config` job checks the production worker, both healthchecks, and that
+  shared infra resolves with `queues`; the test job runs the dev stack as the runner's uid.
+
 ## 1.7.0 — 2026-11-15
 
 > **An app is no longer a copy of Oliva.** Until now an app was born with `git clone`, so it

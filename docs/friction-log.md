@@ -40,6 +40,9 @@ fixed on the spot. *Measured* means reproduced or read from the repos;
 | T9 | The audit answers in 1,030 lines with no summary | measured, run 2: one verdict line at the end; severity is blank on every composer advisory; nothing says "one `deps update` fixes 14 of these" or which image findings are new since the last audit | every audit (7-day cadence) | no | a closing table: layer, count, fix available, new since last run | fixed in 1.7.0 |
 | X8 | The Dependabot signal disagrees with itself | measured, run 2: every push prints "2 high" while the alerts API lists 0 open (4 fixed). Not investigated | every push | no | find out which one is stale | closed: the banner stopped with the 1.6.1 push; cause not established |
 | X9 | The live demo stopped publishing in 1.6.0 and kept answering `{"ok":true}` | measured 2026-11-15: `live.php` signed with the old public Mercure key written in the file; one event posted, zero delivered. The README still said it "shows Mercure working out of the box" | every app since 1.6.0 | yes | publish through the configured hub | fixed in 1.7.0: the endpoint is a controller under `/api/live` |
+| X10 | An app with queues in production has no worker: messages pile up and nothing handles them | measured 2026-10-23 (one app's prod stack with `queues,cron` resolves without a worker) and 2026-11-17; the README told apps to edit a file Oliva owns | every app with queues in production | yes | the worker in the base stack, guarded | fixed `b4f4cef` (worker in every environment) and `4e7cbfc` (deploys abort when routed messages have no worker) |
+| X11 | Every non-HTTP container of the backend image is `unhealthy`: the production scheduler, silently | measured 2026-11-17: the image's healthcheck curls FrankenPHP's admin port, absent there (exit 7); the deploy does not `--wait` | every production stack with `cron` | yes | a healthcheck of their own | fixed `b4f4cef` |
+| X12 | A worker consumes whatever its vhost holds: staging consumed production's messages | measured 2026-11-17 on a local shared-infra setup: `.env.staging.example` separated the database and inherited the broker; every app inherits the same queue names, so apps on `/` collide too. Latent until a production worker existed | every app with queues on shared infra | yes | a vhost per app and environment, guarded | fixed `198ee7f` (template, runbook) and `4e7cbfc` (deploys abort) |
 
 ## What varies between apps
 
@@ -111,6 +114,10 @@ inputs). The three decisions were taken with the maintainer.
 **D. Waits for item 3, as planned.** S2 (unused services shipped). The
 queue-slot epic belongs here too: one app uses queues, none is in production, and
 it should be built as a slot the birth step can leave out, not before it.
+
+The queue slot did not wait (2026-11-17, `4e7cbfc` and before): a silent failure is a
+bug in Oliva, and building it behind the `queues` profile keeps it a slot the birth
+step can leave out later. Its gates found X11 and X12. S2 still waits for item 3.
 
 **Accepted.** X1 (apps on old secrets, not in production), T6 (upgrade actions:
 keep preferring guards), the residue of X4.

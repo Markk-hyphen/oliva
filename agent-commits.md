@@ -1163,3 +1163,151 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   `/health` ok, `doctor`'s two new steps green, drift correctly flagged when php-extensions.txt
   changed, stack torn down leaving no new root-owned files. **Not checked:** a non-1000 host,
   the frontend as host user, and the real crossing of a fork.
+
+## [queue slot · phase 1] a production worker, healthchecks of their own, WORKER_CONSUME_ARGS
+**Hash:** `f9010e44c0e5e774ac88cbeedd23a061c68e003f`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docker-compose.yml` | modified | New `worker` service (profile `queues`, command `oliva-consume`, `depends_on` backend and rabbitmq healthy, healthcheck). `scheduler` gets a healthcheck of its own. |
+| `docker-compose.prod.yml` | modified | `worker`: `:prod` image, `APP_ENV=prod`. Everything else comes from the base. |
+| `docker-compose.override.yml` | modified | The dev `worker` keeps only what is dev (image, host user, mounts, `SHELL_VERBOSITY=2` for `-vv`); the duplicated `scheduler` healthcheck goes. |
+| `backend/frankenphp/consume-messages.sh` | new | `oliva-consume`: `WORKER_CONSUME_ARGS` if set; otherwise `--all`, excluding the failure transport whose name it asks Symfony for, recycled at 3600 s / 128M. |
+| `backend/Dockerfile` | modified | Installs `oliva-consume` next to the entrypoint. |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | A `messenger:consume` command never runs the setup block (JWT, wait-for-db, `migrate`, ACLs). |
+| `.env.backend` | modified | `WORKER_CONSUME_ARGS=` (empty = the default), documented. |
+
+### Why
+- *The worker lives in the base file, like `scheduler`,* so prod, staging and shared infra
+  only adjust it. Before, it existed only in dev and an app had no way to a production one:
+  the README told it to edit `docker-compose.prod.yml`, a file Oliva owns.
+- *A healthcheck of their own for `worker` and `scheduler`.* The image bakes an HTTP check
+  (`curl :2019/metrics`) that fails for any container without FrankenPHP: measured exit 7.
+  The prod scheduler was `unhealthy` with nothing saying so (the deploy does not `--wait`).
+- *`depends_on: backend (healthy)` replaces the setup in the worker.* The backend is healthy
+  only after its entrypoint has migrated, so the worker starts on a migrated schema; the dev
+  worker used to run `migrate` at the same time as the backend (seen in its log).
+- *A script for the command, not the variable in `command:`.* Compose interpolates `command:`
+  from the project's `.env` only, and `WORKER_CONSUME_ARGS` is an app decision that belongs in
+  the tracked `.env.backend`; `sh -c` in compose would make `$1 = sh`, the trap the Dockerfile
+  warns about.
+- *The failure transport is asked, not assumed* (found while testing, not in the design):
+  Symfony silently ignores an `--exclude-receivers` that names no transport, so a fixed
+  `failed` would stop excluding anything in an app that renamed it, and a poison message would
+  loop forever. Checked with the real config, with it pointed at another transport, and with
+  none.
+- Proven: dev stack with `queues` (worker healthy, no setup in its log, starts after the
+  backend, PID 1 is the consumer, `WORKER_CONSUME_ARGS` honoured); production stack on a scratch
+  copy with `queues` and `cron`: every service healthy, and a round trip with
+  `RunCommandMessage` (worker stopped → one message waiting in `ingest` → worker started →
+  queue at 0 and the mark written inside the worker). **Not checked yet:** staging and shared
+  infra (phase 2).
+
+## [queue slot · phase 2] the worker in staging and shared infra; a vhost per app and environment
+**Hash:** `0954669a0d52c54a8ad16827c8c809fa25301fe7`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docker-compose.shared-infra.yml` | modified | `worker`: `depends_on` reduced to the backend (the broker is external), networks `app_network` + `data_net`. |
+| `docker-compose.staging.yml` | modified | `worker`: `:staging` image, explicit `APP_ENV=staging`, the staging `env_file` (loads last). |
+| `.env.staging.example` | modified | Asks for a staging `RABBITMQ_DSN` on a vhost of its own when the app uses queues. |
+| `docs/oliva/agent-guide.md` | modified | Shared-infra and staging runbooks: `provision-rabbitmq.sh` for production and for staging, and why. |
+| `docs/roadmap/epics/E-queue-slot.md` | modified | The isolation finding, its decision, and phase 3's gate extended to it. |
+
+### Why
+- *Without the shared-infra override the project is rejected*: with phase 1 alone,
+  `--profile queues` on shared infra failed with `worker depends on undefined service
+  "rabbitmq"` (measured). The backend stays as the dependency: it is what guarantees a
+  migrated schema.
+- *The isolation work was not in the plan; the gate found it.* Run with the real
+  `deploy.sh` and `deploy-staging.sh` on a local shared-infra setup (external networks, a
+  shared Postgres and RabbitMQ under the infra's hostnames): with production's worker
+  stopped, a production message was consumed by the **staging** worker, against the staging
+  database. The template separated the database and inherited the broker. Every app also
+  inherits the same queue names, so two apps on `/` would do the same to each other. Latent
+  until now (no production worker existed); this epic would have made it live.
+- *Fixed where it is decided, then guarded*: the template and the runbook ask for a vhost
+  per app and environment, using the infra's existing `provision-rabbitmq.sh`; the guards
+  that abort the deploys come in phase 3 (decided with the maintainer).
+- Proven: shared infra through `deploy.sh` (worker healthy on `data_net`, no setup, round trip
+  through the shared broker); staging through `deploy-staging.sh` (worker on the `:staging`
+  image); cross-consumption reproduced, then gone once staging had its own vhost (production's
+  message stayed queued until production's worker drained it).
+
+## [queue slot · phase 3] the queue guards: abort before `down`, red in verify, shown in doctor
+**Hash:** `1bb3c83c66d15c13d5a06890cd6119196d6b6d27`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `scripts/lib/queue-guard.sh` | new | `queue_guard` (async routes and no worker; a worker on `/` of an external broker) and `queue_guard_staging` (staging on production's broker and vhost). Static: messenger.yaml, `#[AsMessage]`, and the resolved environment. |
+| `scripts/deploy.sh` | modified | `queue check` after the env check, before `down`: aborts with the old stack serving. |
+| `scripts/deploy-staging.sh` | modified | The same, plus the comparison with production's resolved configuration. |
+| `scripts/oliva/verify.sh` | modified | Step `queue` (static, before `up`): red. |
+| `oliva` | modified | `doctor` step "colas": informs, and announces a declared external consumer. |
+| `.env.example` | modified | `OLIVA_QUEUE_CONSUMER=external`, commented, with when to use it. |
+
+### Why
+- *Abort, not warn* (decided with the maintainer): neither failure shows at boot, a warning
+  protects only whoever reads it, and processing a backlog later does not undo a late effect.
+  Aborting before `down` costs nothing: the running stack keeps serving and the fix is one
+  line of `.env`.
+- *Static, so it can run before `down`*: the new image does not exist yet at that point. The
+  guard reads messenger.yaml and the attributes, and resolves each `%env(NAME)%` against what
+  Compose resolves for the backend, the reader `env-check.sh` already had.
+- *Only asynchronous routes are evidence*: a route to `sync://` or `in-memory://` needs no
+  worker, so it must not stop a deploy. The vhost check looks at every AMQP transport, not only
+  the routed ones, because `--all` consumes them all.
+- *The declared exception is a replaced slot*: it passes and is announced on every run, the
+  roadmap's rule for replacements.
+- *Not registered in `UPGRADE_GUARDS`*: those run after `up` and only warn. The verify step
+  named `queue` makes `guard: queue` a valid label for `UPGRADING.md`.
+- Proven, on a local shared-infra setup through the real deploy scripts: worker on `/` →
+  aborted, stack untouched; a vhost of its own → deployed; staging inheriting production's
+  vhost → aborted, staging untouched; staging on its own vhost → deployed; async routes with the
+  profile off → aborted, the old worker kept consuming; the same with the declaration → deployed
+  and announced; `verify` red (exit 1) and green on the same states; sync-only routes and no
+  routes → silent. The parser was unit-tested on inline and nested transports, scalar, inline
+  and block-list routes, comments, a `when@prod` block, and single- and multi-line attributes.
+
+## [queue slot · phase 4] CI, docs, the 1.8.0 notes, and the upgrade hazard of T7
+**Hash:** `ec8380a073da8c876cca6c6c3129d46d746a19b1`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `.github/workflows/ci.yml` | modified | `prod-config`: with `--profile queues`, the prod worker resolves (`APP_ENV=prod`, `oliva-consume`) and `worker`/`scheduler` have a healthcheck that is not the image's; shared infra resolves with `queues` and no local `rabbitmq`. |
+| `oliva` | modified | `doctor` step "archivos de root (dev)": root-owned files in the backend's bind-mounts, with the `chown` fix. |
+| `docs/oliva/UPGRADING.md` | modified | `## 1.8.0`: group C (dev ergonomics) and the queue slot, six labelled actions. |
+| `docs/oliva/agent-guide.md` | modified | "The queue worker" replaces the known-debt section; services table. |
+| `README.md`, `docs/oliva/qa-y-staging.md`, `docs/roadmap.md` | modified | The gap is gone; profile table; verify step `queue`; slots table. |
+| `docs/friction-log.md` | modified | X10 (no production worker), X11 (unhealthy scheduler), X12 (cross-vhost consumption), all fixed; group D note. |
+| `docs/roadmap/epics/E-queue-slot.md` | modified | Status: implemented, release pending. |
+
+### Why
+- *The CI checks are structural, no build*: they guard the two regressions this epic can have
+  without a running stack (the prod worker or a healthcheck disappearing from a compose file,
+  and shared infra being rejected again). Run locally as CI runs them, plus a negative case
+  (the scheduler's healthcheck removed → the step fails).
+- *T7 had an upgrade hazard, found while writing these notes, not when T7 was built*: an app
+  whose dev backend ran as root has `config/jwt/private.pem` owned by root with mode 600; the
+  backend, now the host user, cannot read it, and only logins fail. Nothing has synced since,
+  and nothing is released, so it ships with a labelled `[local]` action and a `doctor` step that
+  works with the stack down. Checked on this repository's own leftovers: one root file found,
+  the printed fix applied, zero after.
+- *UPGRADING actions follow the preference order*: what can be checked carries a guard
+  (`queue`); the rest is labelled so `doctor` and the deploys show it until acknowledged.
+  `lint_upgrade_actions 1.8.0` passes, and the pending view shows the `[local]` and `[host]`
+  items and not the guarded one.
+- **Not done here:** the release itself (`release.sh 1.8.0`) and the push, which are the
+  maintainer's call; the real crossing of an app.

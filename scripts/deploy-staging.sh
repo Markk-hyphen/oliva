@@ -22,6 +22,7 @@ source "$(dirname "$0")/lib/project-guard.sh"
 source "$(dirname "$0")/lib/docker-prune.sh"
 source "$(dirname "$0")/lib/upgrade-guards.sh"
 source "$(dirname "$0")/lib/env-check.sh"
+source "$(dirname "$0")/lib/queue-guard.sh"
 assert_not_staging_name "$APP_NAME"
 assert_project_owned_here "$STAGING_PROJECT"
 
@@ -39,6 +40,21 @@ seed_acked_version
 if [[ "${SKIP_PULL:-0}" != "1" ]]; then
   echo ">> git pull"
   git pull
+fi
+
+# Queues, before `down` (lib/queue-guard.sh): the same checks as production, plus the one
+# only staging has. .env.staging.example separated the database and inherited production's
+# broker, so the staging worker consumed production's messages (measured in the queue-slot
+# epic). Production's configuration is resolved to compare: no container is touched.
+echo ">> queue check"
+PROD_CONFIG="$(docker compose -p "$APP_NAME" -f docker-compose.yml -f docker-compose.prod.yml \
+  -f docker-compose.shared-infra.yml config 2>/dev/null)" || PROD_CONFIG=""
+queue_ok=1
+queue_guard "${COMPOSE[@]}" || queue_ok=0
+if [[ -n "$PROD_CONFIG" ]]; then queue_guard_staging "$PROD_CONFIG" "${COMPOSE[@]}" || queue_ok=0; fi
+if (( ! queue_ok )); then
+  echo "!! STAGING DEPLOY ABORTED (see above). Nothing was stopped." >&2
+  exit 1
 fi
 
 echo ">> down"
