@@ -1205,3 +1205,37 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   `RunCommandMessage` (worker stopped → one message waiting in `ingest` → worker started →
   queue at 0 and the mark written inside the worker). **Not checked yet:** staging and shared
   infra (phase 2).
+
+## [queue slot · phase 2] the worker in staging and shared infra; a vhost per app and environment
+**Hash:** `0954669a0d52c54a8ad16827c8c809fa25301fe7`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docker-compose.shared-infra.yml` | modified | `worker`: `depends_on` reduced to the backend (the broker is external), networks `app_network` + `data_net`. |
+| `docker-compose.staging.yml` | modified | `worker`: `:staging` image, explicit `APP_ENV=staging`, the staging `env_file` (loads last). |
+| `.env.staging.example` | modified | Asks for a staging `RABBITMQ_DSN` on a vhost of its own when the app uses queues. |
+| `docs/oliva/agent-guide.md` | modified | Shared-infra and staging runbooks: `provision-rabbitmq.sh` for production and for staging, and why. |
+| `docs/roadmap/epics/E-queue-slot.md` | modified | The isolation finding, its decision, and phase 3's gate extended to it. |
+
+### Why
+- *Without the shared-infra override the project is rejected*: with phase 1 alone,
+  `--profile queues` on shared infra failed with `worker depends on undefined service
+  "rabbitmq"` (measured). The backend stays as the dependency: it is what guarantees a
+  migrated schema.
+- *The isolation work was not in the plan; the gate found it.* Run with the real
+  `deploy.sh` and `deploy-staging.sh` on a local shared-infra setup (external networks, a
+  shared Postgres and RabbitMQ under the infra's hostnames): with production's worker
+  stopped, a production message was consumed by the **staging** worker, against the staging
+  database. The template separated the database and inherited the broker. Every app also
+  inherits the same queue names, so two apps on `/` would do the same to each other. Latent
+  until now (no production worker existed); this epic would have made it live.
+- *Fixed where it is decided, then guarded*: the template and the runbook ask for a vhost
+  per app and environment, using the infra's existing `provision-rabbitmq.sh`; the guards
+  that abort the deploys come in phase 3 (decided with the maintainer).
+- Proven: shared infra through `deploy.sh` (worker healthy on `data_net`, no setup, round trip
+  through the shared broker); staging through `deploy-staging.sh` (worker on the `:staging`
+  image); cross-consumption reproduced, then gone once staging had its own vhost (production's
+  message stayed queued until production's worker drained it).

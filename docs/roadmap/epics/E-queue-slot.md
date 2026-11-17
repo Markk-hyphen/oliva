@@ -62,6 +62,18 @@ missed:
   a late effect is still wanted (a verification mail three days late, a charge, a timed
   job). Shared infra is also the only stack `deploy.sh` knows how to deploy.
 
+Found during phase 2, on a local shared-infra setup with the real deploy scripts:
+
+- **A worker consumes whatever its vhost holds, and nothing kept environments or apps
+  apart.** `.env.staging.example` separates the database but inherits production's
+  `RABBITMQ_DSN`. Measured: with production's worker stopped, a message dispatched by
+  production was handled by the **staging** worker, against the staging database. Every app
+  inherits the same queue names from Oliva, so two apps on the default vhost `/` of the
+  shared broker do the same to each other. It was latent while no production worker
+  existed; this epic would have made it live. The infra already has the tool
+  (`provision-rabbitmq.sh`, one vhost per app); Oliva's runbook never mentioned it. With a
+  vhost of its own, staging left production's message alone (measured).
+
 ### Decisions (2026-11-17)
 
 | Question | Decision |
@@ -70,6 +82,7 @@ missed:
 | `WORKER_CONSUME_ARGS` | From day one; empty means the default command |
 | The guard in a deploy | **Abort before `down`**, only when a routed transport is asynchronous, with a declared exception for a consumer that lives outside the stack |
 | Round trip | Proven once, during implementation, on a scratch copy (`RunCommandMessage`: Symfony ships the handler). `verify` and CI stay structural |
+| Queue isolation | Template and runbook ask for a vhost per app and per environment; the deploys **abort before `down`** when staging resolves production's broker and vhost, or when a shared-infra worker would run on `/`. Same declared exception |
 
 ## Design
 
@@ -174,10 +187,11 @@ replaced case.
 2. **Staging and shared-infra overlays.** *Gate:* both resolve a worker on the right
    image, env and networks; a local shared-infra setup (external networks and a broker
    of its own; there is no VPS) brings it up.
-3. **The `queue` guard** in `deploy*.sh` (before `down`), `verify` and `doctor`. *Gate:*
+3. **The `queue` guards** in `deploy*.sh` (before `down`), `verify` and `doctor`. *Gate:*
    async routing and profile off → deploy aborts with the old stack up, `verify` red;
    sync-only routing → silent; no routing → silent; profile on → silent; declared
-   external consumer → passes, and says so.
+   external consumer → passes, and says so; staging on production's vhost → aborts;
+   shared-infra worker on `/` → aborts; each with its own vhost → passes.
 4. **CI + docs + release 1.8.0.** README "Known gap" removed, slots table in the
    roadmap updated, `UPGRADING.md` section (apps drop the `worker` block from their
    override or keep only their additions).

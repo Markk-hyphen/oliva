@@ -209,6 +209,12 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
    `database  REPLACED (points at "postgres" …)`, which is the expected line here.
    `deploy.sh` runs the same check before stopping anything and **aborts** on a secret
    that is missing, a placeholder or publicly known.
+   - **If the app uses queues** (profile `queues`): give it a vhost of its own on the
+     shared broker, from `~/infra`: `./scripts/provision-rabbitmq.sh <app> <app>_user`,
+     and put the printed `RABBITMQ_DSN` in the same `.env`, with `COMPOSE_PROFILES=queues`.
+     Every app inherits the same queue names from Oliva (`ingest`, `enrich`, `failed`):
+     two apps on the default vhost `/` consume each other's messages, silently.
+     `deploy.sh` **aborts** when the worker would run on `/` of the shared broker.
 5. **Build:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml build`.
 6. **Up** (project name `-p <app>` ÚNICO, los 3 overlays; sin listar servicios,
    el profile inerte ya excluye `database`/`rabbitmq`; el alias de `frontend`
@@ -259,10 +265,17 @@ stack de producción.
    `./scripts/provision-postgres.sh <app>_staging_db <app>_staging_user`
    → imprime el `DATABASE_URL` con la password generada (guardarla en el
    gestor de claves). El script crea la extensión `vector` como superuser.
+   **If the app uses queues**, staging also needs a vhost of its own:
+   `./scripts/provision-rabbitmq.sh <app>_staging <app>_staging_user`. Without it, staging
+   inherits production's `RABBITMQ_DSN` and **its worker consumes production's messages**
+   (measured: a message dispatched by production was handled by the staging worker,
+   against the staging database). `deploy-staging.sh` aborts when staging and production
+   resolve the same broker and vhost.
 2. **Crear `.env.staging`** (gitignored → NO viene del pull):
    `cp .env.staging.example .env.staging`
    Setear `DATABASE_URL` con la URL impresa en el paso anterior
-   (host `postgres`, `<app>_staging_user`, `<app>_staging_db`).
+   (host `postgres`, `<app>_staging_user`, `<app>_staging_db`), and, with queues, the
+   staging `RABBITMQ_DSN`.
 3. **Build + up** (project name `-p <app>-staging` propio; staging como app en
    shared-infra). `up -d --build` buildea automáticamente cualquier servicio
    con sección `build` (backend/scheduler con tag `<app>-staging-backend:staging`,
