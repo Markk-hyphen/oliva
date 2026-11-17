@@ -11,6 +11,9 @@
 #   [env]         el entorno que Compose resuelve es sano: ningún secreto faltante, placeholder
 #                 o públicamente conocido, ninguno en un archivo trackeado ni en el frontend
 #                 (scripts/lib/env-check.sh). Fix habitual: ./oliva env init
+#   [queue]       messages routed to an asynchronous transport have a worker to consume them
+#                 (profile `queues`), or OLIVA_QUEUE_CONSUMER=external says they are consumed
+#                 elsewhere (scripts/lib/queue-guard.sh). Not to be confused with prod-worker.
 #   [up]          docker compose up -d --build --wait (respeta COMPOSE_PROFILES del .env)
 #   [php-version] el PHP que CORRE coincide con el pin de backend/Dockerfile
 #   [health]      GET /health
@@ -36,6 +39,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 source "$(dirname "$0")/../lib/upgrade-guards.sh"
 source "$(dirname "$0")/../lib/env-check.sh"
+source "$(dirname "$0")/../lib/queue-guard.sh"
 require_repo_root
 [[ -f .env ]] || die "falta .env → ./oliva env init"
 
@@ -53,6 +57,12 @@ step() {
 be() { docker compose exec -T backend "$@"; }
 
 do_env()        { env_check full docker compose; }
+# Static, before `up`: an app that routes messages and runs no worker fails every dispatch
+# in dev too (no broker either). Same check the deploys abort on.
+do_queue() {
+  queue_guard docker compose || return 1
+  echo "queues: nothing routed asynchronously without a worker to consume it"
+}
 # An app carries the marker written by `./oliva init`. A repo that received Oliva 1.7.0 and
 # has none is still wearing Oliva's identity: say how to fix it. Oliva's own repository is
 # told apart by its project files, which never reach an app. Costs nothing otherwise.
@@ -166,6 +176,7 @@ do_mercure() {
 
 step env         do_env
 step app         do_app
+step queue       do_queue
 step up          do_up
 step php-version do_php_version
 step health      do_health

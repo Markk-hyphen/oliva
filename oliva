@@ -90,6 +90,73 @@ case "$cmd" in
     step "app" app_state
     step "docker compose ps" docker compose ps
     step "migraciones" docker compose exec backend bin/console doctrine:migrations:status
+
+    # T5 — inputs de build horneados que, editados en el host, no surten efecto sin
+    # rebuild (composer.*/symfony.lock/php-extensions.txt). La imagen dev hornea sus
+    # hashes en /usr/local/share/oliva/build-inputs.sha256; acá se comparan con el host.
+    build_inputs_drift() {
+      local baked host
+      baked="$(docker compose exec -T backend cat /usr/local/share/oliva/build-inputs.sha256 2>/dev/null)" \
+        || { echo "   (backend no está arriba o la imagen no trae el manifiesto; se omite)"; return 0; }
+      host="$( cd backend 2>/dev/null && sha256sum composer.json composer.lock symfony.lock php-extensions.txt 2>/dev/null \
+        | awk '{n=$2; sub(/.*\//,"",n); print $1"  "n}' | sort -k2 )"
+      if [ "$baked" = "$host" ]; then
+        echo "   imagen al día con composer.json/lock, symfony.lock, php-extensions.txt"
+      else
+        echo "   !! un input de build cambió desde el último build de la imagen:"
+        diff <(printf '%s\n' "$baked") <(printf '%s\n' "$host") 2>/dev/null \
+          | awk '/^>/ {print "      cambió: "$3}'
+        echo "      Rebuildeá: docker compose build backend   (editar esos archivos no surte efecto sin rebuild)"
+      fi
+      return 0
+    }
+    step "imagen vs fuente" build_inputs_drift
+
+    # T7 — en dev el backend corre como el usuario del host (HOST_UID/HOST_GID) para que
+    # lo que escribe (JWT, migración generada, var) quede tuyo y no root-owned. Avisa si
+    # el UID del container no coincide con el tuyo (ej. HOST_UID sin setear en un host != 1000).
+    uid_match() {
+      local cuid huid
+      cuid="$(docker compose exec -T backend id -u 2>/dev/null)" \
+        || { echo "   (backend no está arriba; se omite)"; return 0; }
+      huid="$(id -u)"
+      if [ "$cuid" = "$huid" ]; then
+        echo "   backend corre como tu UID ($huid): los archivos que genera quedan tuyos"
+      elif [ "$cuid" = "0" ]; then
+        echo "   !! backend corre como root: lo que genera (JWT, migraciones, var) queda root-owned."
+        echo "      En dev, poné HOST_UID=$huid y HOST_GID=$(id -g) en tu .env y recreá: docker compose up -d"
+      else
+        echo "   !! backend corre como UID $cuid, el tuyo es $huid: puede escribir archivos ajenos."
+        echo "      Ajustá HOST_UID/HOST_GID en tu .env a $huid/$(id -g) y recreá: docker compose up -d"
+      fi
+      return 0
+    }
+    step "usuario del backend (dev)" uid_match
+
+    # Files the dev containers wrote as root before 1.8.0 (they run as the host user now).
+    # The backend can no longer read a root file with mode 600: config/jwt/private.pem is
+    # the one that bites, and nothing fails at boot, only every login. Static: it says so
+    # even with the stack down.
+    root_files() {
+      local n
+      n="$(find backend/config backend/migrations backend/src backend/tests backend/var -uid 0 2>/dev/null | wc -l)"
+      if (( n == 0 )); then echo "   ningún archivo de root en los bind-mounts del backend"; return 0; fi
+      echo "   !! $n archivo(s) de root en los bind-mounts del backend (de cuando dev corría como root)."
+      echo "      El backend corre como tu usuario y puede no leerlos (ej. config/jwt/private.pem, modo 600)."
+      echo "      Fix: docker run --rm -v \"\$PWD/backend:/b\" alpine chown -R $(id -u):$(id -g) /b/config /b/migrations /b/src /b/tests /b/var"
+      return 0
+    }
+    step "archivos de root (dev)" root_files
+
+    # Queues: routed and unconsumed, or a worker on someone else's vhost (queue slot epic).
+    # Same check that aborts a deploy and turns verify red; here it only informs.
+    queue_board() {
+      # shellcheck source=/dev/null
+      source scripts/lib/env-check.sh && source scripts/lib/queue-guard.sh || return 0
+      if queue_guard docker compose; then echo "   ok: nothing routed asynchronously without a worker"; fi
+      return 0
+    }
+    step "colas" queue_board
     # Lo que Compose RESUELVE para cada servicio (no lo que dice el .env): secretos
     # faltantes/públicos, slots reemplazados. Informa; el exit code no corta a doctor.
     env_board() { scripts/oliva/env.sh check || true; }

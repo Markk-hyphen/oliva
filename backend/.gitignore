@@ -1,5 +1,6 @@
 vendor/
-var/
+var/*
+!var/.gitkeep
 config/jwt/
 config/mercure/
 .env.local

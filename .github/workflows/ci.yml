@@ -68,7 +68,11 @@ jobs:
 
       -
         name: Start services
-        run: docker compose up --wait --no-build
+        # El dev stack corre el backend como ${HOST_UID:-1000} (T7, docker-compose.override.yml).
+        # El checkout del runner NO es uid 1000, así que sin esto el container (1000) no puede
+        # escribir los bind-mounts (var, config) de un árbol ajeno y el backend queda unhealthy.
+        # Es el mismo paso que un host != 1000 hace en su .env; acá se toma el uid del runner.
+        run: HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --wait --no-build
 
       -
         name: Dump service logs on failure
@@ -135,7 +139,7 @@ jobs:
         name: APP_ENV resuelve a 'prod' en el stack prod (backend + scheduler)
         run: |
           docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-            --profile cron config --format json > prod-config.json
+            --profile cron --profile queues config --format json > prod-config.json
           jq -e '.services.backend.environment.APP_ENV == "prod"' prod-config.json > /dev/null \
             || { echo "::error::backend APP_ENV != 'prod' en docker-compose.prod.yml — los bloques when@prod de Symfony NO se aplicarían"; exit 1; }
           jq -e '.services.scheduler.environment.APP_ENV == "prod"' prod-config.json > /dev/null \
@@ -155,6 +159,35 @@ jobs:
           jq -e '(.services.backend.environment.FRANKENPHP_CONFIG // "unset") != ""' prod-config.json > /dev/null \
             || { echo "::error::backend resuelve FRANKENPHP_CONFIG='' en el stack prod — worker mode quedaría APAGADO (regresión del bug de 1.4.3). No definir FRANKENPHP_CONFIG en .env/.env.example."; exit 1; }
           echo "✓ worker mode no está apagado a nivel compose"
+      -
+        name: Queue worker in production (profile queues) and healthchecks of their own
+        # Until 1.8.0 the worker existed only in dev: messages piled up in production with
+        # nothing consuming them. And every non-HTTP container of the backend image inherits
+        # its HTTP healthcheck (curl :2019), which always fails there: the prod scheduler was
+        # unhealthy with nothing saying so. Structural, no build.
+        run: |
+          jq -e '.services.worker.environment.APP_ENV == "prod"' prod-config.json > /dev/null \
+            || { echo "::error::no prod worker with APP_ENV=prod under --profile queues"; exit 1; }
+          jq -e '.services.worker.command == ["oliva-consume"]' prod-config.json > /dev/null \
+            || { echo "::error::the prod worker does not run oliva-consume"; exit 1; }
+          for s in worker scheduler; do
+            if ! jq -e --arg s "$s" '.services[$s].healthcheck.test as $t
+                | $t != null and ($t | tostring | test("curl") | not)' prod-config.json > /dev/null; then
+              echo "::error::$s has no healthcheck of its own: it inherits the image's HTTP check and is always unhealthy"
+              exit 1
+            fi
+          done
+          echo "✓ prod worker resolves; worker and scheduler have their own healthcheck"
+      -
+        name: Shared infra resolves with queues (external broker)
+        # The base worker depends on `rabbitmq`, which shared infra disables: without the
+        # override Compose rejects the project ("depends on undefined service").
+        run: |
+          services="$(docker compose -p ci -f docker-compose.yml -f docker-compose.prod.yml \
+            -f docker-compose.shared-infra.yml --profile cron --profile queues config --services)"
+          grep -qx worker <<< "$services" || { echo "::error::shared infra + queues does not resolve a worker"; exit 1; }
+          ! grep -qx rabbitmq <<< "$services" || { echo "::error::shared infra starts a local rabbitmq"; exit 1; }
+          echo "✓ shared infra: worker on the external broker"
 
   env-contract:
     # Cheap guard (no build, seconds). Fails when the environment Compose RESOLVES is not

@@ -52,6 +52,20 @@ services:
       - .env.backend
       - .env.staging
 
+  # Igual que backend/scheduler: imagen propia de staging (si no, heredaría la `:prod` de
+  # prod.yml) y APP_ENV explícito, que pisa el `APP_ENV=prod` de prod.yml (ver el gotcha de
+  # precedencia arriba). .env.staging carga último: su RABBITMQ_DSN/DATABASE_URL ganan.
+  worker:
+    image: ${COMPOSE_PROJECT_NAME}-backend:staging
+    build:
+      target: frankenphp_staging
+    environment:
+      - APP_ENV=staging
+    env_file: !override
+      - .env
+      - .env.backend
+      - .env.staging
+
   # El frontend de staging usa su PROPIA imagen, igual que el backend: sin
   # declarar este servicio heredaría la imagen `:prod` de prod.yml y un rebuild
   # en staging pisaría la que sirve producción. Mismo target `production`, solo

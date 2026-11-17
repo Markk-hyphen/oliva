@@ -125,6 +125,8 @@ ENV PHP_INI_SCAN_DIR=":$PHP_INI_DIR/app.conf.d"
 
 COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
 COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
+# The worker's command (service `worker`): expands WORKER_CONSUME_ARGS inside the container.
+COPY --link --chmod=755 frankenphp/consume-messages.sh /usr/local/bin/oliva-consume
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
 # Read by docker-entrypoint: values a secret must never have in production.
 COPY --link frankenphp/known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
@@ -177,6 +179,20 @@ RUN --mount=type=bind,from=ghcr.io/php/pie:1.5.3-bin,source=/pie,target=/usr/loc
 	rm -rf /var/lib/apt/lists/*
 
 COPY --link frankenphp/conf.d/20-app.dev.ini $PHP_INI_DIR/app.conf.d/
+
+# T5 — manifiesto de los inputs de build que se HORNEAN pero NO se bind-mountean en dev:
+# editarlos en el host no surte efecto hasta rebuildear, porque cambiarlos pide
+# `composer install` / recompilar extensiones, no copiar el archivo (por eso no se
+# montan, a diferencia de phpunit.dist.xml). `./oliva doctor` compara estos hashes
+# contra los del host y avisa "rebuildeá la imagen" si driftearon. Va al final del
+# stage dev (no en base) para no invalidar el layer caro de xdebug al tocarlo.
+# hadolint ignore=DL4006
+RUN --mount=type=bind,source=php-extensions.txt,target=/run/oliva/php-extensions.txt \
+	set -eux; \
+	mkdir -p /usr/local/share/oliva; \
+	{ sha256sum composer.json composer.lock symfony.lock | awk '{n=$2; sub(/.*\//,"",n); print $1"  "n}'; \
+	  sha256sum /run/oliva/php-extensions.txt | awk '{print $1"  php-extensions.txt"}'; \
+	} | sort -k2 > /usr/local/share/oliva/build-inputs.sha256
 
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--watch" ]
 

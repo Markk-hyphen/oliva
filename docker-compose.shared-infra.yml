@@ -61,6 +61,19 @@ services:
       app_network:
       data_net:
 
+  # El broker es externo (el RabbitMQ compartido, en data_net): el depends_on del base
+  # apunta a un `rabbitmq` que acá está desactivado y Compose rechazaría el proyecto
+  # ("depends on undefined service"). Queda solo el backend, que es de este project y
+  # sigue siendo la garantía de que el esquema está migrado antes de consumir.
+  # data_net: el broker y la base compartidos (un handler suele usar Doctrine).
+  worker:
+    depends_on: !override
+      backend:
+        condition: service_healthy
+    networks:
+      app_network:
+      data_net:
+
   frontend:
     ports: !override []
     networks:

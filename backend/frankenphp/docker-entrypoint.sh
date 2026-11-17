@@ -45,7 +45,16 @@ if [ "$1" = 'frankenphp' ] && [ -z "${MERCURE_PUBLISHER_JWT_KEY:-}" ]; then
 	exit 1
 fi
 
-if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
+# A queue consumer never runs the setup below (JWT keys, wait-for-db, migrations, ACLs):
+# the backend does it, and the worker starts only once the backend is healthy, that is,
+# migrated (depends_on in docker-compose.yml). Until 1.8.0 the dev worker ran `migrate` at
+# the same time as the backend. The worker's own command (oliva-consume) never matches the
+# list; the messenger:consume check covers an app whose override still runs it directly.
+oliva_setup=0
+if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then oliva_setup=1; fi
+if [ "${2:-}" = 'messenger:consume' ] || [ "${3:-}" = 'messenger:consume' ]; then oliva_setup=0; fi
+
+if [ "$oliva_setup" = 1 ]; then
 	# Generate JWT keys if they don't exist (first deploy or fresh environment)
     JWT_DIR="$PROJECT_DIR/config/jwt"
 
@@ -84,8 +93,13 @@ if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 		fi
 	fi
 
-	setfacl -R -m u:www-data:rwX -m u:"$(whoami)":rwX var
-	setfacl -dR -m u:www-data:rwX -m u:"$(whoami)":rwX var
+	# `id -u` (UID numérico), NO `whoami`: en dev el container corre como el usuario
+	# del host (docker-compose.override.yml), un UID que no tiene entrada en el
+	# /etc/passwd de la imagen → `whoami` falla con "no passwd entry" y, con `set -e`,
+	# mata el entrypoint. El UID numérico no necesita passwd y el dueño de `var` (host
+	# en dev vía bind-mount, root en prod) puede setear su propia ACL. Sirve para ambos.
+	setfacl -R -m u:www-data:rwX -m u:"$(id -u)":rwX var
+	setfacl -dR -m u:www-data:rwX -m u:"$(id -u)":rwX var
 
 	echo 'PHP app ready!'
 fi
