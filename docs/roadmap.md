@@ -186,7 +186,9 @@ module (which would need manual sync). It's an install flag, `--shared-infra`
 ### First: unbundle the roles
 
 A role that lives inside another container can't be replaced on its own, and
-today three containers carry more than one role:
+today three containers carry more than one role. Planned in
+[`epics/E-unbundle-roles.md`](roadmap/epics/E-unbundle-roles.md): the gateway in
+1.9.0, the realtime hub in 1.10.0, the rest as written contracts.
 
 - **`frontend` is also the gateway.** Replacing the frontend (say, with Next.js)
   silently drops the routing to the backend and the security headers.
@@ -196,8 +198,7 @@ today three containers carry more than one role:
   Replacing the backend silently drops realtime. Extracting the hub (`realtime`
   profile) reverses the decision recorded in
   `oliva-upgrade-optional-services.md`. Publishing then becomes an HTTP POST
-  with a JWT, which works from any stack. *Not now:* it happens as part of this
-  item.
+  with a JWT, which works from any stack.
 - **`scheduler` and `worker`** build from `./backend` and assume `bin/console`
   and Messenger.
 
@@ -220,8 +221,6 @@ contract has to make them explicit:
 - **Sync:** `owned-paths.txt` owns `backend/Dockerfile` and `backend/frankenphp/`.
   A fork with another backend would keep receiving FrankenPHP changes it can't
   use, so `sync.sh` has to know which slots a fork replaced.
-- **Demo leftovers:** `/live.php` is wired into the frontend Caddyfile and the
-  Vite proxy.
 
 ### Why it waits on item 3
 
