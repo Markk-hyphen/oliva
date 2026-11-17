@@ -68,7 +68,11 @@ jobs:
 
       -
         name: Start services
-        run: docker compose up --wait --no-build
+        # El dev stack corre el backend como ${HOST_UID:-1000} (T7, docker-compose.override.yml).
+        # El checkout del runner NO es uid 1000, así que sin esto el container (1000) no puede
+        # escribir los bind-mounts (var, config) de un árbol ajeno y el backend queda unhealthy.
+        # Es el mismo paso que un host != 1000 hace en su .env; acá se toma el uid del runner.
+        run: HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --wait --no-build
 
       -
         name: Dump service logs on failure
