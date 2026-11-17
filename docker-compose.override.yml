@@ -20,40 +20,23 @@ services:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
 
+  # El servicio vive en docker-compose.yml (profile, comando, depends_on, healthcheck);
+  # acá solo lo de dev. Un consumidor no recarga código: tras editar un handler,
+  # `docker compose restart worker`.
   worker:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ver backend: usuario del host en dev
-    profiles: ["queues"]
     build:
-      context: ./backend
-      dockerfile: Dockerfile
       target: frankenphp_dev
-    command: ["bin/console", "messenger:consume", "ingest", "enrich", "--time-limit=3600", "-vv"]
-    restart: unless-stopped
-    env_file:
-      - .env
-      - .env.backend
-    depends_on:
-      database:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     volumes:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
-      - ./backend/migrations:/app/migrations
       - ./backend/config:/app/config
       - ./backend/var:/app/var
     environment:
       APP_ENV: dev
-    healthcheck:
-      test: ["CMD-SHELL", "kill -0 1 2>/dev/null"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    networks:
-      - app_network
+      # = -vv sin tocar el comando: loguea cada mensaje consumido.
+      SHELL_VERBOSITY: 2
     tty: true
 
   scheduler:
@@ -79,12 +62,6 @@ services:
       - ./backend/scheduler/crontab:/etc/supercronic/crontab:ro
     environment:
       APP_ENV: dev
-    healthcheck:
-      test: ["CMD-SHELL", "kill -0 1 2>/dev/null"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     networks:
       - app_network
 

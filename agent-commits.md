@@ -1163,3 +1163,45 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   `/health` ok, `doctor`'s two new steps green, drift correctly flagged when php-extensions.txt
   changed, stack torn down leaving no new root-owned files. **Not checked:** a non-1000 host,
   the frontend as host user, and the real crossing of a fork.
+
+## [queue slot · phase 1] a production worker, healthchecks of their own, WORKER_CONSUME_ARGS
+**Hash:** `f9010e44c0e5e774ac88cbeedd23a061c68e003f`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docker-compose.yml` | modified | New `worker` service (profile `queues`, command `oliva-consume`, `depends_on` backend and rabbitmq healthy, healthcheck). `scheduler` gets a healthcheck of its own. |
+| `docker-compose.prod.yml` | modified | `worker`: `:prod` image, `APP_ENV=prod`. Everything else comes from the base. |
+| `docker-compose.override.yml` | modified | The dev `worker` keeps only what is dev (image, host user, mounts, `SHELL_VERBOSITY=2` for `-vv`); the duplicated `scheduler` healthcheck goes. |
+| `backend/frankenphp/consume-messages.sh` | new | `oliva-consume`: `WORKER_CONSUME_ARGS` if set; otherwise `--all`, excluding the failure transport whose name it asks Symfony for, recycled at 3600 s / 128M. |
+| `backend/Dockerfile` | modified | Installs `oliva-consume` next to the entrypoint. |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | A `messenger:consume` command never runs the setup block (JWT, wait-for-db, `migrate`, ACLs). |
+| `.env.backend` | modified | `WORKER_CONSUME_ARGS=` (empty = the default), documented. |
+
+### Why
+- *The worker lives in the base file, like `scheduler`,* so prod, staging and shared infra
+  only adjust it. Before, it existed only in dev and an app had no way to a production one:
+  the README told it to edit `docker-compose.prod.yml`, a file Oliva owns.
+- *A healthcheck of their own for `worker` and `scheduler`.* The image bakes an HTTP check
+  (`curl :2019/metrics`) that fails for any container without FrankenPHP: measured exit 7.
+  The prod scheduler was `unhealthy` with nothing saying so (the deploy does not `--wait`).
+- *`depends_on: backend (healthy)` replaces the setup in the worker.* The backend is healthy
+  only after its entrypoint has migrated, so the worker starts on a migrated schema; the dev
+  worker used to run `migrate` at the same time as the backend (seen in its log).
+- *A script for the command, not the variable in `command:`.* Compose interpolates `command:`
+  from the project's `.env` only, and `WORKER_CONSUME_ARGS` is an app decision that belongs in
+  the tracked `.env.backend`; `sh -c` in compose would make `$1 = sh`, the trap the Dockerfile
+  warns about.
+- *The failure transport is asked, not assumed* (found while testing, not in the design):
+  Symfony silently ignores an `--exclude-receivers` that names no transport, so a fixed
+  `failed` would stop excluding anything in an app that renamed it, and a poison message would
+  loop forever. Checked with the real config, with it pointed at another transport, and with
+  none.
+- Proven: dev stack with `queues` (worker healthy, no setup in its log, starts after the
+  backend, PID 1 is the consumer, `WORKER_CONSUME_ARGS` honoured); production stack on a scratch
+  copy with `queues` and `cron`: every service healthy, and a round trip with
+  `RunCommandMessage` (worker stopped → one message waiting in `ingest` → worker started →
+  queue at 0 and the mark written inside the worker). **Not checked yet:** staging and shared
+  infra (phase 2).
