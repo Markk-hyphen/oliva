@@ -1277,3 +1277,37 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   and announced; `verify` red (exit 1) and green on the same states; sync-only routes and no
   routes → silent. The parser was unit-tested on inline and nested transports, scalar, inline
   and block-list routes, comments, a `when@prod` block, and single- and multi-line attributes.
+
+## [queue slot · phase 4] CI, docs, the 1.8.0 notes, and the upgrade hazard of T7
+**Hash:** `ec8380a073da8c876cca6c6c3129d46d746a19b1`
+**Branch:** `feat/queue-slot`
+**Date:** 2026-11-17
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `.github/workflows/ci.yml` | modified | `prod-config`: with `--profile queues`, the prod worker resolves (`APP_ENV=prod`, `oliva-consume`) and `worker`/`scheduler` have a healthcheck that is not the image's; shared infra resolves with `queues` and no local `rabbitmq`. |
+| `oliva` | modified | `doctor` step "archivos de root (dev)": root-owned files in the backend's bind-mounts, with the `chown` fix. |
+| `docs/oliva/UPGRADING.md` | modified | `## 1.8.0`: group C (dev ergonomics) and the queue slot, six labelled actions. |
+| `docs/oliva/agent-guide.md` | modified | "The queue worker" replaces the known-debt section; services table. |
+| `README.md`, `docs/oliva/qa-y-staging.md`, `docs/roadmap.md` | modified | The gap is gone; profile table; verify step `queue`; slots table. |
+| `docs/friction-log.md` | modified | X10 (no production worker), X11 (unhealthy scheduler), X12 (cross-vhost consumption), all fixed; group D note. |
+| `docs/roadmap/epics/E-queue-slot.md` | modified | Status: implemented, release pending. |
+
+### Why
+- *The CI checks are structural, no build*: they guard the two regressions this epic can have
+  without a running stack (the prod worker or a healthcheck disappearing from a compose file,
+  and shared infra being rejected again). Run locally as CI runs them, plus a negative case
+  (the scheduler's healthcheck removed → the step fails).
+- *T7 had an upgrade hazard, found while writing these notes, not when T7 was built*: an app
+  whose dev backend ran as root has `config/jwt/private.pem` owned by root with mode 600; the
+  backend, now the host user, cannot read it, and only logins fail. Nothing has synced since,
+  and nothing is released, so it ships with a labelled `[local]` action and a `doctor` step that
+  works with the stack down. Checked on this repository's own leftovers: one root file found,
+  the printed fix applied, zero after.
+- *UPGRADING actions follow the preference order*: what can be checked carries a guard
+  (`queue`); the rest is labelled so `doctor` and the deploys show it until acknowledged.
+  `lint_upgrade_actions 1.8.0` passes, and the pending view shows the `[local]` and `[host]`
+  items and not the guarded one.
+- **Not done here:** the release itself (`release.sh 1.8.0`) and the push, which are the
+  maintainer's call; the real crossing of an app.

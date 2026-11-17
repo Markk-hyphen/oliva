@@ -60,20 +60,36 @@ Además de `database`, `backend` y `frontend`, `docker-compose.yml` define:
 |---|---|---|
 | `rabbitmq` | Broker para Symfony Messenger (colas `ingest`/`enrich` de ejemplo, comentadas) | Quitar el bloque `rabbitmq` y las dependencias `depends_on: rabbitmq` de `backend`/`scheduler`/`worker` |
 | `scheduler` | Ejecuta `supercronic` con `backend/scheduler/crontab` para tareas periódicas. **Opt-in:** vive tras el profile `cron`, no arranca por defecto (mismo criterio que `rabbitmq`/`queues`). El crontab base viene vacío. | Por defecto ya no corre. Una app que necesite cron llena `backend/scheduler/crontab` y activa el profile con `COMPOSE_PROFILES=cron` en el `.env` (en prod, el `.env` **del host**: es lo que lee el `up` de `deploy.sh`). Si el crontab tiene tareas y el profile no está activo, `deploy.sh`/`deploy-staging.sh` lo avisan al final (`scripts/lib/cron-guard.sh`). Para eliminarlo del todo: quitar el bloque `scheduler` y `backend/scheduler/crontab` |
-| `worker` (en `docker-compose.override.yml`, dev) | Corre `bin/console messenger:consume` | Quitar el bloque `worker` si no hay mensajes async |
+| `worker` | Consumes Messenger messages (`oliva-consume`). **Opt-in** with the `queues` profile, together with `rabbitmq`, in every environment (dev, prod, staging, shared infra) since 1.8.0. See "The queue worker" below | Nothing: it only runs with `queues`. If the app routes messages asynchronously, `verify` and the deploys require it |
 
 La base de datos usa la imagen `pgvector/pgvector:pg${POSTGRES_VERSION}` — es un Postgres normal con la extensión `vector` compilada y una migración que la habilita (`CREATE EXTENSION IF NOT EXISTS vector`). No tiene costo si la app no usa tipos `vector`; no hace falta quitarla.
 
-### Deuda conocida: `worker` no tiene definición de producción
+### The queue worker
 
-`docker-compose.override.yml` (dev) define `worker` con `bin/console messenger:consume`, pero no hay equivalente en `docker-compose.prod.yml` ni en el `docker-compose.yml` base. Si una app usa RabbitMQ/Messenger en serio, antes de ir a producción hay que agregar un servicio `worker` (imagen `${COMPOSE_PROJECT_NAME}-backend:prod`, comando `messenger:consume`, sin exponer puertos). `scheduler` sí está cubierto en prod (usa `${COMPOSE_PROJECT_NAME}-backend:prod` / target `frankenphp_prod`, igual que `backend`).
+Since 1.8.0 `worker` is a service of `docker-compose.yml`, behind `queues`, built from the
+backend image; each overlay only sets its image and environment. Before, it existed only in
+dev, and an app with queues in production enqueued messages that nothing consumed. Design and
+reasons: `docs/roadmap/epics/E-queue-slot.md`.
 
-**Ya no es teórica (auditoría 2026-10-23):** crypto-pulse declara `COMPOSE_PROFILES=queues,cron`
-y su stack de prod resuelve a `backend frontend scheduler` — sin worker, los mensajes async se
-encolarían y nadie los consumiría. No es un cambio chico: el servicio tiene que existir en
-`prod.yml`, en `shared-infra.yml` (red `data_net`, `depends_on` anulado, DSN del RabbitMQ
-compartido) y en `staging.yml` (imagen y `APP_ENV` de staging), y va detrás del profile `queues`,
-así que necesitaba que el `down` de los deploys bajara todos los profiles (resuelto en 1.4.2 con `--profile '*'`).
+- **Command:** `oliva-consume` (`backend/frankenphp/consume-messages.sh`) consumes every
+  transport except the app's failure transport (its name is asked to Symfony) and recycles
+  itself every hour or 128M; `restart:` brings it back. To change it, set
+  `WORKER_CONSUME_ARGS` in `.env.backend` (the arguments after `messenger:consume`). Never
+  consume the failure transport in the same loop: a poison message would be retried forever.
+- **It never migrates.** It starts once the backend is healthy, that is, migrated, and the
+  entrypoint skips its setup for any `messenger:consume`.
+- **A consumer does not reload code:** after editing a handler, `docker compose restart worker`.
+- **One vhost per app and per environment on a shared broker.** Every app inherits the same
+  queue names (`ingest`, `enrich`, `failed`): on the same vhost, a worker consumes another
+  app's or environment's messages (measured: staging handled production's). See the shared
+  infra and staging runbooks (`provision-rabbitmq.sh`).
+- **Guarded** (`scripts/lib/queue-guard.sh`): messages routed to an asynchronous transport with
+  no worker, a worker on the default vhost of an external broker, or staging on production's
+  vhost → `deploy*.sh` abort before `down` (the running stack keeps serving), `verify` step
+  `queue` is red, `doctor` shows it. A consumer that lives outside the stack on purpose is
+  declared with `OLIVA_QUEUE_CONSUMER=external` in `.env`, and announced on every run.
+- **Known limit:** the production worker does not mount the JWT keys (`./secrets/jwt`), same as
+  the scheduler. A handler that signs tokens needs that mount added in Oliva.
 
 Mercure (`/.well-known/mercure`) está siempre activo vía el hub de Caddy (`backend/frankenphp/Caddyfile`); la demo de canvas en vivo (`backend/src/Controller/LiveController.php` + `frontend/src/js/live.js`) muestra que funciona out of the box.
 

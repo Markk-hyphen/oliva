@@ -133,6 +133,21 @@ case "$cmd" in
     }
     step "usuario del backend (dev)" uid_match
 
+    # Files the dev containers wrote as root before 1.8.0 (they run as the host user now).
+    # The backend can no longer read a root file with mode 600: config/jwt/private.pem is
+    # the one that bites, and nothing fails at boot, only every login. Static: it says so
+    # even with the stack down.
+    root_files() {
+      local n
+      n="$(find backend/config backend/migrations backend/src backend/tests backend/var -uid 0 2>/dev/null | wc -l)"
+      if (( n == 0 )); then echo "   ningún archivo de root en los bind-mounts del backend"; return 0; fi
+      echo "   !! $n archivo(s) de root en los bind-mounts del backend (de cuando dev corría como root)."
+      echo "      El backend corre como tu usuario y puede no leerlos (ej. config/jwt/private.pem, modo 600)."
+      echo "      Fix: docker run --rm -v \"\$PWD/backend:/b\" alpine chown -R $(id -u):$(id -g) /b/config /b/migrations /b/src /b/tests /b/var"
+      return 0
+    }
+    step "archivos de root (dev)" root_files
+
     # Queues: routed and unconsumed, or a worker on someone else's vhost (queue slot epic).
     # Same check that aborts a deploy and turns verify red; here it only informs.
     queue_board() {

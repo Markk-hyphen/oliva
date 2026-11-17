@@ -1,6 +1,6 @@
 # Epic — The queue slot, complete: a production worker and a guard for the forgotten profile
 
-> **Status:** 🔨 in progress (branch `feat/queue-slot`) ·
+> **Status:** ✅ implemented, phases 1–4 (branch `feat/queue-slot`); release 1.8.0 pending ·
 > **Target version:** v1.8.0 (1.7.0 shipped without it) ·
 > **Origin:** framework review, 2026-11-14. Follows `E-config-contract.md`. Re-checked
 > against `main` on 2026-11-17, before any code: see "Findings of the re-check".
