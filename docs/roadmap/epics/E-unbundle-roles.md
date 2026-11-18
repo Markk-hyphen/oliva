@@ -88,6 +88,9 @@ there will be to change the topology.
 | Image of the realtime hub | **The official `dunglas/mercure`** (pinned). Independent of the backend, at the cost of one more base image to track. |
 | Scope | **Split gateway and realtime.** Backend lifecycle, worker and scheduler: written contracts, not new containers. Exit through a throwaway fork that replaces the frontend. |
 | Releases | **Two:** gateway in 1.9.0, realtime in 1.10.0. |
+| Trusted proxies | **Trust the private networks at both hops.** Backend: `ENV SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS` in the backend image (Symfony reads it natively; any `env_file` overrides it). Gateway: `trusted_proxies static {$GATEWAY_TRUSTED_PROXIES:private_ranges}`. Not `framework.yaml` (the app's file) nor `.env.backend` (it overrides `.env`). Reasons: `docs/oliva/concepts.md`, "Trusted proxies". |
+| HMR | **Through the gateway.** Publishing Vite's port publishes all of Vite, and its log prints `http://localhost:3000`: the most natural URL would bring back the divergence this epic removes. Vite's port only as a fallback if the phase-1 gate fails. |
+| CSP in dev | **The production policy plus the minimum Vite needs** (`style-src 'unsafe-inline'`: Vite injects CSS as `<style>` tags). Production unchanged. Known limit: an app's own inline styles show up in staging, not in dev. |
 
 ## Design
 
@@ -123,9 +126,14 @@ and so on). Replacing a slot is changing one value, which `env check` reports as
   publish nothing by default. `BACKEND_PORT`/`FRONTEND_PORT` in an app's `.env` stop
   meaning anything: an upgrade guard says so, and how to move the value to `GATEWAY_PORT`.
   `DB_PORT` and the RabbitMQ ports do not change.
-- **HMR** goes through the gateway (Vite's websocket on the same origin). If it cannot be
-  made reliable, the fallback is to keep publishing Vite's port for HMR only; the phase-1
-  gate decides.
+- **HMR** goes through the gateway (Vite's websocket on the same origin). Caddy proxies
+  websockets with no configuration; the risks are configuration: `hmr.clientPort: 3000`
+  in `vite.config.js` must go (Vite then uses the page's port, so it follows
+  `GATEWAY_PORT`), and the gateway must keep the `Host` header (Vite's `allowedHosts`
+  check). Fallback, only if the gate fails: publish Vite's port for HMR.
+- **CSP per environment.** Dev gets the production policy plus `style-src 'unsafe-inline'`,
+  nothing else; `connect-src 'self'` should already cover the same-origin websocket (to be
+  measured). Until now dev had no CSP at all.
 - **Dependencies and health.** The gateway depends on nothing: an absent upstream answers
   `502` on its routes, which is loud. `frontend` stops depending on `backend`. The gateway
   gets its own healthcheck (an internal route answered by Caddy itself), never one that
@@ -134,11 +142,10 @@ and so on). Replacing a slot is changing one value, which `env check` reports as
   frontend leaves `proxy_net`. For one release the gateway **also** carries the old alias
   `<project>-frontend`, so an existing `~/infra/caddy/Caddyfile` keeps routing with no
   action. The alias is removed later behind a guard that names the line to change.
-- **Trusted proxies, end to end.** The gateway keeps the client's `X-Forwarded-For`; the
-  backend trusts private subnets by default (`framework.trusted_proxies` from a variable
-  defaulting to `PRIVATE_SUBNETS`). Where this lives matters for sync:
-  `backend/config/**` is shared and one app already sets the same key. Phase 1 decides
-  between a separate Oliva-owned config file and a labelled upgrade action.
+- **Trusted proxies, end to end** (decided above). Declared in `env.manifest` (slot
+  `backend`, `plain`) and commented in `.env.example`, since an image `ENV` is otherwise
+  invisible. `env check` flags `SYMFONY_TRUSTED_HEADERS` set but empty: Symfony throws at
+  boot on it (read in the 7.4 kernel).
 
 ### Realtime (1.10.0)
 
@@ -195,10 +202,12 @@ and so on). Replacing a slot is changing one value, which `env check` reports as
 1. **The gateway, in every environment (1.9.0).** *Gate:* in dev and prod, the same
    requests through the gateway's one port: `/` serves the app, `/health` answers JSON
    (the starter's fetch shows "ok" in the dev loop, the finding above), `/api/*` reaches
-   Symfony, Mercure subscribe and publish work end to end, HMR reloads a change. The
+   Symfony, Mercure subscribe and publish work end to end, HMR reloads a change and the
+   page keeps its styles under the dev CSP. The
    security headers are present on every response, and an app's file under
-   `gateway/app.d/` changes the CSP without touching an Oliva file. The backend sees the
-   client's IP, not the gateway's. Stopping the backend leaves the gateway `healthy` and
+   `gateway/app.d/` changes the CSP without touching an Oliva file. Through a local
+   shared-infra proxy with TLS, Symfony sees the client's IP and `isSecure()` is true;
+   with `GATEWAY_TRUSTED_PROXIES` narrowed, a forged `X-Forwarded-For` is dropped. Stopping the backend leaves the gateway `healthy` and
    answering `502` on `/api`. A local shared-infra setup routes through
    `<project>-gateway` **and** the transitional `<project>-frontend` alias. A
    `BACKEND_PORT` left in `.env` is reported, with the fix.
@@ -230,7 +239,7 @@ actions labelled, preferring a change that asks nothing of the app, then a guard
 | `BACKEND_PORT`/`FRONTEND_PORT` in `.env` | move to `GATEWAY_PORT` | guard |
 | The shared-infra vhost pointing at `<app>-frontend` | nothing for one release, then one line in `~/infra` | transitional alias, then a guard |
 | `MERCURE_URL` in `.env.backend` (shared) | take Oliva's new value on sync | guard (phase 2) |
-| Trusted proxies | depends on the phase-1 decision | separate config file, or a labelled action |
+| Trusted proxies | nothing | image default; an app that set its own `framework.trusted_proxies` keeps it |
 
 ## Out of scope
 
