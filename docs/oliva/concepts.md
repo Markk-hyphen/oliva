@@ -499,3 +499,55 @@ Son dos cosas que comparten nombre:
 Lo que sí comparten es el modelo: los dos son procesos PHP de larga vida, así que los dos
 sufren los mismos riesgos de fuga de estado, leaks y conexiones muertas (por eso
 `messenger:consume` también tiene `--limit`, `--memory-limit` y `--time-limit`).
+
+## Trusted proxies and `X-Forwarded-*`
+
+Every proxy opens a new TCP connection, so the server behind it sees the proxy's address,
+not the browser's. The only way to know the real client is for each proxy to write down
+what it saw, in request headers: `X-Forwarded-For` (the client's IP), `X-Forwarded-Proto`
+(`https` when TLS ended at the edge), `X-Forwarded-Port`. Anyone can send those headers,
+so each hop believes them **only from a proxy it trusts**. That list is `trusted_proxies`.
+
+```
+browser ─TLS─► shared-infra proxy ─http─► gateway ─http─► backend (Symfony)
+```
+
+A backend that trusts nobody behind a gateway sees every client with the gateway's IP (an
+IP-based rate limit, such as login throttling, locks out everyone at once; logs cannot tell
+users apart) and believes every request is plain `http` (`isSecure()` is false: absolute
+URLs and redirects in `http://`, cookies with `secure: auto` lose the `Secure` flag). None of
+it raises an error.
+
+Oliva's choice: **trust the private networks** at both hops (`PRIVATE_SUBNETS` in Symfony,
+`private_ranges` in Caddy). It works the same in dev, standalone, shared infra and staging. A
+client from the internet never has a private address, so it cannot forge the headers: the
+first proxy replaces them with what it saw. What it does trust is any container that reaches
+the backend directly over a private network (on shared infra, the other apps on `data_net`):
+acceptable within Oliva's scope, one maintainer's own apps. Pinning the exact gateway would
+need a fixed subnet per app, a new source of collisions between apps.
+
+Symfony reads `SYMFONY_TRUSTED_PROXIES` and `SYMFONY_TRUSTED_HEADERS` with no YAML. Unset
+headers mean `for, port, proto`; **set but empty** makes the kernel throw at boot. Design:
+[`E-unbundle-roles.md`](../roadmap/epics/E-unbundle-roles.md).
+
+## CSP (Content-Security-Policy), and why dev and prod differ
+
+A response header the server sends and **the browser enforces**: which scripts, styles,
+connections and frames the page may load, and from where. Its job is to contain an injection
+(XSS): a `<script>` an attacker manages to slip into the page is refused by the browser. It
+is not trust between services; that is the entry above.
+
+Oliva's policy is strict: `'self'` only (plus Google Fonts for styles), no inline code. It
+lives in the gateway, so until the gateway existed in dev, dev ran with **no CSP at all**:
+the browser talked to Vite directly.
+
+Why Vite in dev clashes with it and a production build does not: in dev Vite serves modules
+unbundled, and each `import './style.css'` becomes JavaScript that inserts a `<style>` tag, so
+HMR can swap styles without a reload. To the browser that is an inline style, refused by
+`style-src 'self'`. A build extracts the CSS to a file linked with `<link>`, which `'self'`
+allows.
+
+So dev adds only what Vite needs (`'unsafe-inline'` for styles) and production stays strict.
+Known limit: an app's own inline styles work in dev and break in production; staging, which
+runs the production build, is where that shows. Plugins that inject inline scripts (React's
+refresh preamble) are an app's choice, configured in its own gateway file.
