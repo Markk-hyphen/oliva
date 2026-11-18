@@ -1,6 +1,7 @@
 # Epic — Unbundle the roles: a gateway of its own, a realtime hub of its own
 
-> **Status:** 📐 planned, no code yet (branch `feat/unbundle-roles`) ·
+> **Status:** 📐 planned, no code yet (branch `feat/unbundle-roles`). How to execute it:
+> [`E-unbundle-roles-runbook.md`](E-unbundle-roles-runbook.md) ·
 > **Target versions:** v1.9.0 (gateway), v1.10.0 (realtime) ·
 > **Origin:** roadmap item 2, "First: unbundle the roles". Planned 2026-11-17 against
 > `main` at `9160c24` (1.8.0), with the maintainer's decisions below.
@@ -149,6 +150,11 @@ and so on). Replacing a slot is changing one value, which `env check` reports as
 
 ### Realtime (1.10.0)
 
+- **⚠ Open before any code (runbook R1):** `dunglas/mercure:latest` is Mercure 1.1.6 and
+  its own Caddyfile runs modern mode only (`issuer`, `iss` and audience claims). Oliva
+  ships its own Caddyfile for the hub; whether the standalone hub still accepts
+  compatibility-mode tokens at runtime is measured first, and if it does not, modern mode
+  moves into scope (the maintainer decides).
 - **A `realtime` service** on the official `dunglas/mercure` image, pinned, on
   `app_network` only, with no published port. The same configuration as today:
   anonymous subscribe, publisher and subscriber keys from `MERCURE_PUBLISHER_JWT_KEY`,
@@ -247,7 +253,8 @@ actions labelled, preferring a change that asks nothing of the app, then a guard
   them possible, and nothing more.
 - **Splitting the database lifecycle out of the backend** (an init or migrate container).
   It stays in the backend; the contract above makes it explicit.
-- **Mercure modern mode** (issuer blocks, `iss` claim): a pending item of its own.
+- **Mercure modern mode** (issuer blocks, `iss` claim): a pending item of its own,
+  unless phase 2 finds the standalone hub no longer accepts compatibility mode (R1).
 - **TLS at the gateway.** The edge keeps terminating TLS where it does today: the
   shared-infra reverse proxy.
 - **A second default for any slot.** Oliva stands behind one implementation per role
