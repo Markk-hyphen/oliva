@@ -160,14 +160,16 @@ Browser
 Gateway (Caddy)
   │  /                       │  /api, /health   │  /.well-known/mercure
   ▼                          ▼                  ▼
-Frontend (Caddy · Vite)   Backend (FrankenPHP · Symfony) ── Mercure hub
-                               │  SQL              │  AMQP
-                               ▼                    ▼
-                             PostgreSQL          RabbitMQ ── worker / scheduler
-                              (+ pgvector)
+Frontend (Caddy · Vite)   Backend (FrankenPHP · Symfony)   Realtime hub (Mercure)
+                               │  SQL   │  AMQP        │  publish        ▲ SSE
+                               ▼        ▼              ▼                 │
+                             PostgreSQL  RabbitMQ      realtime-relay ───┘
+                              (+ pgvector)  └ worker / scheduler
 ```
 
 The gateway owns routing, the Content-Security-Policy and trusted-proxy handling; it is the only service that publishes a port. Backend and frontend never face the client directly. In production, the shared-infra edge proxy terminates TLS and reaches the gateway over an internal network.
+
+Realtime (opt-in, profile `realtime`) is a standalone Mercure hub. The backend does not publish to it inline: it dispatches the update on the message bus, and a `realtime-relay` delivers it, so a request never waits on the hub and nothing is lost if the hub restarts.
 
 [`docs/oliva/concepts.md`](docs/oliva/concepts.md) explains the less obvious pieces (pgvector, AMQP, Mercure, the sync model). `docs/examples/` has reference skeletons of a queue producer/consumer and a Mercure publisher.
 
@@ -177,9 +179,12 @@ The gateway owns routing, the Content-Security-Policy and trusted-proxy handling
 
 | Profile | Adds | You must also set |
 |---|---|---|
-| _(none)_ | `backend`, `frontend`, `database` | `DATABASE_URL`, `APP_SECRET`, JWT + Mercure keys |
+| _(none)_ | `backend`, `frontend`, `gateway`, `database` | `DATABASE_URL`, `APP_SECRET`, JWT keys |
+| `realtime` | `realtime` (Mercure hub), `realtime-relay` | the Mercure keys; `REALTIME_HISTORY_SIZE` (optional) |
 | `queues` | `rabbitmq`, `worker` | `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_DSN`; `WORKER_CONSUME_ARGS` (optional, `.env.backend`) |
 | `cron` | `scheduler` | nothing, but `backend/scheduler/crontab` must have jobs |
+
+Publishing to Mercure from a message handler or a scheduled command works the same: the update is dispatched on the bus and the relay delivers it. An app that uses Mercure without the `realtime` profile is caught before a deploy (the gateway would answer 502 and updates would pile up).
 
 ```bash
 COMPOSE_PROFILES=queues,cron docker compose up -d
@@ -286,6 +291,7 @@ oliva/
 ├── gateway/                # Caddy edge: routing, CSP, trusted_proxies, /gateway-health
 │   ├── Caddyfile           # Oliva-owned
 │   └── app.d/              # the app's own route snippets (*.caddy)
+├── realtime/               # Mercure hub (profile realtime): Caddyfile, key-guard entrypoint
 ├── docs/
 │   ├── roadmap.md          # where Oliva is heading and why (Oliva's own: does not ship to apps)
 │   ├── oliva/              # framework docs that ship to every app: agent guide, glossary,

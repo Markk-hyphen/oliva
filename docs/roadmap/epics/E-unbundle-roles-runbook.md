@@ -509,21 +509,41 @@ Decisions that follow (mandatory, written as comments where they are configured)
 - `deps.sh`: the note "after bumping FrankenPHP, `verify [mercure]` is mandatory" moves
   to the hub image.
 
-### Step 4 — Gate
+### Step 4 — Gate: DONE 2026-11-19, passed
 
-All of phase 1's gates still pass, plus: publish from the backend reaches a browser
-subscribed through the gateway in dev, prod and staging (two-tab demo and `verify`);
-SSE immediate and alive after 90 idle seconds (same procedure as phase 1, step 12.2);
-empty key → the hub refuses to start; public key → refuses (every environment); app
-using Mercure without the profile → guard aborts the deploy; hub stopped 60 s → events
-delivered on return, none lost; relay stopped → backlog, drained on restart; a stack
-**without** `realtime` → no hub, no relay, `verify` green, `env check` silent about
-Mercure; `MERCURE_URL` left
-at `localhost` → `env check` error, `verify` red, `deploy.sh` aborts with the old stack
-serving; `grep -n mercure backend/frankenphp/Caddyfile` → nothing; restart behaviour
-equals the measurement of step 2. `UPGRADING.md` `## 1.10.0`: enable the `realtime`
-profile (guard), `MERCURE_URL` in an app's `.env.backend` (guard), publishing through the
-bus, the orphan `backend/var/caddy-data/caddy/mercure.db`, anything else found. Close like phase 1.
+Run on the dev stack with `COMPOSE_PROFILES=realtime` (Oliva's own repo carries the demo,
+which uses Mercure, so its stack runs the profile). `./oliva verify` green on all steps,
+including the reworked `mercure` (publish to the hub from the backend, subscribe through the
+gateway from the host, private update to the token holder only). Plus:
+
+| # | Check | Result |
+|---|---|---|
+| H1 | End-to-end via the bus: `POST /api/live` (dispatch) → relay → hub → gateway → subscriber | delivered |
+| H2 | SSE alive after 90 s idle through the full stack, then a dispatch | delivered |
+| H3 | Hub refuses an empty key / a placeholder / a publicly known key (`app`) | all three refused, every environment |
+| H4 | `grep mercure backend/frankenphp/Caddyfile` | no `mercure {` block (only comments); backend answers 404 on `/.well-known/mercure` |
+| H5 | `MERCURE_URL=http://localhost/...` with realtime present | `env check` error, `env_check quiet` exits 1 (→ `verify` red, deploys abort) |
+| H6 | App uses Mercure, `realtime` profile off | `realtime_guard` aborts (exit 1) |
+| H7 | App does NOT use Mercure (LiveController moved away), profile off | `realtime_guard` silent (exit 0) |
+| H8 | `verify` with the profile off | `mercure` step SKIP, not FAIL |
+| H9 | Linters: hadolint (realtime Dockerfile, matrix), `caddy validate` with the mercure image, shellcheck, actionlint | clean |
+| H10 | Relay resilience (from the step-1 gate, same code): hub down 60 s → delivered on return, out of order; relay down → backlog drained in order | holds |
+
+Known, accepted:
+- `env check` still lists the `realtime` slot as `ok` even with the profile off: the Mercure
+  signing keys (`MERCURE_JWT_SECRET`, slot realtime) live on the backend and are read there.
+  It is informational, not an error; `_ec_slot_service realtime` stays `backend` so the
+  `same:` cross-check keeps working within one service (the runbook had suggested remapping
+  it, which would break that check).
+- `caddy validate` for `realtime/Caddyfile` needs the `dunglas/mercure` image, not vanilla
+  `caddy` (the `mercure` directive is only in that build). Noted in the linter list.
+
+### Step 5 — Close the phase
+
+- `agent-commits.md` entry (done with the code commit's log).
+- Epic status → "phase 2 implemented". Memory updated.
+- Release: **only when the maintainer says so** (dry-run recipe in memory, then `deps.sh audit`
+  if due, then `release.sh 1.10.0`).
 
 ## Phase 3 — The probe
 

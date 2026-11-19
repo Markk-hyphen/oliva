@@ -61,6 +61,8 @@ Además de `database`, `backend`, `frontend` y `gateway` (el edge Caddy que ruta
 | `rabbitmq` | Broker para Symfony Messenger (colas `ingest`/`enrich` de ejemplo, comentadas) | Quitar el bloque `rabbitmq` y las dependencias `depends_on: rabbitmq` de `backend`/`scheduler`/`worker` |
 | `scheduler` | Ejecuta `supercronic` con `backend/scheduler/crontab` para tareas periódicas. **Opt-in:** vive tras el profile `cron`, no arranca por defecto (mismo criterio que `rabbitmq`/`queues`). El crontab base viene vacío. | Por defecto ya no corre. Una app que necesite cron llena `backend/scheduler/crontab` y activa el profile con `COMPOSE_PROFILES=cron` en el `.env` (en prod, el `.env` **del host**: es lo que lee el `up` de `deploy.sh`). Si el crontab tiene tareas y el profile no está activo, `deploy.sh`/`deploy-staging.sh` lo avisan al final (`scripts/lib/cron-guard.sh`). Para eliminarlo del todo: quitar el bloque `scheduler` y `backend/scheduler/crontab` |
 | `worker` | Consumes Messenger messages (`oliva-consume`). **Opt-in** with the `queues` profile, together with `rabbitmq`, in every environment (dev, prod, staging, shared infra) since 1.8.0. See "The queue worker" below | Nothing: it only runs with `queues`. If the app routes messages asynchronously, `verify` and the deploys require it |
+| `realtime` | Standalone Mercure hub (`dunglas/mercure`). **Opt-in** with the `realtime` profile since 1.10.0. See "The realtime hub" below | Nothing: it only runs with `realtime`. If the app publishes to Mercure, `verify` and the deploys require it |
+| `realtime-relay` | Delivers dispatched Mercure updates to the hub (`oliva-relay`). Same `realtime` profile | Same: only with `realtime` |
 
 La base de datos usa la imagen `pgvector/pgvector:pg${POSTGRES_VERSION}` — es un Postgres normal con la extensión `vector` compilada y una migración que la habilita (`CREATE EXTENSION IF NOT EXISTS vector`). No tiene costo si la app no usa tipos `vector`; no hace falta quitarla.
 
@@ -91,7 +93,41 @@ reasons: `docs/roadmap/epics/E-queue-slot.md`.
 - **Known limit:** the production worker does not mount the JWT keys (`./secrets/jwt`), same as
   the scheduler. A handler that signs tokens needs that mount added in Oliva.
 
-Mercure (`/.well-known/mercure`) está siempre activo vía el hub de Caddy (`backend/frankenphp/Caddyfile`); la demo de canvas en vivo (`backend/src/Controller/LiveController.php` + `frontend/src/js/live.js`) muestra que funciona out of the box.
+### The realtime hub
+
+Since 1.10.0 Mercure is its own `realtime` service (`realtime/`, the official `dunglas/mercure`
+image with Oliva's Caddyfile), not a block inside the backend. **Opt-in** behind the `realtime`
+profile, like `queues` and `cron`. Design and reasons: `docs/roadmap/epics/E-unbundle-roles.md`.
+
+- **Publishing is through the bus, never inline.** The backend dispatches a
+  `Symfony\Component\Mercure\Update`; it lands on the `realtime` transport
+  (Doctrine/PostgreSQL, `messenger.yaml`) and the `realtime-relay` (`oliva-relay`) POSTs it to
+  the hub. So a request never waits on the hub; a hub down for a while delays events instead of
+  losing them; an update dispatched inside a transaction exists only if the data committed. An
+  app that needs an update sent inline injects `HubInterface` and calls `publish()` — the escape
+  hatch. The `MessageBusInterface` path is the documented one and what the demo uses.
+- **Latency:** the relay runs `--sleep=0.01` with the transport's `get_notify_timeout: 5000`;
+  both are required (either alone is ~1 s; measured p95 ≈ 9 ms). Do not change one without the
+  other.
+- **The relay never migrates.** It waits for the backend healthy (migrated), then runs
+  `messenger:setup-transports realtime` to create `messenger_messages` and consumes. A
+  `schema_filter` in `doctrine.yaml` hides that table, so an app **without** the profile has a
+  green `doctrine:schema:validate` and never creates it.
+- **The hub holds only its key.** It gets `MERCURE_PUBLISHER_JWT_KEY` via `environment:` (not
+  `env_file`), so no other secret reaches it; its entrypoint refuses an empty, placeholder or
+  publicly known key in every environment. Admin API on localhost (it returns the key in clear).
+  History: bolt, capped at `REALTIME_HISTORY_SIZE` (default 1000), no volume — kept across a
+  restart, lost on a deploy.
+- **`MERCURE_URL`** (`.env.backend`) points the backend/relay at the hub by name
+  (`http://realtime/.well-known/mercure`). Leaving it at `localhost`/`backend` makes the backend
+  publish to itself: `env check` errors, `verify` is red, `deploy*.sh` abort before `down`.
+- **Guarded** (`scripts/lib/queue-guard.sh`, `realtime_guard`): the app uses Mercure (code
+  references `Symfony\Component\Mercure`) but the stack has no `realtime` service → the gateway
+  answers 502 and updates pile up, so `verify` step `queue` is red and `deploy*.sh` abort. The
+  `queues` worker (`oliva-consume`) excludes the realtime transports: they are the relay's.
+- **One hub and one relay per app and per environment** on a shared setup, same as the worker
+  (the relay reads the app's own database; nothing is shared). `./oliva init --demo` turns on the
+  `realtime` profile, since the live canvas publishes through Mercure.
 
 ### Aislamiento por app: todo cuelga del project name
 

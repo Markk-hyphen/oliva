@@ -27,6 +27,68 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.10.0 — unreleased
+
+> **The Mercure hub becomes its own service.** Until now Mercure ran inside the
+> backend (a block in its Caddyfile), always on. From 1.10.0 it is a standalone
+> `realtime` service (the official `dunglas/mercure` image with Oliva's config),
+> opt-in behind a `realtime` profile — like `queues` and `cron`. The backend no
+> longer publishes to the hub inline: it dispatches the update on the message bus
+> and a `realtime-relay` delivers it, so a request never waits on the hub and an
+> update is not lost if the hub restarts. The relay rides a Doctrine/PostgreSQL
+> transport (not RabbitMQ: realtime must not pull in the `queues` profile).
+
+**Action required in the app**
+
+- [local, guard: queue] If the app publishes to Mercure (any code using
+  `Symfony\Component\Mercure`), enable the profile in this machine's `.env`:
+  `COMPOSE_PROFILES=realtime` (combine with others, e.g. `realtime,queues,cron`).
+  Without it the gateway answers 502 on `/.well-known/mercure` and dispatched
+  updates pile up in the database. `verify` and `deploy*.sh` catch it
+  (`realtime_guard`). An app that does not use Mercure does nothing.
+- [merge] `docker-compose.yml` and all overlays gain `realtime` and
+  `realtime-relay`; `backend/config/packages/messenger.yaml` gains the `realtime`
+  and `realtime_failed` transports and the `Update` route;
+  `backend/config/packages/doctrine.yaml` gains a `schema_filter`. An app that
+  extended any of these re-applies its changes on the new structure.
+- [merge] `backend/composer.json`/`.lock` add `symfony/doctrine-messenger`. Run
+  `composer install` (or rebuild the backend image) so the relay has it.
+- [local, guard: env] `MERCURE_URL` in `.env.backend` now points at the
+  hub by name: `http://realtime/.well-known/mercure` (it was `http://localhost/...`).
+  The sync brings the tracked default; if a host `.env` overrode it, update it.
+  Leaving it at `localhost`/`backend` makes the backend publish to itself —
+  `env check` errors, `verify` is red, the deploys abort before `down`.
+- [decision] Publishing from a handler or command is now `MessageBusInterface::dispatch(new Update(...))`,
+  the documented path; `HubInterface::publish()` still works for an update that
+  must be sent inline. The app decides per update which it wants.
+- [host] Shared infra: nothing new to provision — the relay uses the app's own
+  database, and the hub needs no external resource. Just enable the `realtime`
+  profile in the host `.env` if the app uses Mercure.
+- [local] After upgrading, a dev checkout may keep an orphan
+  `backend/var/caddy-data/caddy/mercure.db` from the embedded hub. Harmless;
+  delete it if you like.
+
+**What changed**
+
+- `realtime/`: `Dockerfile` (the hub image + Oliva's Caddyfile + a key-guard
+  entrypoint), `Caddyfile` (compat mode, bolt history cap, admin on localhost),
+  `docker-entrypoint.sh`. Owned by Oliva.
+- `backend/frankenphp/realtime-relay.sh` → `oliva-relay`: the relay command.
+- `backend/frankenphp/Caddyfile`: the `mercure` block is gone.
+- `backend/frankenphp/docker-entrypoint.sh`: drops the embedded-hub empty-key
+  check and `MERCURE_PUBLISHER_JWT_KEY` from the production secret list (the hub
+  owns both now); the backend still checks `MERCURE_JWT_SECRET` (it signs).
+- `backend/frankenphp/consume-messages.sh`: the `queues` worker excludes the
+  realtime transports (they are the relay's).
+- `scripts/lib/queue-guard.sh`: new `realtime_guard`. `scripts/lib/env-check.sh`:
+  reads the hub, flags a secret leaked to it, errors on `MERCURE_URL` pointing at
+  the backend. `scripts/oliva/verify.sh`: the `mercure` step runs through the
+  gateway and is skipped when the profile is off.
+- `scripts/oliva/init.sh`: `--demo` enables the `realtime` profile.
+- `.github/workflows/ci.yml`: bakes `realtime`, runs with the profile, checks the
+  prod relay. `scripts/oliva/deps.sh`: tracks the hub base image.
+- `REALTIME_HISTORY_SIZE` (optional): how many events the hub keeps for reconnects.
+
 ## 1.9.0 — 2026-11-19
 
 > **The gateway becomes its own container.** Until now routing (`/api`, `/health`,

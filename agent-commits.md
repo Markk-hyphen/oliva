@@ -1371,3 +1371,38 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
 - The release itself (`release.sh 1.9.0`).
 
 Phase 2 (realtime hub, target 1.10.0) starts at the runbook's step 1 and must decide on compat vs. modern Mercure tokens before touching code (R1). It is marked for a more capable model.
+
+## [unbundle roles · phase 2] the realtime hub as its own service
+**Hash:** `833274c…` (code), plus this docs commit
+**Branch:** `feat/realtime-hub`
+**Date:** 2026-11-19
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `realtime/Dockerfile`, `realtime/Caddyfile`, `realtime/docker-entrypoint.sh` | new | The hub: `dunglas/mercure:v1.1.6` + Oliva's Caddyfile (compat mode 8, bolt cap `REALTIME_HISTORY_SIZE`, admin on localhost) + an entrypoint refusing an empty/placeholder/public key in every environment. The known-public list comes via a named build context. |
+| `backend/frankenphp/realtime-relay.sh` | new | `oliva-relay`: `setup-transports` then `messenger:consume realtime --sleep=0.01` (with `get_notify_timeout: 5000`, both needed for ~9ms). |
+| `backend/Dockerfile` | modified | Installs `oliva-relay`. |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | Drops the embedded-hub empty-key check and `MERCURE_PUBLISHER_JWT_KEY` from the prod secret list (the hub owns both); backend keeps `MERCURE_JWT_SECRET` (it signs). |
+| `backend/frankenphp/Caddyfile` | modified | The `mercure` block and its `@phpRoute` exclusion are gone. |
+| `backend/frankenphp/consume-messages.sh` | modified | The `queues` worker excludes `realtime`/`realtime_failed` unconditionally. |
+| `backend/config/packages/messenger.yaml` | modified | `realtime` + `realtime_failed` Doctrine transports, `Update` routed to `realtime`, retries over minutes, `get_notify_timeout`; in-memory in tests. |
+| `backend/config/packages/doctrine.yaml` | modified | `schema_filter` hides `messenger_messages`. |
+| `backend/composer.json`/`.lock` | modified | `symfony/doctrine-messenger` (only new package). |
+| `backend/src/Controller/LiveController.php` | modified | Dispatches the Update on the bus (the recommended path). |
+| `docker-compose.yml` + 4 overlays | modified | `realtime` + `realtime-relay` behind profile `realtime`; the hub gets only its key via `environment:`; the relay mirrors the worker (dev user/mounts, shared-infra `data_net`); gateway default realtime upstream → `realtime:80`. |
+| `scripts/lib/queue-guard.sh` | modified | `realtime_guard` (app uses Mercure, no hub → abort); the async check skips realtime transports. |
+| `scripts/lib/env-check.sh` | modified | Reads the hub, flags a secret leaked to it, errors on `MERCURE_URL` pointing at the backend. |
+| `scripts/oliva/verify.sh` | modified | `do_queue` runs `realtime_guard`; `mercure` step goes through the gateway, skipped when the profile is off. |
+| `scripts/deploy.sh`, `scripts/deploy-staging.sh` | modified | Run `realtime_guard` before `down`. |
+| `scripts/oliva/init.sh` | modified | `--demo` enables the `realtime` profile. |
+| `scripts/oliva/deps.sh`, `scripts/oliva/owned-paths.txt` | modified | Track the hub base image; own `realtime/*`. |
+| `.github/workflows/ci.yml` | modified | Bakes `realtime`, runs with the profile, checks the prod relay; hadolint over a matrix of the clean Dockerfiles. |
+| `.env.backend`, `.env.example` | modified | `MERCURE_URL` → `http://realtime/…`; `REALTIME_HISTORY_SIZE`. |
+| `README.md`, `docs/oliva/agent-guide.md`, `docs/roadmap.md`, `docs/oliva/UPGRADING.md` | modified | Topology, "The realtime hub", slots row, `## 1.10.0`. |
+
+### Why
+- *Publishing through a Doctrine-transport relay, not inline, is the whole point of the unbundling*: the request stops depending on the hub (no 500 when the hub restarts), an outage delays instead of loses, and dispatch-in-transaction is an outbox for free. Doctrine not RabbitMQ so realtime never drags in `queues`; a dedicated `realtime-relay`, not the worker, so the queue slot of 1.8.0 is untouched.
+- *Optional, like everything in Oliva* (the maintainer's correction): a `realtime` profile, a guard for an app that uses Mercure without it, and nothing paid by an app that does not. Supersedes the plan's "always on in 1.10.0".
+- *The hub holds only its key*: `environment:` not `env_file`, so no backend/database secret reaches it (env-check enforces it). Compat mode kept (R1 measured), with modern mode a watch item tied to the `deprecated_*` build tags.
+- **Not done here:** the release (`release.sh 1.10.0`) and the push — the maintainer's call; the real crossing of an app; a fork actually exercising the relay under load.
