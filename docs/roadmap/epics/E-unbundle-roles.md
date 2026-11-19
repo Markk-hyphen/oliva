@@ -93,6 +93,18 @@ there will be to change the topology.
 | HMR | **Through the gateway.** Publishing Vite's port publishes all of Vite, and its log prints `http://localhost:3000`: the most natural URL would bring back the divergence this epic removes. Vite's port only as a fallback if the phase-1 gate fails. |
 | CSP in dev | **The production policy plus the minimum Vite needs** (`style-src 'unsafe-inline'`: Vite injects CSS as `<style>` tags). Production unchanged. Known limit: an app's own inline styles show up in staging, not in dev. |
 
+### Decisions for phase 2 (2026-11-19, after measuring)
+
+Evidence for each row: runbook, "Phase 2 findings".
+
+| Question | Decision |
+|---|---|
+| Token mode (R1) | **Compatibility mode 8.** The standalone `dunglas/mercure:v1.1.6` accepts it with Oliva's own Caddyfile (measured with the real `symfony/mercure` client). **Watch item, not optional:** compat exists only because both the hub image and FrankenPHP are compiled with the `deprecated_topic,deprecated_claim` build tags. The day either drops them, compat stops. Moving to modern mode (an `issuer` block in the hub, `iss`/`aud` claims, which MercureBundle 0.4 cannot add without a custom token factory) is a pending item to start **before** that happens, not after. Every bump of the hub image runs `verify [mercure]` and checks the build tags. |
+| Realtime optional? | **Yes, like everything in Oliva.** `realtime` (hub) and `realtime-relay` live behind a Compose profile `realtime`. An app without it pays for neither. Replaces "always on in 1.10.0". Because Mercure is always on today, an app that uses it and upgrades without the profile would lose realtime silently: a guard (Mercure used by the app, no `realtime` in the stack) is red in `verify` and aborts the deploys before `down`. |
+| Publicly known keys in the hub | **Refused in every environment**, not only production. `env check` already treats a public secret as an error everywhere, and the hub cannot tell which environment it runs in. |
+| History and storage | **No volume** (same as production today: survives a restart, lost on a deploy, which is acceptable) **plus a cap**: `transport bolt { path …; size N }`, N = 1000 by default, configurable. Measured: the cap keeps the last N events; a client that reconnects after a deploy gets nothing replayed. |
+| Backend ↔ hub coupling | **Publishing goes through Messenger, on a Doctrine (PostgreSQL) transport, consumed by a `realtime-relay` service.** Not `depends_on` (it re-couples the startup this epic separates) and not a written warning alone (it changes nothing). Not RabbitMQ: `queues` is opt-in and realtime must not drag it in. The request never waits for the hub; a hub down for a while delays events instead of losing them; dispatched inside the business transaction, an event exists only if the data committed. Cost, paid only by apps with `realtime`: one more PHP container, a table, extra latency (gated, see runbook), and a guard for a relay that is down or a backlog that grows. `HubInterface::publish()` stays available as a synchronous escape hatch; the documented path and the demo use the bus. |
+
 ## Design
 
 ### Target topology
@@ -150,15 +162,16 @@ and so on). Replacing a slot is changing one value, which `env check` reports as
 
 ### Realtime (1.10.0)
 
-- **⚠ Open before any code (runbook R1):** `dunglas/mercure:latest` is Mercure 1.1.6 and
-  its own Caddyfile runs modern mode only (`issuer`, `iss` and audience claims). Oliva
-  ships its own Caddyfile for the hub; whether the standalone hub still accepts
-  compatibility-mode tokens at runtime is measured first, and if it does not, modern mode
-  moves into scope (the maintainer decides).
-- **A `realtime` service** on the official `dunglas/mercure` image, pinned, on
-  `app_network` only, with no published port. The same configuration as today:
-  anonymous subscribe, publisher and subscriber keys from `MERCURE_PUBLISHER_JWT_KEY`,
-  compatibility mode 8. Modern mode (issuer and `iss`) stays a separate pending item.
+- **R1 closed (2026-11-19):** compatibility mode works in the standalone hub with Oliva's
+  own Caddyfile. FrankenPHP 1.13.5 already embeds the same Mercure (v1.1.6): no version
+  jump. Modern mode is a watch item (decisions for phase 2).
+- **A `realtime` service** on the official `dunglas/mercure:v1.1.6` image, behind the
+  profile `realtime`, on `app_network` only, with no published port. The same
+  configuration as today: anonymous subscribe, publisher and subscriber keys from
+  `MERCURE_PUBLISHER_JWT_KEY`, compatibility mode 8. The Caddy admin API stays on
+  localhost: `/config/` returns the JWT key in clear (measured).
+- **A `realtime-relay` service**, same profile, built from the backend image, running
+  `messenger:consume` on the realtime transport only. It is the only publisher to the hub.
 - **The "no empty key" net moves with the hub.** Today the backend entrypoint refuses to
   start FrankenPHP with an empty key. The hub needs the same refusal, and the same
   quoted, no-default key in its configuration. The production check for publicly known
@@ -172,11 +185,14 @@ and so on). Replacing a slot is changing one value, which `env check` reports as
 - **The backend Caddyfile loses the `mercure` block**, and the "Mercure in FrankenPHP"
   notes move (`deps.sh`: after bumping FrankenPHP, `verify [mercure]` was mandatory; now
   it is mandatory after bumping the hub image).
-- **History and storage.** Before switching, measure what the current hub keeps across a
-  restart (production mounts no `/data` for the backend) and keep exactly that behaviour,
-  no more.
-- **Always on in 1.10.0.** Making realtime optional needs a guard for an app that
-  publishes with no hub. That belongs to the service flags of item 3, not here.
+- **History and storage.** Measured: today production keeps `mercure.db` in the
+  container's writable layer (survives a restart, lost on every deploy), dev keeps it in
+  the `backend/var` bind mount. The hub gets no volume and a bolt cap (decisions).
+- **Optional, with a guard** (decisions). Supersedes "always on in 1.10.0".
+- **Fixes a latent bug:** today the worker and the scheduler cannot publish
+  (`MERCURE_URL=http://localhost/…` and no hub in those containers; measured, friction log
+  X14). With `MERCURE_URL` pointing at `realtime`, and publishing through the relay, it
+  goes away.
 
 ### Both phases touch
 
@@ -253,8 +269,9 @@ actions labelled, preferring a change that asks nothing of the app, then a guard
   them possible, and nothing more.
 - **Splitting the database lifecycle out of the backend** (an init or migrate container).
   It stays in the backend; the contract above makes it explicit.
-- **Mercure modern mode** (issuer blocks, `iss` claim): a pending item of its own,
-  unless phase 2 finds the standalone hub no longer accepts compatibility mode (R1).
+- **Mercure modern mode** (issuer blocks, `iss` claim): a pending item of its own. R1
+  showed compatibility mode still works; it is a **watch item** with a known trigger (the
+  `deprecated_*` build tags leaving either image), see the decisions for phase 2.
 - **TLS at the gateway.** The edge keeps terminating TLS where it does today: the
   shared-infra reverse proxy.
 - **A second default for any slot.** Oliva stands behind one implementation per role

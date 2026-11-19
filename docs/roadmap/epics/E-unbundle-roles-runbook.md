@@ -387,71 +387,89 @@ Run `lint_upgrade_actions` (through `release.sh` dry-run, see below) before comm
 
 ## Phase 2 — The realtime hub (target 1.10.0)
 
-**⚠ The biggest open point of the whole epic, found while writing this runbook.** The
-official image `dunglas/mercure:latest` (pulled 2026-11-17) is **Mercure 1.1.6 on Caddy
-2.11.8**, and its shipped Caddyfile runs **modern mode only**: an `issuer` block,
-tokens must carry an `iss` claim and an audience (RFC 9068 resource identifier). Oliva's
-backend signs compatibility-mode tokens (`symfony/mercure` v0.7.2, bundle v0.4.3; no
-`iss`, no `aud`), so the image as shipped would reject every publish.
+Decisions for this phase are in the epic ("Decisions for phase 2", 2026-11-19). They
+supersede anything below that contradicts them, in particular: realtime is **optional**
+(profile `realtime`), and the backend publishes **through Messenger on a Doctrine
+transport consumed by `realtime-relay`**, never straight to the hub.
 
-What was checked: `caddy adapt` in that image accepts Oliva's current directives
-(`anonymous`, `publisher_jwt`, `subscriber_jwt`, `protocol_version_compatibility 8`).
-What was **not** checked: that the hub accepts a compat-mode token at runtime, and for
-how long upstream keeps compat mode. `symfony/mercure`'s `LcobucciFactory` does handle
-`iss` and `aud` claims, so modern mode looks reachable from the backend side.
+### Phase 2 findings (measured 2026-11-19, on 1.9.0)
 
-So step 1 of this phase is a decision with evidence, before any code:
+| # | Finding | How it was measured |
+|---|---|---|
+| F1 | **Compat mode works in the standalone hub.** `dunglas/mercure:v1.1.6` with Oliva's Caddyfile (`anonymous`, `publisher_jwt`/`subscriber_jwt` quoted, `protocol_version_compatibility 8`): publish accepted, private update delivered to the token holder only, never to the anonymous subscriber. No deprecation logged | probe container on `oliva_app_network`, published with the real `symfony/mercure` `Hub` + `LcobucciFactory` from the backend |
+| F2 | **No version jump.** FrankenPHP 1.13.5 embeds Mercure v1.1.6, the same as the image. `v1.1.6` and `latest` were the same image id | `frankenphp build-info`, `caddy build-info`, `docker image inspect` |
+| F3 | **Compat depends on build tags.** Image: `-tags=deprecated_transport,deprecated_topic,deprecated_claim`; FrankenPHP: `deprecated_topic,deprecated_claim`. Not a new risk, but a bump that drops them turns compat off while `caddy adapt` still says "Valid". Watch item | `build-info` of both |
+| F4 | MercureBundle 0.4.3 has no `issuer`/`audience` setting: modern mode needs a custom token factory (`LcobucciFactory::create` accepts additional claims) | vendor source |
+| F5 | **Today the worker and the scheduler cannot publish**: `MERCURE_URL=http://localhost/…` from `.env.backend`, no hub in those containers → `Failed to send an update.` (friction log X14) | one-off container from the backend image |
+| F6 | The Caddy admin API (`:2019/config/`) returns the JWT key in clear. Keep admin on localhost in the hub | probe with `admin :2019` |
+| F7 | Default transport is bolt. Prod: `mercure.db` in the writable layer (image `VOLUME` is `/app/var/` only): survives `restart`, lost on every deploy. Dev: in the `backend/var` bind mount, survives everything, uncapped | publish, restart, replay from `earliest` |
+| F8 | **Bolt cap works**: `transport bolt { path /data/mercure.db; size 5 }`, 12 events published → replay returns ev8–ev12. Use the block form: `transport_url` needs the `deprecated_transport` tag FrankenPHP does not have | standalone hub, `caddy adapt` + runtime |
+| F9 | Reconnecting with an unknown `Last-Event-ID` (the after-deploy case) replays nothing; the hub answers `Last-Event-Id: earliest` | standalone hub |
+| F10 | No admin health route: `/mercure/health*` is 404 embedded and standalone. Healthcheck that works: `timeout 2 wget -S -qO /dev/null 'http://localhost/.well-known/mercure?topic=healthcheck' 2>&1 \| grep -q 'HTTP/1.1 200'` (healthy and down cases tried) | standalone hub |
+| F11 | Compose `build.additional_contexts` lets `realtime/Dockerfile` copy `backend/frankenphp/known-public-secrets.sha256` without duplicating it; bake reads it too | throwaway compose project, Compose 2.26 |
+| F12 | `symfony/mercure` ships `Messenger\UpdateHandler`; the bundle registers it when Messenger is installed, so `$bus->dispatch(new Update(...))` works. `symfony/doctrine-messenger` is **not** installed; every transport today is RabbitMQ, including the failure transport `failed` | vendor, `config/packages/messenger.yaml` |
 
-### Step 1 — Compat mode or modern mode (decide with the maintainer)
+### Step 1 — Latency gate for the relay path (before any real code)
 
-1. Pin the image tag (`docker image inspect` the one in use; never `latest` in a compose
-   file). **🔍 re-check** which Mercure version FrankenPHP 1.13.x embeds today
-   (`docker run --rm <backend-image> frankenphp list-modules` / `version`), so the switch
-   is not also a silent version jump.
-2. Run the image with an Oliva Caddyfile in compat mode (the four directives above) and
-   publish with a token signed exactly as the backend signs it (reuse the `jwt()` helper
-   of `verify.sh`). Does it accept it? Does it log a deprecation?
-3. Try modern mode: an `issuer` block; configure the bundle to add `iss`/`aud`
-   (**🔍 re-check** the MercureBundle 0.4 config keys for extra claims). Does `verify
-   [mercure]` (private update to the token holder only, never to the anonymous
-   subscriber) still pass?
-4. Bring both results to the maintainer. The epic listed modern mode as out of scope;
-   if compat mode does not work in the standalone hub, that changes, and it is their
-   call.
+The relay adds an INSERT, a PostgreSQL `NOTIFY` and one HTTP hop. Measure it on a
+throwaway prototype (scratch clone, never committed):
+
+1. `composer require symfony/doctrine-messenger` in the clone; a `realtime` transport
+   `doctrine://default?queue_name=realtime` (🔍 re-check that `use_notify` is on by
+   default for PostgreSQL in the installed version, and that the consumer really wakes
+   on `NOTIFY` instead of sleeping); route `Symfony\Component\Mercure\Update` to it.
+2. The standalone hub as in F1, one `messenger:consume realtime` process.
+3. Dispatch N=200 updates from the backend with a timestamp in the payload, one every
+   50 ms; a subscriber through the gateway records arrival times. Report p50, p95, max.
+4. **Gate: p95 < 100 ms.** Also measure: the hub stopped for 60 s → events arrive after it
+   returns, none lost (retry strategy of minutes); the relay stopped → backlog grows,
+   nothing lost, drained on restart.
+5. Decide the `messenger_messages` table with evidence: Oliva migration vs `auto_setup`,
+   so that an app **without** the `realtime` profile carries nothing it does not use and
+   `verify [schema]` stays green in both cases.
+6. If the gate fails, stop and bring the numbers to the maintainer.
 
 ### Step 2 — `realtime/` (Oliva-owned)
 
-- `realtime/Dockerfile` `FROM dunglas/mercure:<pinned>` + `realtime/Caddyfile`. A
+- `realtime/Dockerfile` `FROM dunglas/mercure:v1.1.6` + `realtime/Caddyfile`. A
   Dockerfile (rather than `image:` in compose) so the configuration is baked in prod and
   `deps.sh` sees the base image either way (`base_images()` reads `FROM` lines of the
   listed Dockerfiles: add `realtime/Dockerfile`).
 - Our own Caddyfile, not the image's: `http://:80` (**⚠ same `localhost`/HTTPS trap as
   the gateway**), `anonymous`, keys from the env **quoted with no default** (read the
   comment in `backend/frankenphp/Caddyfile` for why: unquoted, an empty key makes Caddy
-  read `HS256` as the key), no welcome page.
+  read `HS256` as the key), no welcome page, admin API on localhost (F6), and
+  `transport bolt { path /data/mercure.db; size {$REALTIME_HISTORY_SIZE:1000} }` (F8).
 - **The secret refusal moves with the hub.** The image has no entrypoint (`caddy run`).
-  Add a small entrypoint script that refuses to start on an empty key, and in prod on a
-  publicly known one. **⚠** the list of known public values is
-  `backend/frankenphp/known-public-secrets.sha256`, outside the `realtime/` build
-  context. Options: build context at the repo root, a copy kept in sync by a CI check, or
-  moving the list to a shared path. Decide; do not silently duplicate it.
+  Add a small entrypoint script that refuses to start on an empty key, and on a publicly
+  known one **in every environment** (decision). The list
+  `backend/frankenphp/known-public-secrets.sha256` reaches the build through
+  `build.additional_contexts` (F11): one file, no copy.
 - **⚠ The image runs as root** (`id` → uid 0). Same as the frontend today; T7 only
   concerns files written into bind mounts. **🔍 re-check** that in dev nothing of the hub
   is bind-mounted writable (its storage stays in a named volume or nowhere).
-- **Storage, measured before and after.** Today the hub runs inside the backend; prod
-  mounts nothing on the backend's `/data`, dev redirects it to `backend/var/caddy-data`.
-  Measure what survives a restart today (publish, restart, subscribe with
-  `Last-Event-ID`) and give the new hub exactly that (the image has the `bolt` and
-  `local` transports).
-- Healthcheck: the image registers `admin.api.mercure_health`; **🔍 re-check** its path on
-  the admin port, or use a subscribe with `--max-time` like CI does. Never `/` (returns
-  the welcome page or 404).
+- **Storage:** no volume, bolt capped (F7, F8, decision). Re-measure after: survives a
+  restart, capped at N, nothing replayed after a recreate (F9).
+- Healthcheck: the subscribe check of F10. Never `/`.
 
 ### Step 3 — Wire it
 
-- Compose: `realtime` in `docker-compose.yml` (no profile: always on in 1.10.0, epic),
-  `app_network` only, no published port; prod/staging image tags; shared-infra: nothing
-  (it does not touch `data_net` or `proxy_net`).
+- Compose: `realtime` and `realtime-relay` in `docker-compose.yml` behind the profile
+  `realtime` (decision: optional), `app_network` only, no published port; prod/staging
+  image tags; shared-infra: the relay joins `data_net` (it reads the database), the hub
+  touches neither `data_net` nor `proxy_net`. No `depends_on` from the backend to either.
+- Messenger: `symfony/doctrine-messenger`; transports `realtime` and `realtime_failed`
+  (Doctrine, own failure transport: `failed` is RabbitMQ); `Update` routed to
+  `realtime`; retry strategy of minutes (a hub restart or deploy must not exhaust it).
+  `oliva-consume` and `queue-guard.sh` ignore the realtime transports (the relay owns
+  them; an app without `queues` must not be told it lacks a worker).
+- **Two guards, both abort the deploys before `down`:** (a) the app uses Mercure (code in
+  `src/` referencing `Symfony\Component\Mercure`, or `Update` routed) and the stack has
+  no `realtime` → "enable the `realtime` profile"; (b) `realtime` present and the relay
+  not running, or pending realtime messages older than a threshold → red in `verify`,
+  shown in `doctor`.
+- The demo (`LiveController`) dispatches through the bus; `./oliva init --demo` adds
+  `realtime` to `COMPOSE_PROFILES`.
 - Gateway: `GATEWAY_REALTIME_UPSTREAM` default → `realtime:80`.
 - `.env.backend` and `.env.example`: `MERCURE_URL=http://realtime/.well-known/mercure`;
   `MERCURE_PUBLIC_URL` stays `http://localhost/.well-known/mercure` in dev (the gateway is
@@ -479,11 +497,16 @@ So step 1 of this phase is a decision with evidence, before any code:
 All of phase 1's gates still pass, plus: publish from the backend reaches a browser
 subscribed through the gateway in dev, prod and staging (two-tab demo and `verify`);
 SSE immediate and alive after 90 idle seconds (same procedure as phase 1, step 12.2);
-empty key → the hub refuses to start; public key in prod → refuses; `MERCURE_URL` left
+empty key → the hub refuses to start; public key → refuses (every environment); app
+using Mercure without the profile → guard aborts the deploy; hub stopped 60 s → events
+delivered on return, none lost; relay stopped → backlog, drained on restart; a stack
+**without** `realtime` → no hub, no relay, `verify` green, `env check` silent about
+Mercure; `MERCURE_URL` left
 at `localhost` → `env check` error, `verify` red, `deploy.sh` aborts with the old stack
 serving; `grep -n mercure backend/frankenphp/Caddyfile` → nothing; restart behaviour
-equals the measurement of step 2. `UPGRADING.md` `## 1.10.0`: `MERCURE_URL` in an app's
-`.env.backend` (guard), anything else found. Close like phase 1.
+equals the measurement of step 2. `UPGRADING.md` `## 1.10.0`: enable the `realtime`
+profile (guard), `MERCURE_URL` in an app's `.env.backend` (guard), publishing through the
+bus, the orphan `backend/var/caddy-data/caddy/mercure.db`, anything else found. Close like phase 1.
 
 ## Phase 3 — The probe
 
@@ -507,7 +530,7 @@ as a question to answer during the phase, and update the epic with the answer.
 
 | # | Assumption | Why it might be wrong | When |
 |---|---|---|---|
-| R1 | The standalone Mercure hub still accepts compat-mode tokens | 1.1.6 ships modern mode by default | phase 2, step 1 (first thing) |
+| R1 | The standalone Mercure hub still accepts compat-mode tokens | 1.1.6 ships modern mode by default | **closed 2026-11-19: yes (F1)**; watch item F3 |
 | R2 | `connect-src 'self'` covers the HMR websocket | CSP3 says yes; older engines treated `ws:` separately | phase 1 gate, step 11.5 |
 | R3 | Caddy does not buffer SSE through `reverse_proxy` + `encode` | it auto-flushes `text/event-stream`, but compression is the classic culprit | phase 1, step 12.2 |
 | R4 | An empty `app.d/` glob import is accepted | Caddy's behaviour with no matches | phase 1, step 2 |
