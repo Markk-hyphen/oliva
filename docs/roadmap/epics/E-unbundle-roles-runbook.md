@@ -405,29 +405,46 @@ transport consumed by `realtime-relay`**, never straight to the hub.
 | F7 | Default transport is bolt. Prod: `mercure.db` in the writable layer (image `VOLUME` is `/app/var/` only): survives `restart`, lost on every deploy. Dev: in the `backend/var` bind mount, survives everything, uncapped | publish, restart, replay from `earliest` |
 | F8 | **Bolt cap works**: `transport bolt { path /data/mercure.db; size 5 }`, 12 events published → replay returns ev8–ev12. Use the block form: `transport_url` needs the `deprecated_transport` tag FrankenPHP does not have | standalone hub, `caddy adapt` + runtime |
 | F9 | Reconnecting with an unknown `Last-Event-ID` (the after-deploy case) replays nothing; the hub answers `Last-Event-Id: earliest` | standalone hub |
-| F10 | No admin health route: `/mercure/health*` is 404 embedded and standalone. Healthcheck that works: `timeout 2 wget -S -qO /dev/null 'http://localhost/.well-known/mercure?topic=healthcheck' 2>&1 \| grep -q 'HTTP/1.1 200'` (healthy and down cases tried) | standalone hub |
+| F10 | **Corrected during the gate.** The image ships its own `HEALTHCHECK`: `wget -q --spider http://127.0.0.1:2019/mercure/health/ready` (200). `realtime/Dockerfile` inherits it as long as the admin API stays on localhost (F6). The earlier "no health route" came from trying `/mercure/health` and `/mercure/health/transport` only | `docker image inspect`, the hub's own access log |
 | F11 | Compose `build.additional_contexts` lets `realtime/Dockerfile` copy `backend/frankenphp/known-public-secrets.sha256` without duplicating it; bake reads it too | throwaway compose project, Compose 2.26 |
 | F12 | `symfony/mercure` ships `Messenger\UpdateHandler`; the bundle registers it when Messenger is installed, so `$bus->dispatch(new Update(...))` works. `symfony/doctrine-messenger` is **not** installed; every transport today is RabbitMQ, including the failure transport `failed` | vendor, `config/packages/messenger.yaml` |
 
-### Step 1 — Latency gate for the relay path (before any real code)
+### Step 1 — Latency gate for the relay path: DONE 2026-11-19, passed
 
-The relay adds an INSERT, a PostgreSQL `NOTIFY` and one HTTP hop. Measure it on a
-throwaway prototype (scratch clone, never committed):
+Prototype in the dev stack, removed afterwards (`composer require` inside the container
+only, two temporary files deleted, `git status` clean, `verify` green). Standalone hub
+`v1.1.6` + bolt cap, gateway pointed at it, one `messenger:consume realtime`, a host
+subscriber **through the gateway**, 200 updates one every 50 ms, payload timestamp vs
+arrival.
 
-1. `composer require symfony/doctrine-messenger` in the clone; a `realtime` transport
-   `doctrine://default?queue_name=realtime` (🔍 re-check that `use_notify` is on by
-   default for PostgreSQL in the installed version, and that the consumer really wakes
-   on `NOTIFY` instead of sleeping); route `Symfony\Component\Mercure\Update` to it.
-2. The standalone hub as in F1, one `messenger:consume realtime` process.
-3. Dispatch N=200 updates from the backend with a timestamp in the payload, one every
-   50 ms; a subscriber through the gateway records arrival times. Report p50, p95, max.
-4. **Gate: p95 < 100 ms.** Also measure: the hub stopped for 60 s → events arrive after it
-   returns, none lost (retry strategy of minutes); the relay stopped → backlog grows,
-   nothing lost, drained on restart.
-5. Decide the `messenger_messages` table with evidence: Oliva migration vs `auto_setup`,
-   so that an app **without** the `realtime` profile carries nothing it does not use and
-   `verify [schema]` stays green in both cases.
-6. If the gate fails, stop and bring the numbers to the maintainer.
+| # | Configuration / scenario | Result |
+|---|---|---|
+| G1 | Defaults (`get_notify_timeout: 0`, `--sleep` 1 s) | p50 518 ms, **p95 961 ms**: fails |
+| G2 | `get_notify_timeout: 5000`, `--sleep` 1 s | p95 ≈ 960 ms: still fails (cause below) |
+| G3 | **`get_notify_timeout: 5000` + `--sleep=0.01`** | three runs: p50 7–8 ms, **p95 8.7–9.4 ms**, max 17–31 ms. **Gate passed** |
+| G4 | Hub stopped 60 s, 20 updates dispatched meanwhile; retry `max_retries 10, delay 1000, multiplier 2, max_delay 60000` | 20/20 delivered 7 s after the hub returned, none failed. **Order not kept** (4…19, then 0…3): each retry has its own delay |
+| G5 | Relay stopped, 20 dispatched | backlog stays in the table; relay restarted → 20/20, in order |
+| G6 | Idle cost with G3 | 8 database transactions in 10 s for the whole stack: no busy loop |
+| G7 | `messenger_messages` | without `schema_filter`, `doctrine:schema:validate` is red when the table is missing (doctrine-messenger adds it to the expected schema of every app with the transport configured). With `doctrine.dbal.schema_filter: '~^(?!messenger_messages$)~'`, validate is green with and without the table; `messenger:setup-transports realtime` creates it |
+
+**Why G2 fails (instrumented `PostgreSqlConnection::get()`, then reverted):** after each
+message the next `get()` takes the plain-poll path (no LISTEN), finds nothing, and the
+worker sleeps the whole `--sleep`; only the following `get()` LISTENs, and the
+notification is already waiting (`waited 0ms`, `emptiedAgo=1000ms`). LISTEN covers idle
+periods, not bursts. `pg_notify` is sent by `send()` itself in 7.4, no trigger involved.
+
+Decisions that follow (mandatory, written as comments where they are configured):
+
+- Relay command: `messenger:consume realtime --sleep=0.01`; transport option
+  `get_notify_timeout: 5000`. Either one alone gives ~1 s latency. 🔍 measure in step 4 how
+  long a `docker stop` of the relay takes (the LISTEN wait can hold a signal up to 5 s;
+  Compose's default stop timeout is 10 s).
+- Retry strategy as G4; own failure transport `realtime_failed` (Doctrine).
+- Contract: during an outage events arrive late and **out of order**; apps that care carry
+  a sequence or re-read state on reconnect.
+- Table: `schema_filter` + the relay runs `messenger:setup-transports realtime` before
+  consuming. An app without the profile never gets the table and its schema check stays
+  green. No migration shipped by Oliva.
 
 ### Step 2 — `realtime/` (Oliva-owned)
 
