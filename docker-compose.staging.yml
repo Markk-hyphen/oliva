@@ -66,6 +66,22 @@ services:
       - .env.backend
       - .env.staging
 
+  # Realtime en staging: imagen propia (si no, heredaría la `:prod`). El relay además fija
+  # APP_ENV y recarga la lista de env files (ver el gotcha de precedencia arriba).
+  realtime:
+    image: ${COMPOSE_PROJECT_NAME}-realtime:staging
+
+  realtime-relay:
+    image: ${COMPOSE_PROJECT_NAME}-backend:staging
+    build:
+      target: frankenphp_staging
+    environment:
+      - APP_ENV=staging
+    env_file: !override
+      - .env
+      - .env.backend
+      - .env.staging
+
   # El frontend de staging usa su PROPIA imagen, igual que el backend: sin
   # declarar este servicio heredaría la imagen `:prod` de prod.yml y un rebuild
   # en staging pisaría la que sirve producción. Mismo target `production`, solo

@@ -62,6 +62,7 @@ jobs:
             backend
             frontend
             gateway
+            realtime
           load: true
           set: |
             *.cache-from=type=gha
@@ -73,7 +74,9 @@ jobs:
         # El checkout del runner NO es uid 1000, así que sin esto el container (1000) no puede
         # escribir los bind-mounts (var, config) de un árbol ajeno y el backend queda unhealthy.
         # Es el mismo paso que un host != 1000 hace en su .env; acá se toma el uid del runner.
-        run: HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --wait --no-build
+        # COMPOSE_PROFILES=realtime: levanta el hub y el relay para probar Mercure de punta a
+        # punta (el hub es opt-in desde 1.10.0; sin el profile el curl de Mercure daría 502).
+        run: COMPOSE_PROFILES=realtime HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --wait --no-build
 
       -
         name: Dump service logs on failure
@@ -147,7 +150,7 @@ jobs:
         name: APP_ENV resuelve a 'prod' en el stack prod (backend + scheduler)
         run: |
           docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-            --profile cron --profile queues config --format json > prod-config.json
+            --profile cron --profile queues --profile realtime config --format json > prod-config.json
           jq -e '.services.backend.environment.APP_ENV == "prod"' prod-config.json > /dev/null \
             || { echo "::error::backend APP_ENV != 'prod' en docker-compose.prod.yml — los bloques when@prod de Symfony NO se aplicarían"; exit 1; }
           jq -e '.services.scheduler.environment.APP_ENV == "prod"' prod-config.json > /dev/null \
@@ -178,14 +181,16 @@ jobs:
             || { echo "::error::no prod worker with APP_ENV=prod under --profile queues"; exit 1; }
           jq -e '.services.worker.command == ["oliva-consume"]' prod-config.json > /dev/null \
             || { echo "::error::the prod worker does not run oliva-consume"; exit 1; }
-          for s in worker scheduler; do
+          for s in worker scheduler realtime-relay; do
             if ! jq -e --arg s "$s" '.services[$s].healthcheck.test as $t
                 | $t != null and ($t | tostring | test("curl") | not)' prod-config.json > /dev/null; then
               echo "::error::$s has no healthcheck of its own: it inherits the image's HTTP check and is always unhealthy"
               exit 1
             fi
           done
-          echo "✓ prod worker resolves; worker and scheduler have their own healthcheck"
+          jq -e '.services["realtime-relay"].command == ["oliva-relay"]' prod-config.json > /dev/null \
+            || { echo "::error::the prod realtime-relay does not run oliva-relay"; exit 1; }
+          echo "✓ prod worker and realtime-relay resolve; worker, scheduler and relay have their own healthcheck"
       -
         name: Shared infra resolves with queues (external broker)
         # The base worker depends on `rabbitmq`, which shared infra disables: without the
@@ -246,16 +251,22 @@ jobs:
   lint:
     name: Docker Lint
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The Oliva-owned Dockerfiles that are hadolint-clean. frontend/Dockerfile is left
+        # out: it carries npm/yarn warnings predating this job and is not touched here.
+        dockerfile: [backend/Dockerfile, gateway/Dockerfile, realtime/Dockerfile]
     steps:
       -
         name: Checkout
         uses: actions/checkout@v4
 
       -
-        name: Lint Dockerfile
+        name: Lint ${{ matrix.dockerfile }}
         uses: hadolint/hadolint-action@v3.1.0
         with:
-          dockerfile: backend/Dockerfile
+          dockerfile: ${{ matrix.dockerfile }}
 
   image-scan:
     # La capa que composer/yarn audit NO ven: CVEs del SO y los binarios DENTRO de

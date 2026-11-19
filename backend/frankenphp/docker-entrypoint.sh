@@ -18,7 +18,7 @@ oliva_secret_problem() {
 }
 if [ "${APP_ENV:-}" = 'prod' ] || [ "${APP_ENV:-}" = 'staging' ]; then
 	oliva_bad=0
-	for oliva_var in APP_SECRET JWT_PASSPHRASE MERCURE_PUBLISHER_JWT_KEY MERCURE_JWT_SECRET; do
+	for oliva_var in APP_SECRET JWT_PASSPHRASE MERCURE_JWT_SECRET; do
 		if oliva_why="$(oliva_secret_problem "${!oliva_var:-}")"; then
 			echo "!! $oliva_var $oliva_why" >&2; oliva_bad=1
 		fi
@@ -34,16 +34,9 @@ if [ "${APP_ENV:-}" = 'prod' ] || [ "${APP_ENV:-}" = 'staging' ]; then
 	fi
 fi
 
-# The Mercure hub (Caddyfile) has no default key. An empty one must stop the server here:
-# Caddy would accept it as a valid configuration and the hub would come up without a real
-# key, with no error anywhere.
-if [ "$1" = 'frankenphp' ] && [ -z "${MERCURE_PUBLISHER_JWT_KEY:-}" ]; then
-	echo '!! MERCURE_PUBLISHER_JWT_KEY is empty: refusing to start the Mercure hub without a key.' >&2
-	echo '!! Fix: run ./oliva env init (it generates the missing secrets in .env) and' >&2
-	echo '!!      recreate the container.' >&2
-	echo '!!      Secrets live in .env, never in .env.backend (it is tracked).' >&2
-	exit 1
-fi
+# The Mercure hub moved to its own `realtime` service (1.10.0), which owns the empty-key
+# refusal now (realtime/docker-entrypoint.sh). The backend no longer serves Mercure; it
+# only signs tokens, with MERCURE_JWT_SECRET (checked above in prod/staging).
 
 # A queue consumer never runs the setup below (JWT keys, wait-for-db, migrations, ACLs):
 # the backend does it, and the worker starts only once the backend is healthy, that is,

@@ -70,6 +70,15 @@ if ! queue_guard "${COMPOSE[@]}"; then
   exit 1
 fi
 
+# Realtime (lib/queue-guard.sh): the app publishes to Mercure but runs no hub. Same reason
+# as the queue check — the effect (updates lost to a 502, piling up in the DB) is not undone
+# later, so it stops here with the old stack serving.
+if ! realtime_guard "${COMPOSE[@]}"; then
+  echo "!! DEPLOY ABORTED (see above). Nothing was stopped: the current stack is still running." >&2
+  echo "!! After the fix: SKIP_PULL=1 ./scripts/deploy.sh" >&2
+  exit 1
+fi
+
 # Docs internos: no pertenecen al host de prod. El código de la app vive
 # en los builds Docker; estos archivos no los necesita nadie en el server.
 echo ">> limpieza de docs internos"

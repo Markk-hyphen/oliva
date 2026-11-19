@@ -112,6 +112,58 @@ services:
     networks:
       - app_network
 
+  realtime:
+    build:
+      context: ./realtime
+      dockerfile: Dockerfile
+      additional_contexts:
+        # The known-public-secrets list is Oliva's, kept with the backend. One copy, passed
+        # as a named build context (no duplication). bake reads it too (measured).
+        secrets: ./backend/frankenphp
+    # Opt-in, like queues and cron (Oliva's philosophy: every service optional). An app with
+    # no realtime pays for neither the hub nor the relay. Both live behind this one profile.
+    profiles: ["realtime"]
+    restart: unless-stopped
+    # NO env_file: the hub owns only the Mercure verification key. Passing .env would leak
+    # APP_SECRET/DATABASE_URL/JWT to it (env-check flags that). Just the one secret it uses,
+    # interpolated from this project's .env (gitignored).
+    environment:
+      MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_PUBLISHER_JWT_KEY}
+      # History cap (events kept for reconnects). Not a secret; a valid default so the
+      # Caddyfile never interpolates an empty size. An app overrides it in .env.
+      REALTIME_HISTORY_SIZE: ${REALTIME_HISTORY_SIZE:-1000}
+    networks:
+      - app_network
+
+  realtime-relay:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    profiles: ["realtime"]
+    restart: unless-stopped
+    # The only publisher to the hub: consumes the `realtime` Doctrine transport and POSTs to
+    # Mercure (oliva-relay = backend/frankenphp/realtime-relay.sh). The backend just
+    # dispatches the Update; its request path never waits on the hub.
+    command: ["oliva-relay"]
+    env_file:
+      - .env
+      - .env.backend
+    # Waits for the backend (healthy = migrated), like the worker: the relay needs the
+    # database up before messenger:setup-transports. It never migrates (the entrypoint skips
+    # setup for a non-frankenphp command). No depends_on on `realtime`: a hub that is down
+    # must not stop the relay from draining the backlog once it returns.
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app_network
+
   frontend:
     build:
       context: ./frontend

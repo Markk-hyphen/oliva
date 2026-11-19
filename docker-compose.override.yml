@@ -39,6 +39,31 @@ services:
       SHELL_VERBOSITY: 2
     tty: true
 
+  # Hub de realtime en dev. Profile/entorno vienen de docker-compose.yml; acá solo el tag
+  # de imagen por app y el log en DEBUG. Tras editar su Caddyfile: `docker compose restart realtime`.
+  realtime:
+    image: ${COMPOSE_PROJECT_NAME}-realtime:dev
+    environment:
+      MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_PUBLISHER_JWT_KEY}
+      REALTIME_LOG_LEVEL: DEBUG
+
+  # Relay en dev: imagen del backend, usuario del host y bind-mounts como el worker. Un
+  # consumidor no recarga código: tras editar un handler, `docker compose restart realtime-relay`.
+  realtime-relay:
+    image: ${COMPOSE_PROJECT_NAME}-backend:dev
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ver backend: usuario del host en dev
+    build:
+      target: frankenphp_dev
+    volumes:
+      - ./backend/.env:/app/.env:ro
+      - ./backend/src:/app/src
+      - ./backend/config:/app/config
+      - ./backend/var:/app/var
+    environment:
+      APP_ENV: dev
+      SHELL_VERBOSITY: 2
+    tty: true
+
   scheduler:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ver backend: usuario del host en dev

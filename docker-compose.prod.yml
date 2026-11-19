@@ -36,6 +36,18 @@ services:
     environment:
       - APP_ENV=prod
 
+  # Realtime (profile `realtime`). El hub usa su propia imagen; el relay, la del backend.
+  # Comando/profile/depends_on/healthcheck/additional_contexts vienen de docker-compose.yml.
+  realtime:
+    image: ${COMPOSE_PROJECT_NAME}-realtime:prod
+
+  realtime-relay:
+    image: ${COMPOSE_PROJECT_NAME}-backend:prod
+    build:
+      target: frankenphp_prod
+    environment:
+      - APP_ENV=prod
+
   frontend:
     image: ${COMPOSE_PROJECT_NAME}-frontend:prod
     build:

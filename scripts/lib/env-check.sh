@@ -124,7 +124,7 @@ _ec_upstream_host() { printf '%s' "${1%%:*}"; }
 env_check() {
   local mode="$1"; shift
   local cfg rows services name slot kind rule val why src t host svc line f up
-  local -A RES=() FE=() GW=() FILEV=() SLOT_ERR=() SLOT_WARN=() SLOT_SEEN=()
+  local -A RES=() FE=() GW=() RT=() FILEV=() SLOT_ERR=() SLOT_WARN=() SLOT_SEEN=()
   local -a slot_order=() global_err=() global_warn=()
   local errors=0 leaked=""
 
@@ -146,6 +146,7 @@ env_check() {
   while IFS=$'\t' read -r name val; do [[ -n "$name" ]] && RES[$name]="$val"; done < <(_ec_service_env backend <<< "$cfg")
   while IFS=$'\t' read -r name val; do [[ -n "$name" ]] && FE[$name]="$val"; done < <(_ec_service_env frontend <<< "$cfg")
   while IFS=$'\t' read -r name val; do [[ -n "$name" ]] && GW[$name]="$val"; done < <(_ec_service_env gateway <<< "$cfg")
+  while IFS=$'\t' read -r name val; do [[ -n "$name" ]] && RT[$name]="$val"; done < <(_ec_service_env realtime <<< "$cfg")
   while IFS= read -r line; do
     [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
     name="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
@@ -230,13 +231,28 @@ env_check() {
         done ;;
     esac
 
-    # A secret has one owner. The frontend serves files and the gateway only
-    # routes: neither owns any of these. Flag a secret that reaches either.
+    # A secret has one owner. The frontend serves files, the gateway only routes, and the
+    # realtime hub owns only its Mercure key: none should receive another slot's secret.
     if [[ "$kind" != plain && "$slot" != frontend && "$slot" != gateway ]]; then
       [[ -n "${FE[$name]+x}" ]] && leaked+="frontend:$name "
       [[ -n "${GW[$name]+x}" ]] && leaked+="gateway:$name "
+      [[ "$slot" != realtime && -n "${RT[$name]+x}" ]] && leaked+="realtime:$name "
     fi
   done <<< "$rows"
+
+  # The backend/relay POST updates to MERCURE_URL. With a `realtime` hub in the stack, a
+  # MERCURE_URL still pointing at the backend itself (the pre-1.10.0 default) makes the
+  # backend publish to a path it no longer serves: updates go nowhere, silently. MERCURE_URL
+  # has no credentials (scheme://host/path), so parse the host by expansion, not _ec_url_host.
+  if [[ "$services" == *" realtime "* ]]; then
+    local murl="${RES[MERCURE_URL]:-}"
+    murl="${murl#*://}"; murl="${murl%%/*}"; murl="${murl##*@}"; murl="${murl%%:*}"
+    case "$murl" in
+      localhost|127.0.0.1|backend)
+        global_err+=("MERCURE_URL resolves to \"$murl\", but the hub is the \"realtime\" service → set MERCURE_URL to http://realtime/.well-known/mercure in .env.backend")
+        errors=1 ;;
+    esac
+  fi
 
   # SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS is baked into the backend image.
   # SYMFONY_TRUSTED_HEADERS is left unset on purpose (= `for, port, proto`); an

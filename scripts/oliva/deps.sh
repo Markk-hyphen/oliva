@@ -107,7 +107,7 @@ eol_line() {  # eol_line <producto endoflife.date> <ciclo>
 # resueltos a algo concreto (pg${POSTGRES_VERSION:-15} → pg15). Lista compartida por
 # el reporte de novedades (report_images) y el scan de CVEs (scan_images).
 base_images() {
-  { awk '/^FROM / && $2 !~ /^(frankenphp_|base|builder)/ {print $2}' backend/Dockerfile frontend/Dockerfile gateway/Dockerfile
+  { awk '/^FROM / && $2 !~ /^(frankenphp_|base|builder)/ {print $2}' backend/Dockerfile frontend/Dockerfile gateway/Dockerfile realtime/Dockerfile
     grep -hoE 'image: *[a-z0-9./-]+:[A-Za-z0-9.${}_:-]+' docker-compose*.yml \
       | sed -E 's/image: *//' | grep -v 'COMPOSE_PROJECT_NAME'; } \
     | sed -E 's/\$\{POSTGRES_VERSION:-([0-9]+)\}/\1/' | sort -u

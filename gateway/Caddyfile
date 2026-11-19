@@ -50,10 +50,11 @@
         reverse_proxy {$GATEWAY_BACKEND_UPSTREAM:backend:80}
     }
 
-    # Realtime hub. In 1.9.0 it is still served by the backend (same upstream);
-    # 1.10.0 points this at the `realtime` service.
+    # Realtime hub (its own `realtime` service since 1.10.0). With the `realtime` profile
+    # off there is no such upstream and this answers 502 — correct: the app has no realtime.
+    # A guard aborts the deploy if the app actually uses Mercure without the profile.
     handle /.well-known/mercure* {
-        reverse_proxy {$GATEWAY_REALTIME_UPSTREAM:backend:80}
+        reverse_proxy {$GATEWAY_REALTIME_UPSTREAM:realtime:80}
     }
 
     # App routes. The /etc/caddy/app.d/ directory is owned by the app, not by

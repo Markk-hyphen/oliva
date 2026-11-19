@@ -6,6 +6,12 @@ doctrine:
         use_savepoints: true
         types:
             vector: Pgvector\Doctrine\VectorType
+        # messenger_messages is owned by the realtime relay (profile `realtime`), which
+        # creates it with `messenger:setup-transports`. Hide it from schema diffing so an
+        # app WITHOUT the profile has a green `doctrine:schema:validate` even though the
+        # table is absent, and `make:migration` never tries to add it (E-unbundle-roles,
+        # phase 2 gate G7). The transport table name is the Messenger default.
+        schema_filter: '~^(?!messenger_messages$)~'
     orm:
         auto_generate_proxy_classes: true
         enable_lazy_ghost_objects: true
