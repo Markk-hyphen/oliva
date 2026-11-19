@@ -6,10 +6,13 @@ the *why* and the decisions); this file is the *how*, step by step, with every p
 is known to be dangerous marked **⚠**, and every point that must be re-checked before
 acting marked **🔍 re-check**.
 
-**State (2026-11-17):** planned, no code. Branch `feat/unbundle-roles` (local, not pushed)
-holds the epic, this runbook and two glossary entries in `docs/oliva/concepts.md`
-("Trusted proxies and `X-Forwarded-*`", "CSP, and why dev and prod differ"). Read both
-entries: they are the concepts behind phase 1.
+**State (2026-11-19):** phase 1 implemented on `feat/unbundle-roles` (not pushed).
+The dev and prod-config gates passed; step 11 items 4–6 (scratch app, HMR, two-tab
+Mercure) and step 12 items 1–2 (prod stack on a scratch clone, SSE idle in prod) and
+step 13 (shared-infra simulation) were deferred. Release pending the maintainer's call.
+Phases 2 and 3 are untouched — phase 2 begins at this document's "Phase 2 — The
+realtime hub" section, whose step 1 is the compat-mode decision (R1) and must come
+before any code.
 
 ## Decisions already taken (do not reopen)
 

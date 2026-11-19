@@ -1,6 +1,6 @@
 # Epic — Unbundle the roles: a gateway of its own, a realtime hub of its own
 
-> **Status:** 📐 planned, no code yet (branch `feat/unbundle-roles`). How to execute it:
+> **Status:** 🚧 phase 1 implemented, 1.9.0 unreleased (branch `feat/unbundle-roles`); phases 2 and 3 pending. How to execute it:
 > [`E-unbundle-roles-runbook.md`](E-unbundle-roles-runbook.md) ·
 > **Target versions:** v1.9.0 (gateway), v1.10.0 (realtime) ·
 > **Origin:** roadmap item 2, "First: unbundle the roles". Planned 2026-11-17 against
