@@ -22,6 +22,11 @@ backend/Dockerfile
 backend/frankenphp/
 frontend/Dockerfile
 frontend/Caddyfile
+# Gateway: own the Dockerfile and Caddyfile (one line each, not `gateway/`).
+# gateway/app.d/ stays the app's: per-app route snippets live there, and sync.sh
+# must not treat them as drift.
+gateway/Dockerfile
+gateway/Caddyfile
 docker-compose.yml
 docker-compose.prod.yml
 docker-compose.staging.yml

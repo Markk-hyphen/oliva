@@ -157,8 +157,8 @@ second default when someone owns its net, not before.
 
 | Role | Default | Contract | Kind | Today |
 |---|---|---|---|---|
-| Edge / gateway | Caddy, inside `frontend` | routes `/api`, `/health` and realtime to their slots; security headers, CSP | independent | bundled into `frontend`; duplicated by the Vite proxy in dev |
-| Frontend | Vite build, served by Caddy | static assets behind the gateway, same-origin API | independent | bundled with the gateway |
+| Edge / gateway | Caddy, its own `gateway` service | routes `/api`, `/health` and realtime to their slots; security headers, CSP; `/gateway-health`; trusted_proxies | independent | own container since 1.9.0; `GATEWAY_*_UPSTREAM` to replace any slot behind it |
+| Frontend | Vite build, served by Caddy | static assets behind the gateway, same-origin API | independent | plain upstream of the gateway (no routing, no CSP) since 1.9.0 |
 | Backend / API | Symfony on FrankenPHP | HTTP `:80`, `/api`, a real `GET /health`, `migrate` and `seed` hooks | anchor | carries the realtime hub and the DB lifecycle |
 | Realtime | Mercure hub | HTTP publish with a JWT, SSE subscribe | independent | embedded in the backend |
 | Database | Postgres + pgvector | `DATABASE_URL`, Postgres ≥ 15 with `vector` | backend-tied | always on locally; external via shared-infra |

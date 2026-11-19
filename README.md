@@ -95,7 +95,7 @@ docker compose up -d --wait                 # returns when every service is heal
 
 | Service | URL (dev) |
 |---|---|
-| Frontend | http://localhost:3000 |
+| App | http://localhost (the gateway publishes the only HTTP port; everything below rides it) |
 | Backend | http://localhost/health answers `{"status":"ok"}`. Your routes go under `/api` (nothing is there yet) |
 | Mercure hub | http://localhost/.well-known/mercure |
 | RabbitMQ management (`queues` profile) | http://localhost:15672 |
@@ -157,17 +157,17 @@ These are the pieces Oliva makes robust, and the ones its guards, CI and update 
 Browser
   │  HTTP
   ▼
-Frontend (Caddy · Vite build)
-  │  /api/*                 │  /.well-known/mercure
-  ▼                         ▼
-Backend (FrankenPHP · Symfony) ── Mercure hub (Caddy)
-  │  SQL              │  AMQP
-  ▼                    ▼
-PostgreSQL          RabbitMQ ── worker / scheduler
-  (+ pgvector)
+Gateway (Caddy)
+  │  /                       │  /api, /health   │  /.well-known/mercure
+  ▼                          ▼                  ▼
+Frontend (Caddy · Vite)   Backend (FrankenPHP · Symfony) ── Mercure hub
+                               │  SQL              │  AMQP
+                               ▼                    ▼
+                             PostgreSQL          RabbitMQ ── worker / scheduler
+                              (+ pgvector)
 ```
 
-The frontend proxies `/api/*` to the backend over the app's private network. In production nothing behind the frontend has a public port.
+The gateway owns routing, the Content-Security-Policy and trusted-proxy handling; it is the only service that publishes a port. Backend and frontend never face the client directly. In production, the shared-infra edge proxy terminates TLS and reaches the gateway over an internal network.
 
 [`docs/oliva/concepts.md`](docs/oliva/concepts.md) explains the less obvious pieces (pgvector, AMQP, Mercure, the sync model). `docs/examples/` has reference skeletons of a queue producer/consumer and a Mercure publisher.
 
@@ -282,7 +282,10 @@ oliva/
 │   ├── php-extensions.txt  # the app's extra PHP extensions (Oliva ships it empty)
 │   ├── scheduler/crontab   # consumed by supercronic
 │   └── frankenphp/         # Caddy and PHP runtime config
-├── frontend/               # Vite app + production Caddyfile
+├── frontend/               # Vite app (dev) / static build served by Caddy (prod)
+├── gateway/                # Caddy edge: routing, CSP, trusted_proxies, /gateway-health
+│   ├── Caddyfile           # Oliva-owned
+│   └── app.d/              # the app's own route snippets (*.caddy)
 ├── docs/
 │   ├── roadmap.md          # where Oliva is heading and why (Oliva's own: does not ship to apps)
 │   ├── oliva/              # framework docs that ship to every app: agent guide, glossary,

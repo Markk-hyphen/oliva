@@ -93,8 +93,11 @@ echo ">> up -d --build"
 if ! "${COMPOSE[@]}" up -d --build; then
   # The reason is in the container's log, not in the output of `up` (e.g. the backend
   # refusing to start on a public secret): bring it to the terminal.
-  echo "!! up failed. Last lines of the backend log:" >&2
-  "${COMPOSE[@]}" logs --no-color --no-log-prefix --tail 25 backend >&2 || true
+  # Since 1.9.0 either the backend OR the gateway can be the one failing. The
+  # gateway sits in front of everything; a bad Caddyfile makes the whole stack
+  # look down even when the backend is fine.
+  echo "!! up failed. Last lines of the backend and gateway logs:" >&2
+  "${COMPOSE[@]}" logs --no-color --tail 25 backend gateway >&2 || true
   exit 1
 fi
 

@@ -113,15 +113,18 @@ _ec_url_host() { [[ "$1" =~ @([^@/:?]+)(:[0-9]+)?(/|\?|$) ]] && printf '%s' "${B
 _ec_slot_service() {
   case "$1" in
     backend|realtime) echo backend ;; database) echo database ;; queue) echo rabbitmq ;;
-    scheduler) echo scheduler ;; frontend|gateway) echo frontend ;; *) echo "$1" ;;
+    scheduler) echo scheduler ;; gateway) echo gateway ;; frontend) echo frontend ;; *) echo "$1" ;;
   esac
 }
+
+# The host portion of a GATEWAY_*_UPSTREAM value (`host` or `host:port`).
+_ec_upstream_host() { printf '%s' "${1%%:*}"; }
 
 # ── The check ────────────────────────────────────────────────────────────────────
 env_check() {
   local mode="$1"; shift
-  local cfg rows services name slot kind rule val why src t host svc line f
-  local -A RES=() FE=() FILEV=() SLOT_ERR=() SLOT_WARN=() SLOT_SEEN=()
+  local cfg rows services name slot kind rule val why src t host svc line f up
+  local -A RES=() FE=() GW=() FILEV=() SLOT_ERR=() SLOT_WARN=() SLOT_SEEN=()
   local -a slot_order=() global_err=() global_warn=()
   local errors=0 leaked=""
 
@@ -142,6 +145,7 @@ env_check() {
 
   while IFS=$'\t' read -r name val; do [[ -n "$name" ]] && RES[$name]="$val"; done < <(_ec_service_env backend <<< "$cfg")
   while IFS=$'\t' read -r name val; do [[ -n "$name" ]] && FE[$name]="$val"; done < <(_ec_service_env frontend <<< "$cfg")
+  while IFS=$'\t' read -r name val; do [[ -n "$name" ]] && GW[$name]="$val"; done < <(_ec_service_env gateway <<< "$cfg")
   while IFS= read -r line; do
     [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
     name="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
@@ -155,6 +159,16 @@ env_check() {
   [[ -n "$host" && "$host" != database ]] && REPLACED[database]="$host"
   host="$(_ec_url_host "${RES[RABBITMQ_DSN]:-}")"
   [[ -n "$host" && "$host" != rabbitmq ]] && REPLACED[queue]="$host"
+  # The gateway's "URL" per slot is GATEWAY_*_UPSTREAM resolved on the gateway
+  # service itself (not on the backend). A value whose host is not Oliva's
+  # default for that slot = REPLACED (the probe of E-unbundle-roles phase 3).
+  up="$(_ec_upstream_host "${GW[GATEWAY_BACKEND_UPSTREAM]:-}")"
+  [[ -n "$up" && "$up" != backend ]] && REPLACED[backend]="$up"
+  up="$(_ec_upstream_host "${GW[GATEWAY_REALTIME_UPSTREAM]:-}")"
+  # In 1.9.0 realtime still rides the backend; 1.10.0 moves this default to `realtime`.
+  [[ -n "$up" && "$up" != backend && "$up" != realtime ]] && REPLACED[realtime]="$up"
+  up="$(_ec_upstream_host "${GW[GATEWAY_FRONTEND_UPSTREAM]:-}")"
+  [[ -n "$up" && "$up" != frontend ]] && REPLACED[frontend]="$up"
 
   # A URL that points at Oliva's own service while that service isn't in this stack goes
   # nowhere (shared infra with the standalone DATABASE_URL still in .env). The backend
@@ -216,14 +230,24 @@ env_check() {
         done ;;
     esac
 
-    # A secret has one owner. The frontend serves files: it owns none of these.
-    if [[ "$kind" != plain && "$slot" != frontend && "$slot" != gateway && -n "${FE[$name]+x}" ]]; then
-      leaked+="$name "
+    # A secret has one owner. The frontend serves files and the gateway only
+    # routes: neither owns any of these. Flag a secret that reaches either.
+    if [[ "$kind" != plain && "$slot" != frontend && "$slot" != gateway ]]; then
+      [[ -n "${FE[$name]+x}" ]] && leaked+="frontend:$name "
+      [[ -n "${GW[$name]+x}" ]] && leaked+="gateway:$name "
     fi
   done <<< "$rows"
 
+  # SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS is baked into the backend image.
+  # SYMFONY_TRUSTED_HEADERS is left unset on purpose (= `for, port, proto`); an
+  # EMPTY value makes Symfony throw at boot with no useful message. Flag it.
+  if [[ -n "${RES[SYMFONY_TRUSTED_HEADERS]+x}" && -z "${RES[SYMFONY_TRUSTED_HEADERS]:-}" ]]; then
+    global_err+=("SYMFONY_TRUSTED_HEADERS is set to an empty value: Symfony throws at boot → remove the line (unset = the default: for, port, proto)")
+    errors=1
+  fi
+
   if [[ -n "$leaked" ]]; then
-    global_err+=("the frontend container receives ${leaked% }, and has no use for them → the frontend's env_file is .env.frontend only: take .env out of it")
+    global_err+=("a service receives a secret it has no use for (${leaked% }) → the frontend's env_file is .env.frontend only and the gateway has none: take .env out of either")
     errors=1
   fi
 

@@ -27,6 +27,67 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.9.0 — unreleased
+
+> **The gateway becomes its own container.** Until now routing (`/api`, `/health`,
+> `/.well-known/mercure`), the Content-Security-Policy and trusted-proxy handling
+> all lived inside the `frontend` service — and in dev the Vite proxy did the
+> same work a second time, with one well-known bug: `GET /health` on the dev
+> frontend answered HTML, not JSON. From 1.9.0 one `gateway` service
+> (`gateway/Dockerfile` + `gateway/Caddyfile`, Oliva-owned) is the edge in every
+> environment: it publishes the only HTTP port, owns the CSP (one base policy;
+> dev adds `'unsafe-inline'` to `style-src` via `GATEWAY_CSP_STYLE_EXTRA`) and
+> keeps a local `/gateway-health` even when every upstream is down. The
+> `frontend` stops routing and becomes a plain static upstream; the backend
+> image bakes `SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS` so the real client IP
+> reaches Symfony across the new hop.
+
+**Action required in the app**
+
+- [merge] `docker-compose.override.yml`, `docker-compose.prod.yml`,
+  `docker-compose.shared-infra.yml` and `docker-compose.staging.yml` add a
+  `gateway` service and move / drop entries on `frontend` and `backend`. An app
+  that extended any of them re-applies its extensions on the new structure.
+- [local, guard: dev-ports] `BACKEND_PORT`/`FRONTEND_PORT` in `.env` no longer
+  do anything: the gateway publishes the only HTTP port. Set `GATEWAY_PORT` in
+  `.env` to pick a different host port in dev, and remove the two old lines.
+  `./oliva verify` and the deploy scripts call `dev-ports`, which says so.
+- [decision] The app's URL in dev is now `http://localhost` (the gateway), not
+  `http://localhost:3000`. Links, docs and bookmarks referring to `:3000` need
+  updating. A fork's own `frontend/vite.config.js` with a `proxy` block is
+  harmless and can be dropped: the gateway now routes those paths.
+- [decision] An app's own Symfony `framework.trusted_proxies` configuration
+  keeps working: explicit config wins over the image's env default. Only drop
+  it if the default (`PRIVATE_SUBNETS`) is what you wanted.
+- [decision] Per-app gateway routes go in `gateway/app.d/*.caddy` (app-owned).
+  See `gateway/app.d/example.caddy` for the shape.
+- [host] Shared infra: nothing changes in this release. The `<app>-gateway`
+  alias exists on `proxy_net` alongside a transitional `<app>-frontend` alias
+  so an existing `infra/caddy/Caddyfile` keeps working. Repoint infra's
+  Caddyfile at `<app>-gateway` on the next edit; a later Oliva release will
+  remove the transitional alias (with another labelled action here).
+
+**What changed**
+
+- `gateway/Dockerfile`, `gateway/Caddyfile`, `gateway/app.d/example.caddy`: the
+  new edge Caddy. Owned by Oliva (`scripts/oliva/owned-paths.txt`).
+- `frontend/Caddyfile`: shrunk to a plain static `file_server`. CSP, routing,
+  compression, logging and `trusted_proxies` moved to the gateway.
+- `frontend/vite.config.js`: no more `proxy`, `VITE_API_URL` or `hmr.clientPort`
+  (Vite 6 defaults the HMR port to the page's own, now the gateway's).
+- `backend/Dockerfile`: bakes `ENV SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS`.
+- `scripts/lib/env-check.sh`: reads the gateway's resolved env, flags a secret
+  reaching the gateway, reports a slot `REPLACED` when `GATEWAY_*_UPSTREAM`
+  points away from Oliva's defaults, and errors on an empty
+  `SYMFONY_TRUSTED_HEADERS` (Symfony throws at boot).
+- `scripts/oliva/verify.sh`: new `gateway` step asserts `/gateway-health`,
+  `/health` JSON, `/` HTML and the CSP header through the gateway.
+- `.github/workflows/ci.yml`: bake target `gateway`; `/health` now asserts
+  `application/json` so an HTML-answering regression is loud.
+- `scripts/deploy.sh`: on a failed `up`, prints the gateway log too.
+- `scripts/oliva/deps.sh`: `base_images()` reads `gateway/Dockerfile`.
+- `scripts/lib/upgrade-guards.sh`: new `dev-ports` guard.
+
 ## 1.8.0 — 2026-11-17
 
 > **Queues work in production, and dev stops writing files as root.** Until now the queue

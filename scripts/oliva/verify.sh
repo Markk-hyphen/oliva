@@ -84,10 +84,35 @@ do_app() {
 }
 do_up()         { docker compose up -d --build --wait; }
 do_health()     { be curl -fsS http://localhost/health && echo; }
+# From the host, through the gateway: proves the three routes the gateway owns
+# end up at the right place with the right content type. /gateway-health is
+# answered locally (the healthcheck relies on it); /health comes back as JSON
+# (frontend answering HTML there was the bug 1.9.0 fixes); the CSP header must
+# be present so a missing policy in prod is loud. GATEWAY_PORT lets a second app
+# publish on a different port in dev.
+do_gateway() {
+  local base="http://localhost:${GATEWAY_PORT:-80}" code ct body hdr
+  # /gateway-health
+  read -r code ct < <(curl -s -o /tmp/v-gw.out -w '%{http_code} %{content_type}' "$base/gateway-health")
+  body="$(cat /tmp/v-gw.out)"
+  [[ "$code" == 200 && "$body" == "ok" ]] || { warn "/gateway-health = $code $body"; return 1; }
+  # /health, must be JSON (the regression step 1 of the phase fixes)
+  read -r code ct < <(curl -s -o /tmp/v-gw.out -w '%{http_code} %{content_type}' "$base/health")
+  [[ "$code" == 200 && "$ct" == application/json* ]] \
+    || { warn "/health through the gateway = $code $ct (expected 200 application/json)"; return 1; }
+  # /, must be HTML (frontend upstream reachable)
+  read -r code ct < <(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$base/")
+  [[ "$code" == 200 && "$ct" == text/html* ]] \
+    || { warn "/ through the gateway = $code $ct (expected 200 text/html; is the frontend upstream reachable?)"; return 1; }
+  # CSP header present (missing = the gateway stopped owning the policy).
+  hdr="$(curl -sI "$base/" | tr -d '\r' | grep -i '^content-security-policy:' | head -1)"
+  [[ -n "$hdr" ]] || { warn "no Content-Security-Policy header through the gateway"; return 1; }
+  echo "/gateway-health ok; /health JSON; / HTML; CSP present"
+}
 do_migrations() { be bin/console doctrine:migrations:up-to-date; }
-do_schema()     { be bin/console doctrine:schema:validate; }
+do_schema() { be bin/console doctrine:schema:validate; }
 do_phpunit()    { scripts/lib/test-db.sh && be php vendor/bin/phpunit; }
-do_prod_build() { docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend frontend; }
+do_prod_build() { docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend frontend gateway; }
 
 # Tras el prod-build: worker mode tiene que quedar prendido en prod. Dos mitades, las dos
 # guards de lib/upgrade-guards.sh (deploy*.sh corre las mismas en el host):
@@ -180,6 +205,7 @@ step queue       do_queue
 step up          do_up
 step php-version do_php_version
 step health      do_health
+step gateway     do_gateway
 step mercure     do_mercure
 step migrations  do_migrations
 step schema      do_schema
