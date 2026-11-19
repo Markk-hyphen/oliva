@@ -27,6 +27,11 @@ frontend/Caddyfile
 # must not treat them as drift.
 gateway/Dockerfile
 gateway/Caddyfile
+# Realtime hub: all three files are Oliva's (the app configures it through env vars and the
+# `realtime` profile, not by editing these).
+realtime/Dockerfile
+realtime/Caddyfile
+realtime/docker-entrypoint.sh
 docker-compose.yml
 docker-compose.prod.yml
 docker-compose.staging.yml

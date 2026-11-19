@@ -126,6 +126,10 @@ echo "   README.md  AGENTS.md  agent-commits.md  docs/concepts.md"
 
 if (( demo )); then
   info "demo kept (--demo)"
+  # The demo publishes through Mercure (LiveController dispatches an Update). That needs the
+  # realtime hub and relay, which are opt-in (profile `realtime`). Turn it on in .env, or the
+  # realtime guard aborts the first deploy and the live canvas never reaches anyone.
+  demo_profiles=realtime
 else
   info "demo removed (keep it next time with --demo)"
   rm -f backend/src/Controller/LiveController.php frontend/src/js/live.js
@@ -136,6 +140,15 @@ fi
 
 write_marker born_on
 [[ -f .env ]] || scripts/oliva/env.sh init
+# With --demo, enable the realtime profile in .env (gitignored) so the live canvas works.
+if [[ -n "${demo_profiles:-}" ]] && [[ -f .env ]] && ! grep -qE "^COMPOSE_PROFILES=.*\brealtime\b" .env; then
+  if grep -qE '^COMPOSE_PROFILES=' .env; then
+    sed -i -E "s/^(COMPOSE_PROFILES=)(.*)$/\1\2,${demo_profiles}/; s/^(COMPOSE_PROFILES=),/\1/" .env
+  else
+    printf 'COMPOSE_PROFILES=%s\n' "$demo_profiles" >> .env
+  fi
+  info "realtime profile enabled in .env (the demo publishes through Mercure)"
+fi
 git add -A
 git commit -q -m "init: $name on Oliva $(local_oliva_version)"
 

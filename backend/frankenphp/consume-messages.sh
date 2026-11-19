@@ -35,5 +35,13 @@ case "$failure" in
 	*) exclude="--exclude-receivers=$failure" ;;
 esac
 
-# shellcheck disable=SC2086  # $exclude is empty or a single argument
+# The realtime transports belong to the realtime-relay (profile `realtime`), never to this
+# worker: the relay is the only publisher to the hub. Excluded unconditionally — they are
+# defined in messenger.yaml whether or not the profile is active, so `--all` would otherwise
+# consume them here and (with no hub) fail every Update (E-unbundle-roles, phase 2).
+for oliva_rt in realtime realtime_failed; do
+	exclude="$exclude --exclude-receivers=$oliva_rt"
+done
+
+# shellcheck disable=SC2086  # word splitting on purpose: a list of --exclude-receivers args
 exec php bin/console messenger:consume --all $exclude --time-limit=3600 --memory-limit=128M

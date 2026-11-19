@@ -61,7 +61,8 @@ do_env()        { env_check full docker compose; }
 # in dev too (no broker either). Same check the deploys abort on.
 do_queue() {
   queue_guard docker compose || return 1
-  echo "queues: nothing routed asynchronously without a worker to consume it"
+  realtime_guard docker compose || return 1
+  echo "queues: nothing routed asynchronously without a consumer (worker or realtime relay)"
 }
 # An app carries the marker written by `./oliva init`. A repo that received Oliva 1.7.0 and
 # has none is still wearing Oliva's identity: say how to fix it. Oliva's own repository is
@@ -172,31 +173,25 @@ jwt() {
 }
 
 do_mercure() {
-  local key pub sub marker
-  key="$(be printenv MERCURE_PUBLISHER_JWT_KEY | tr -d '\r')"
-  [[ -n "$key" ]] || { warn "MERCURE_PUBLISHER_JWT_KEY vacía en el backend"; return 1; }
+  local key pub sub marker gw
+  gw="http://localhost:${GATEWAY_PORT:-80}/.well-known/mercure"
+  key="$(be printenv MERCURE_JWT_SECRET | tr -d '\r')"
+  [[ -n "$key" ]] || { warn "MERCURE_JWT_SECRET vacía en el backend"; return 1; }
   pub="$(jwt "$key" '{"mercure":{"publish":["*"]}}')"
   sub="$(jwt "$key" '{"mercure":{"subscribe":["*"]}}')"
   marker="oliva-verify-$RANDOM$RANDOM"
-  # Dos suscriptores (con token / anónimo) escuchan 4s; a mitad se publica un update PRIVADO.
-  be sh -c '
-    hub=http://localhost/.well-known/mercure; t="topic=oliva/verify"
-    curl -sN --max-time 4 -H "Authorization: Bearer $1" "$hub?$t" > /tmp/v-auth.out &
-    curl -sN --max-time 4 "$hub?$t" > /tmp/v-anon.out &
-    sleep 1
-    curl -fsS -X POST -H "Authorization: Bearer $2" -d "$t" -d "data=$3" -d private=on "$hub" >/dev/null || exit 11
-    wait
-    grep -q "$3" /tmp/v-auth.out || exit 12
-    ! grep -q "$3" /tmp/v-anon.out || exit 13
-  ' _ "$sub" "$pub" "$marker"
-  local rc=$?
-  case $rc in
-    0)  echo "publish OK, privado entregado solo al suscriptor con token";;
-    11) warn "el hub rechazó el publish (publisher_jwt)";;
-    12) warn "el suscriptor con token NO recibió el update privado (subscriber_jwt)";;
-    13) warn "un suscriptor ANÓNIMO recibió un update privado";;
-  esac
-  return $rc
+  # Subscribe THROUGH THE GATEWAY from the host (browser → gateway → hub). Publish straight
+  # to the hub from inside the backend (backend → hub, the relay's own path). Two subscribers
+  # (token / anonymous); a PRIVATE update must reach only the token holder.
+  curl -sN --max-time 5 -H "Authorization: Bearer $sub" "$gw?topic=oliva/verify" > /tmp/v-auth.out &
+  curl -sN --max-time 5 "$gw?topic=oliva/verify" > /tmp/v-anon.out &
+  sleep 1
+  be sh -c 'curl -fsS -X POST -H "Authorization: Bearer $1" -d topic=oliva/verify -d "data=$2" -d private=on \
+              "${MERCURE_URL:-http://realtime/.well-known/mercure}" >/dev/null' _ "$pub" "$marker" || { wait; warn "el hub rechazó el publish (publisher_jwt / MERCURE_URL)"; return 1; }
+  wait
+  if ! grep -q "$marker" /tmp/v-auth.out; then warn "el suscriptor con token NO recibió el update privado (por el gateway)"; return 1; fi
+  if grep -q "$marker" /tmp/v-anon.out; then warn "un suscriptor ANÓNIMO recibió un update privado"; return 1; fi
+  echo "publish al hub OK; privado entregado solo al suscriptor con token, por el gateway"
 }
 
 step env         do_env
@@ -206,7 +201,9 @@ step up          do_up
 step php-version do_php_version
 step health      do_health
 step gateway     do_gateway
-step mercure     do_mercure
+# The hub is its own service (profile `realtime`). No hub in this stack, nothing to test.
+if docker compose ps --services 2>/dev/null | grep -qx realtime; then step mercure do_mercure
+else RESULTS+=("SKIP  mercure (realtime profile off)"); fi
 step migrations  do_migrations
 step schema      do_schema
 step phpunit     do_phpunit

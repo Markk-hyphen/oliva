@@ -49,7 +49,32 @@ framework:
                         failed:
                             binding_keys: [failed]
 
+            # Realtime (profile `realtime`, Oliva-owned). The backend dispatches a
+            # Symfony\Component\Mercure\Update here instead of POSTing to the hub inline, so
+            # a request never waits on the hub; the realtime-relay consumes this and POSTs.
+            # Doctrine/PostgreSQL, NOT RabbitMQ: realtime must not drag in the `queues`
+            # profile. The relay runs with get_notify_timeout + --sleep=0.01 (both needed,
+            # measured) for ~9ms p95. Own failure transport: `failed` is RabbitMQ and may
+            # not exist. Retries span minutes so a hub restart or deploy does not exhaust
+            # them; order is not kept during an outage (E-unbundle-roles, gate G4).
+            realtime:
+                dsn: 'doctrine://default?queue_name=realtime'
+                failure_transport: realtime_failed
+                options:
+                    get_notify_timeout: 5000
+                retry_strategy:
+                    max_retries: 10
+                    delay: 1000
+                    multiplier: 2
+                    max_delay: 60000
+
+            realtime_failed:
+                dsn: 'doctrine://default?queue_name=realtime_failed'
+
         routing:
+            # Oliva routes Mercure updates to the realtime relay. An app that wants a
+            # specific update sent inline keeps calling HubInterface::publish() directly.
+            'Symfony\Component\Mercure\Update': realtime
             # Example routing pattern — see docs/examples/IngestSourceMessage.php.example
             # 'App\Message\IngestSourceMessage': ingest
             # 'App\Message\EnrichItemMessage': enrich
@@ -60,3 +85,7 @@ when@test:
             transports:
                 ingest: 'in-memory://'
                 enrich: 'in-memory://'
+                # In tests there is no relay and no setup-transports: keep Update dispatches
+                # off the database (the messenger_messages table may not exist there).
+                realtime: 'in-memory://'
+                realtime_failed: 'in-memory://'

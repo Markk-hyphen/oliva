@@ -51,6 +51,7 @@ PROD_CONFIG="$(docker compose -p "$APP_NAME" -f docker-compose.yml -f docker-com
   -f docker-compose.shared-infra.yml config 2>/dev/null)" || PROD_CONFIG=""
 queue_ok=1
 queue_guard "${COMPOSE[@]}" || queue_ok=0
+realtime_guard "${COMPOSE[@]}" || queue_ok=0
 if [[ -n "$PROD_CONFIG" ]]; then queue_guard_staging "$PROD_CONFIG" "${COMPOSE[@]}" || queue_ok=0; fi
 if (( ! queue_ok )); then
   echo "!! STAGING DEPLOY ABORTED (see above). Nothing was stopped." >&2

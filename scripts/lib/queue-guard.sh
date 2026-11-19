@@ -135,8 +135,11 @@ queue_guard() {
   _qg_read
 
   # A route is asynchronous unless its transport is sync:// or in-memory://. A transport
-  # this file does not define counts as asynchronous: it is going somewhere.
+  # this file does not define counts as asynchronous: it is going somewhere. The realtime
+  # transports are the realtime relay's (profile `realtime`), not the `queues` worker's:
+  # skip them, or an app with realtime but no queues would trip "queues with no consumer".
   for name in "${QG_ROUTED[@]}"; do
+    case "$name" in realtime|realtime_failed) continue ;; esac
     dsn="${QG_DSN[$name]-unknown}"
     case "${dsn%%:*}" in sync|in-memory) ;; *) async+=("$name") ;; esac
   done
@@ -195,6 +198,36 @@ EOF
     fi
   fi
   return 0
+}
+
+# The realtime relay (profile `realtime`) is the only publisher to the hub. An app that uses
+# Mercure — code referencing Symfony\Component\Mercure in src — but runs no `realtime` service
+# would publish nowhere: the gateway answers 502 on /.well-known/mercure and dispatched
+# Updates pile up in the database. Static (file grep + resolved services), so the deploys can
+# run it before `down`. The Update→realtime route in messenger.yaml is Oliva's default and is
+# NOT the signal: an app that never publishes must not be forced to run the hub.
+realtime_guard() {
+  grep -rqlF 'Symfony\Component\Mercure' backend/src 2>/dev/null || return 0
+  local cfg services
+  cfg="$("$@" config 2>/dev/null)" || return 0
+  services=" $(_ec_services <<< "$cfg" | tr '\n' ' ')"
+  [[ "$services" == *" realtime "* ]] && return 0
+  cat >&2 <<'EOF'
+
+!! ================================================================
+!! REALTIME USED WITH NO HUB: the app publishes to Mercure (code uses
+!! Symfony\Component\Mercure) but this stack runs no 'realtime' service.
+!! The gateway answers 502 on /.well-known/mercure and dispatched
+!! updates pile up in the database, consumed by nothing.
+!!
+!! Fix: in this machine's .env add realtime to COMPOSE_PROFILES
+!!   COMPOSE_PROFILES=realtime        (or realtime,queues,cron)
+!! If realtime is consumed/served outside this stack on purpose, run
+!! the hub there and point GATEWAY_REALTIME_UPSTREAM at it.
+!! ================================================================
+
+EOF
+  return 1
 }
 
 queue_guard_staging() {

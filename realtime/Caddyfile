@@ -1,0 +1,42 @@
+{
+	# Admin API on localhost only: /config/ returns the JWT key in clear (measured). Never
+	# expose it. The image's HEALTHCHECK hits /mercure/health/ready on 127.0.0.1:2019.
+	admin localhost:2019
+}
+
+# `:80`, never `localhost`: a `localhost` site address makes Caddy serve HTTPS on 443 with
+# its internal CA and redirect HTTP there. TLS is terminated at the edge (the gateway, and
+# in shared infra the reverse proxy), not here.
+http://:80 {
+	log {
+		level {$REALTIME_LOG_LEVEL:INFO}
+	}
+
+	handle /.well-known/mercure* {
+		mercure {
+			anonymous
+			# Quoted and with NO default, on purpose (same reasoning as the old embedded
+			# hub): a default would be a publicly known key taking over in silence if the
+			# variable were missing; unquoted, an empty value makes Caddy read "HS256" as
+			# the key. An empty key never reaches here — the entrypoint refuses it.
+			publisher_jwt "{$MERCURE_PUBLISHER_JWT_KEY}" HS256
+			# Same key as the publisher on purpose: MercureBundle signs both token kinds
+			# with MERCURE_JWT_SECRET (= MERCURE_PUBLISHER_JWT_KEY in Oliva's manifest).
+			subscriber_jwt "{$MERCURE_PUBLISHER_JWT_KEY}" HS256
+			# Compatibility mode 8: the backend signs compat-mode tokens (no iss/aud). Works
+			# while this image AND FrankenPHP are built with the deprecated_* tags; moving to
+			# modern mode is a watched pending item (E-unbundle-roles, decisions phase 2).
+			protocol_version_compatibility 8
+			# Bolt keeps the last N events so a client reconnecting with Last-Event-ID
+			# recovers what it missed. Capped (bolt has no default cap); kept across a
+			# restart, lost on a deploy (storage decision). No volume is mounted on /data.
+			transport bolt {
+				path /data/mercure.db
+				size {$REALTIME_HISTORY_SIZE:1000}
+			}
+		}
+	}
+
+	# The gateway routes only /.well-known/mercure* here; anything else is a misroute.
+	respond 404
+}

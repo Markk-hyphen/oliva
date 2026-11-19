@@ -4,8 +4,8 @@ namespace App\Controller;
 
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Mercure\HubInterface;
 use Symfony\Component\Mercure\Update;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
@@ -13,8 +13,12 @@ use Symfony\Component\Routing\Attribute\Route;
  * join) to every other browser through the Mercure hub.
  *
  * It is part of the demo, not of the framework: `./oliva init` removes it
- * together with frontend/src/js/live.js. It publishes through the configured
- * hub, so it uses whatever key this machine generated.
+ * together with frontend/src/js/live.js.
+ *
+ * It dispatches the Update on the message bus instead of calling the hub inline:
+ * that is Oliva's recommended path since 1.10.0 (the realtime relay publishes it,
+ * so the request never waits on the hub). An app that needs an update sent inline
+ * injects HubInterface and calls publish() directly. Needs the `realtime` profile.
  */
 class LiveController
 {
@@ -22,7 +26,7 @@ class LiveController
     private const CLIENTS = '/tmp/oliva_clients';
 
     #[Route('/api/live', methods: ['POST'])]
-    public function __invoke(Request $request, HubInterface $hub): JsonResponse
+    public function __invoke(Request $request, MessageBusInterface $bus): JsonResponse
     {
         $body = json_decode($request->getContent(), true) ?? [];
         $type = $body['type'] ?? '';
@@ -37,7 +41,7 @@ class LiveController
             return new JsonResponse(['error' => 'unknown type'], 400);
         }
 
-        $hub->publish(new Update(self::TOPIC, json_encode($data)));
+        $bus->dispatch(new Update(self::TOPIC, json_encode($data)));
 
         return new JsonResponse(['ok' => true]);
     }
