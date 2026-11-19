@@ -547,6 +547,26 @@ Known, accepted:
 
 ## Phase 3 — The probe
 
+**DONE 2026-11-19** on a born app ("Probe", `./oliva init --demo` from a scratch 9.9.9
+release of this branch). Exit criterion met.
+
+- **Step 2 (replace the frontend): PASS, clean.** A plain `nginx` sidecar on `app_network`
+  with `GATEWAY_FRONTEND_UPSTREAM=probe-nginx:80`, in an app-owned `docker-compose.probe.yml`.
+  `/` served nginx; `/api` and `/health` still reached the backend; `git status` showed only
+  app files. One deviation, fixed in Oliva during the probe (X15): `env check` computed the
+  `frontend REPLACED` state but never printed it (the frontend slot has no manifest variables,
+  so it never reached the output list). After the fix it prints `frontend  REPLACED (…)`.
+- **Step 3 (replace the backend): findings logged, nothing fixed (X16).** A non-PHP `caddy`
+  impostor behind `GATEWAY_BACKEND_UPSTREAM` honoured the contract — with the PHP `backend`
+  stopped, the gateway still served `/health` (JSON), `/api` and `/`. So the HTTP contract is
+  replaceable. What stays bound to the `backend` service and the FrankenPHP image: migrations
+  (the entrypoint; the schema would never exist), `verify`'s PHP steps and `doctor`
+  (`docker compose exec backend`), `deploy-staging` fixtures, and the worker/scheduler/relay
+  building from `./backend`. These are the input to roadmap item 3, not work for this epic —
+  the gateway/frontend/realtime slots are independent, which is what the epic set out to prove.
+
+The original plan follows.
+
 1. Scratch app born with `./oliva init` from the released state.
 2. **Replace the frontend** with something that is not Vite (a static site generator, or
    a minimal Node server): point `GATEWAY_FRONTEND_UPSTREAM` at it, remove nothing else.

@@ -1,6 +1,6 @@
 # Epic — Unbundle the roles: a gateway of its own, a realtime hub of its own
 
-> **Status:** 🚧 phases 1 and 2 implemented (gateway 1.9.0 released; realtime unreleased, branch `feat/realtime-hub`); phase 3 pending. How to execute it:
+> **Status:** ✅ implemented (all three phases). Gateway 1.9.0 released; realtime (1.10.0) on branch `feat/realtime-hub`, unreleased; the probe (phase 3) confirmed the gateway/frontend/realtime slots are independent and logged the backend coupling for roadmap item 3 (friction X16). How to execute it:
 > [`E-unbundle-roles-runbook.md`](E-unbundle-roles-runbook.md) ·
 > **Target versions:** v1.9.0 (gateway), v1.10.0 (realtime) ·
 > **Origin:** roadmap item 2, "First: unbundle the roles". Planned 2026-11-17 against

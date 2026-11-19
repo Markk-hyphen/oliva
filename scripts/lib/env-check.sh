@@ -304,6 +304,13 @@ env_check() {
     done <<< "$rows"
   fi
 
+  # A replaced slot must surface even with no manifest variables of its own (frontend and
+  # gateway have none): otherwise REPLACED is computed and never shown. Append any replaced
+  # slot not already in the manifest-driven order.
+  for slot in "${!REPLACED[@]}"; do
+    [[ -n "${SLOT_SEEN[$slot]:-}" ]] || { SLOT_SEEN[$slot]=1; slot_order+=("$slot"); }
+  done
+
   # ── Output ──
   local printed=0 state
   for slot in "${slot_order[@]}"; do
