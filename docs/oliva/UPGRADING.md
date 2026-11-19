@@ -27,7 +27,7 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
-## 1.9.0 — unreleased
+## 1.9.0 — 2026-11-19
 
 > **The gateway becomes its own container.** Until now routing (`/api`, `/health`,
 > `/.well-known/mercure`), the Content-Security-Policy and trusted-proxy handling
