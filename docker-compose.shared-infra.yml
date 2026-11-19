@@ -74,13 +74,31 @@ services:
       app_network:
       data_net:
 
+  # Since 1.9.0 the edge of the stack is the gateway, not the frontend. The
+  # frontend stays on `app_network` only (it never reaches the shared Postgres
+  # or RabbitMQ, so it must not be on `data_net`; and if it were also on
+  # `proxy_net` under the same alias as the gateway, Docker's DNS would
+  # round-robin between the two — the collision this file sidesteps on purpose).
   frontend:
+    ports: !override []
+    networks:
+      app_network:
+
+  gateway:
     ports: !override []
     networks:
       app_network:
       proxy_net:
         aliases:
-          - ${COMPOSE_PROJECT_NAME:-app}-frontend   # ej. -p ong -> ong-frontend
+          # The real alias (what the shared reverse-proxy site block should
+          # target from now on):
+          - ${COMPOSE_PROJECT_NAME:-app}-gateway    # ej. -p ong -> ong-gateway
+          # Transitional alias (same name as the pre-1.9.0 frontend's) so a
+          # shared infra whose Caddyfile still says `reverse_proxy <app>-frontend:80`
+          # keeps working after the upgrade. Repoint infra's Caddyfile at
+          # `<app>-gateway` on the next edit; a later Oliva release will remove
+          # this alias, with a labelled action in UPGRADING.md.
+          - ${COMPOSE_PROJECT_NAME:-app}-frontend
 
 networks:
   # Red privada de ESTA app, project-scoped: con `-p ong` queda `ong_app_network`,

@@ -61,6 +61,7 @@ jobs:
           targets: |
             backend
             frontend
+            gateway
           load: true
           set: |
             *.cache-from=type=gha
@@ -80,8 +81,15 @@ jobs:
         run: docker compose logs --tail 80
 
       -
-        name: Check HTTP reachability
-        run: curl -v --fail-with-body http://localhost/health
+        # Since 1.9.0 the port is the gateway's, not the backend's. The content
+        # type matters: a frontend answering /health with HTML/200 was exactly
+        # the bug E-unbundle-roles fixes. Assert JSON so a regression is loud.
+        name: Check HTTP reachability (/health through the gateway)
+        run: |
+          out="$(curl -sS --fail-with-body -w '\n%{content_type}\n' http://localhost/health)"
+          echo "$out"
+          echo "$out" | tail -1 | grep -q 'application/json' \
+            || { echo "::error::/health answered with the wrong content-type (gateway routing broken?)"; exit 1; }
 
       -
         name: Check Mercure reachability

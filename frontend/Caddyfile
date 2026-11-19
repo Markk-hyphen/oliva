@@ -1,63 +1,19 @@
-{
-    servers {
-        # Keep the X-Forwarded-For set by the shared-infra reverse proxy (private
-        # Docker network) instead of overwriting it with that proxy's IP; the
-        # backend needs the real client IP for login throttling.
-        trusted_proxies static private_ranges
-    }
-}
+# The frontend behind the gateway: a plain static server, nothing else.
+# Routing, CSP, trusted_proxies, compression and logging all live in
+# gateway/Caddyfile. Keeping two layers of each (headers, encode) would double
+# the work on every request and let the two drift. One place per concern.
+:80 {
+    root * {$FRONTEND_DOC_ROOT:/usr/share/caddy}
 
-{$SERVER_NAME:localhost} {
-
-    handle /api/* {
-        # CA should be configured in production for HTTPS connections.
-        reverse_proxy http://backend:80
-    }
-
-    handle /health {
-        reverse_proxy http://backend:80
-    }
-
-    handle /.well-known/mercure* {
-        reverse_proxy http://backend:80
-    }
-
-    log {
-        level DEBUG # Use INFO or DEBUG during development; ERROR for production
-        output file /var/log/caddy/frontend.log {
-            roll_size 5mb
-            roll_keep 5
-            roll_keep_for 7d
-        }
-    }
-
-    encode zstd gzip
-
-    # Caching for static files (by MIME type)
+    # Immutable-asset caching stays here (per-asset, lives naturally with the
+    # files). The gateway's reverse_proxy forwards Cache-Control untouched.
     @cacheable {
         path *.css *.js *.png *.jpg *.jpeg *.gif *.svg *.woff *.woff2
     }
-
     header @cacheable Cache-Control "public, max-age=31536000, immutable"
-
-    # Security headers.
-    header {
-        Content-Security-Policy "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self';"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "no-referrer-when-downgrade"
-    }
-
-    # Set the document root (parameterized for flexibility)
-    root * {$FRONTEND_DOC_ROOT:/usr/share/caddy}
 
     file_server
 
-    # Optional SPA fallback (only for SPA projects)
+    # Optional SPA fallback (opt-in; a fork that needs it adds this line):
     # try_files {path} /index.html
-
-    # Error handling
-    handle_errors {
-        respond "Something went wrong!" 500
-    }
 }

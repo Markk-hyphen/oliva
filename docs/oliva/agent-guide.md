@@ -22,7 +22,7 @@ docker compose up
 ```
 El `docker-compose.override.yml` se aplica automáticamente: monta el código fuente con hot-reload, expone el backend en `:80` y el frontend en `:3000`.
 
-**Dos apps a la vez en dev:** los puertos del host (`:80`, `:3000`, `:5432`, y los de RabbitMQ) salen de variables con esos defaults. Una sola app no configura nada. Para levantar una segunda app Oliva en paralelo —que si no choca con *"port is already allocated"*— poné `BACKEND_PORT`, `FRONTEND_PORT`, `DB_PORT` (y, con el profile `queues`, `RABBITMQ_PORT`/`RABBITMQ_MANAGEMENT_PORT`) con otros valores en el `.env` de esa app. Ver el bloque "Dev host ports" en `.env.example`.
+**Dos apps a la vez en dev:** desde 1.9.0 el único puerto HTTP que publica el stack es el del `gateway` (default `:80`); backend y frontend viven en la red privada de la app. Los puertos del host (`:80`, `:5432`, y los de RabbitMQ) salen de variables con esos defaults. Una sola app no configura nada. Para levantar una segunda app Oliva en paralelo —que si no choca con *"port is already allocated"*— poné `GATEWAY_PORT`, `DB_PORT` (y, con el profile `queues`, `RABBITMQ_PORT`/`RABBITMQ_MANAGEMENT_PORT`) con otros valores en el `.env` de esa app. `BACKEND_PORT`/`FRONTEND_PORT` en un `.env` pre-1.9.0 quedaron sin uso; el guard `dev-ports` lo avisa.
 
 **Usuario del host en dev:** los containers del backend corren como `${HOST_UID:-1000}:${HOST_GID:-1000}`, así lo que generan (claves JWT en `config/jwt`, la migración que creás con `migrations:diff`, el cache de `var/`) queda tuyo en el host y no root-owned (antes había que `sudo chown` para borrar el dir). Si tu `id -u` no es `1000`, poné `HOST_UID`/`HOST_GID` en tu `.env`; `./oliva doctor` lo chequea y avisa si no coinciden. Prod corre como root a propósito (no define `user:`). El frontend sigue como root (su `node_modules` es un volumen anónimo, no toca el host).
 
@@ -54,7 +54,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 
 ## Servicios incluidos y cómo desactivarlos
 
-Además de `database`, `backend` y `frontend`, `docker-compose.yml` define:
+Además de `database`, `backend`, `frontend` y `gateway` (el edge Caddy que ruta `/api`, `/health` y `/.well-known/mercure` al backend, y lo demás al frontend; publica el único puerto HTTP del stack), `docker-compose.yml` define:
 
 | Servicio | Para qué | Si la app no lo necesita |
 |---|---|---|
@@ -169,10 +169,14 @@ Qué hace (requiere Docker Compose ≥ 2.24, por la tag de merge `!override`):
 - Desactiva `database`/`rabbitmq` locales con un profile inerte
   (`disabled-in-shared-infra`) para que un `up -d` sin listar servicios no los
   levante por accidente.
-- **Topología de red (split, ver README de infra):** `frontend` → red privada
-  de la app + `proxy_net` (alias único); `backend`/`scheduler` → red privada +
-  `data_net`. El frontend no toca `data_net` (no llega a la DB). Las redes
-  `proxy_net`/`data_net` son externas (las crea el repo de infra).
+- **Topología de red (split, ver README de infra):** `gateway` → red privada
+  de la app + `proxy_net` (con alias `<app>-gateway` y, transitoriamente,
+  `<app>-frontend`); `frontend` → red privada SOLA; `backend`/`scheduler` →
+  red privada + `data_net`. El frontend no toca `proxy_net` (no habla con el
+  edge directo) ni `data_net`. Las redes `proxy_net`/`data_net` son externas
+  (las crea el repo de infra). Desde 1.9.0 el reverse-proxy compartido debería
+  apuntar a `<app>-gateway`; el alias `<app>-frontend` sobrevive una versión
+  para no romper Caddyfiles de infra ya escritos.
 
 **Cada fork que use este overlay debe:** (1) **arrancar con `-p <appname>`
 único** — eso hace su red privada `<appname>_app_network` y deriva el alias de
@@ -250,7 +254,8 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 10. **(Opt-in) Levantar el stack de staging:** staging es una app aparte en el VPS
     con su propia DB desechable. Ver **"Runbook de staging"** más abajo.
 11. **(Cuando haya dominio)** vhost en `~/infra/caddy/Caddyfile` apuntando al
-    alias `<app>-frontend` + `docker exec infra-reverse-proxy-1 caddy reload`.
+    alias `<app>-gateway` (desde 1.9.0; el `<app>-frontend` queda como alias
+    transitorio una versión) + `docker exec infra-reverse-proxy-1 caddy reload`.
 12. **Smoke de flujos de negocio:** correr la collection Bruno de la app (`api/`,
     si existe) contra el entorno recién levantado — apuntar `{{base_url}}` al host
     correcto (público tras el paso 11, o `http://localhost` local) y verificar que

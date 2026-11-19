@@ -1,0 +1,29 @@
+# gateway/app.d/*.caddy — per-app gateway snippets.
+#
+# This directory is for the APP, not for Oliva (see scripts/oliva/owned-paths.txt).
+# Drop files named *.caddy here and restart the `gateway` service:
+#
+#     docker compose restart gateway
+#
+# Each file is imported into the gateway's single site block (http://:80).
+# Caddy's `handle` directives are evaluated by matcher specificity, with the
+# catch-all last; an app route will match before the default frontend proxy.
+#
+# ------------------------------------------------------------------
+# Example 1 — proxy a new path to a sidecar service on app_network:
+# ------------------------------------------------------------------
+# handle /metrics {
+#     reverse_proxy metrics-exporter:9090
+# }
+#
+# ------------------------------------------------------------------
+# Example 2 — serve a static response without touching the frontend:
+# ------------------------------------------------------------------
+# handle /robots.txt {
+#     respond "User-agent: *\nDisallow: /" 200
+# }
+#
+# ------------------------------------------------------------------
+# NOT here: the Content-Security-Policy. It lives in the gateway's main
+# Caddyfile (owned by Oliva) and reads env vars so each environment can tweak
+# it in one place. Define app-specific CSP overrides there, not here.

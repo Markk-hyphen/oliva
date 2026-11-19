@@ -72,3 +72,9 @@ services:
   # cambia el tag (el build se hereda de prod.yml).
   frontend:
     image: ${COMPOSE_PROJECT_NAME}-frontend:staging
+
+  # Same reason as frontend: without this block a staging rebuild would
+  # overwrite the prod gateway image (`<app>-gateway:prod`). The build config
+  # (context, Dockerfile) is inherited from prod.yml.
+  gateway:
+    image: ${COMPOSE_PROJECT_NAME}-gateway:staging

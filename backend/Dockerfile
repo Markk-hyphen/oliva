@@ -34,6 +34,15 @@ WORKDIR /app
 ENV PROJECT_DIR=/app
 ENV HTTP_PORT=80
 
+# Trust X-Forwarded-* from private networks. Since 1.9.0 the stack's edge is the
+# gateway, not the frontend: client IPs reach the backend as a header, not the
+# TCP peer address. `PRIVATE_SUBNETS` is Symfony's shortcut for RFC 1918 + IPv6
+# ULA, which is exactly the range the gateway (and, in shared infra, the edge
+# proxy) will come from. Decision 6 of E-unbundle-roles, option A.
+# NEVER set SYMFONY_TRUSTED_HEADERS: unset = `for, port, proto` (what we want);
+# empty string = Symfony throws at boot. env-check.sh flags that too.
+ENV SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS
+
 VOLUME /app/var/
 
 # persistent / runtime deps

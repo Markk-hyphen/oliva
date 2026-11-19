@@ -44,13 +44,27 @@ services:
         NODE_ENV: production
     environment:
       NODE_ENV: production
-      SERVER_NAME: ":80"
+    # No `ports:` and no SERVER_NAME since 1.9.0: the frontend is reached through
+    # the gateway, not directly. Its Caddyfile uses `:80` (not {$SERVER_NAME}),
+    # so the variable is no longer read. Caddy data/config volumes moved to the
+    # gateway, which is now the stack's edge.
+
+  gateway:
+    image: ${COMPOSE_PROJECT_NAME}-gateway:prod
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "80:80"
     volumes:
-      - frontend_caddy_data:/data
-      - frontend_caddy_config:/config
+      # Caddy stores its admin and automated-CA state here. TLS is terminated at
+      # the edge (shared-infra's reverse proxy) rather than at the gateway, so in
+      # practice these hold mostly the admin config autosave. Preserving them
+      # across restarts keeps the admin API stable.
+      - gateway_caddy_data:/data
+      - gateway_caddy_config:/config
 
 volumes:
-  frontend_caddy_data:
-  frontend_caddy_config:
+  gateway_caddy_data:
+  gateway_caddy_config:

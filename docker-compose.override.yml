@@ -76,8 +76,10 @@ services:
     # poné HOST_UID/HOST_GID en tu `.env`. Solo dev: prod.yml no define `user:` (el
     # entrypoint necesita root ahí para el setfacl que comparte var con www-data).
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
-    ports:
-      - "${BACKEND_PORT:-80}:80"
+    # No `ports:` since 1.9.0: the backend is reached through the gateway on
+    # ${GATEWAY_PORT:-80}. verify.sh and doctor exec into the container, so they
+    # need no host port. CI curls ${GATEWAY_PORT:-80} too. A fork that still sets
+    # BACKEND_PORT in .env gets the dev-ports upgrade warning.
     volumes:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
@@ -121,11 +123,39 @@ services:
       args:
         NODE_ENV: development
     environment:
-      - VITE_API_URL=http://backend:80
       - NODE_ENV=development
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+    # No `ports:` since 1.9.0: Vite is a plain upstream of the gateway on
+    # app_network; browsers hit the gateway at ${GATEWAY_PORT:-80}. HMR's websocket
+    # also rides the gateway (Vite 6 defaults clientPort to the page's port; see
+    # the comment in vite.config.js). No VITE_API_URL either: the old dev proxy
+    # was replaced by gateway routing, and no other file reads the var.
     volumes:
       - ./frontend:/usr/src/app
       - /usr/src/app/node_modules
     tty: true
+
+  gateway:
+    image: ${COMPOSE_PROJECT_NAME}-gateway:dev
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+    volumes:
+      # Editable in dev: a Caddyfile tweak or a new app.d/*.caddy surfaces on
+      # `docker compose restart gateway` without a rebuild.
+      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./gateway/app.d:/etc/caddy/app.d:ro
+    environment:
+      # Decision 8 of E-unbundle-roles: dev adds 'unsafe-inline' to style-src
+      # (the browser console flags inline styles under the strict prod policy
+      # but they are common in dev tooling and demos). Prod keeps the baked-in
+      # empty default. Single policy, one knob.
+      GATEWAY_CSP_STYLE_EXTRA: "'unsafe-inline'"
+      GATEWAY_LOG_LEVEL: DEBUG
+      # Vite dev-server listens on :3000 (strictPort). In prod the frontend is
+      # Caddy on :80 (its baked-in Caddyfile), hence the default is `frontend:80`.
+      GATEWAY_FRONTEND_UPSTREAM: frontend:3000
+    networks:
+      - app_network

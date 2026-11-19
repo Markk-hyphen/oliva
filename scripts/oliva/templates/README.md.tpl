@@ -14,7 +14,7 @@ docker compose up -d --wait
 
 | Service | URL (dev) |
 |---|---|
-| Frontend | http://localhost:3000 |
+| App | http://localhost (the gateway; everything below rides it) |
 | Backend | http://localhost/health · your routes go under `/api` |
 | Mercure hub | http://localhost/.well-known/mercure |
 | Database | localhost:5432 |

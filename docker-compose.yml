@@ -47,9 +47,7 @@ services:
     expose:
       - "80/tcp"
     networks:
-      app_network:
-        aliases:
-          - backend.${SERVER_NAME}
+      - app_network
 
   scheduler:
     build:
@@ -124,9 +122,22 @@ services:
     # frontend variable goes in .env.frontend (non-secret) or in `environment:`.
     env_file:
       - .env.frontend
-    depends_on:
-      backend:
-        condition: service_healthy
+    # No depends_on backend: the frontend is a plain upstream of the gateway and
+    # does not talk to the backend. The gateway has no depends_on either — a hung
+    # backend must still let the gateway answer /gateway-health and the catch-all,
+    # otherwise the whole stack would be marked unhealthy on a single bad upstream.
+    networks:
+      - app_network
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # No env_file: the gateway handles no secrets (CSP, routing and trusted
+    # proxies only). env-check.sh flags a leaked secret here, same as it did for
+    # the old frontend-with-routing. Per-environment knobs live in the overlays'
+    # `environment:` block.
     networks:
       - app_network
 

@@ -34,7 +34,7 @@ OLIVA_ACTION_PLACES="merge local host decisión decision"
 # ── Guards ───────────────────────────────────────────────────────────────────────
 # Cada guard: guard_<id> COMPOSE... → 0 = bien o no aplica, 1 = avisó (por stderr).
 # El id (con guiones) es lo que se escribe en `[lugar, guard: <id>]`.
-UPGRADE_GUARDS=(cron worker-env worker-image)
+UPGRADE_GUARDS=(cron worker-env worker-image dev-ports)
 
 # Bloque YAML de un servicio en la salida de `docker compose config`.
 _ug_service_block() {
@@ -63,6 +63,27 @@ guard_worker_env() {
 !! ================================================================
 
 EOF
+  return 1
+}
+
+# 1.9.0: el gateway publica el único puerto HTTP. Un fork que todavía tenga
+# BACKEND_PORT o FRONTEND_PORT en su .env quedó sin uso real: ya no los lee
+# ningún overlay. Solo avisa; el costo es cero si no están.
+guard_dev_ports() {
+  [[ -f .env ]] || return 0
+  local stale=()
+  grep -qE '^[[:space:]]*BACKEND_PORT=' .env && stale+=(BACKEND_PORT)
+  grep -qE '^[[:space:]]*FRONTEND_PORT=' .env && stale+=(FRONTEND_PORT)
+  (( ${#stale[@]} )) || return 0
+  {
+    echo
+    echo "!! ================================================================"
+    echo "!! dev-ports: .env sets ${stale[*]}, ignored since Oliva 1.9.0."
+    echo "!!   The gateway publishes the only HTTP port; set GATEWAY_PORT"
+    echo "!!   instead to pick another host port in dev."
+    echo "!! ================================================================"
+    echo
+  } >&2
   return 1
 }
 
