@@ -1311,3 +1311,63 @@ Verified: `release.sh`'s lint accepts section 1.6.0 (and still 1.5.1); a simulat
   items and not the guarded one.
 - **Not done here:** the release itself (`release.sh 1.8.0`) and the push, which are the
   maintainer's call; the real crossing of an app.
+
+## [unbundle roles · phase 1] the gateway as its own container
+**Hashes:** `3c53b69…` (gateway + compose), `4687662…` (trusted proxies + env-check + verify + docs)
+**Branch:** `feat/unbundle-roles`
+**Date:** 2026-11-19
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `gateway/Dockerfile`, `gateway/Caddyfile`, `gateway/app.d/example.caddy` | new | The edge Caddy. Baked `ENV GATEWAY_CSP_STYLE_EXTRA=` (dev overlay sets it to `'unsafe-inline'`); Dockerfile `HEALTHCHECK` hits `/gateway-health` (local, never proxied). `app.d/*.caddy` is the app's. Pinned to `caddy:2.11.9` (same tag as `frontend/Dockerfile`, so `deps.sh` reports one caddy). |
+| `frontend/Caddyfile`, `frontend/vite.config.js` | modified | Frontend becomes a plain `file_server`: no CSP, routing, `encode`, `trusted_proxies` or logging. Vite drops the `proxy` block, `VITE_API_URL` and `hmr.clientPort`. |
+| `backend/Dockerfile` | modified | `frankenphp_base`: `ENV SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS`. `SYMFONY_TRUSTED_HEADERS` stays unset. |
+| `docker-compose.yml`, `docker-compose.override.yml`, `docker-compose.prod.yml`, `docker-compose.staging.yml`, `docker-compose.shared-infra.yml` | modified | `gateway` service in all overlays with its own `:dev/:staging/:prod` tags; `backend/frontend` lose their host ports in dev (GATEWAY_PORT publishes 80 through the gateway); prod moves `80:80` and the caddy_data/config volumes to the gateway; shared-infra puts the gateway on `proxy_net` with aliases `<app>-gateway` (new) and `<app>-frontend` (transitional). The dead `backend.${SERVER_NAME}` alias gone. |
+| `scripts/lib/env-check.sh` | modified | Reads the gateway's resolved env; extends the leaked-secret check; reports a slot REPLACED when a `GATEWAY_*_UPSTREAM` host is not Oliva's default; errors on an empty `SYMFONY_TRUSTED_HEADERS`. |
+| `scripts/lib/upgrade-guards.sh` | modified | New `dev-ports` guard. |
+| `scripts/oliva/verify.sh` | modified | New `gateway` step: `/gateway-health`, `/health` JSON, `/` HTML and CSP present through the gateway. `do_prod_build` builds `backend frontend gateway`. |
+| `scripts/oliva/deps.sh` | modified | `base_images()` reads `gateway/Dockerfile`. |
+| `scripts/deploy.sh` | modified | On a failed `up`, prints backend and gateway logs. |
+| `scripts/oliva/owned-paths.txt` | modified | `gateway/Dockerfile` and `gateway/Caddyfile` only — `gateway/app.d/` stays the app's. |
+| `scripts/oliva/env.manifest` | modified | No new rows: `GATEWAY_*_UPSTREAM` have Caddyfile defaults, `SYMFONY_TRUSTED_PROXIES` is in the backend image. `env-check` reads them directly and reports REPLACED where it matters. |
+| `.github/workflows/ci.yml` | modified | Bake target `gateway`; `/health` asserts `application/json`. |
+| `scripts/oliva/templates/README.md.tpl`, `README.md`, `docs/roadmap.md`, `docs/oliva/agent-guide.md` | modified | One URL (the gateway) in dev; tree; slots table row; shared-infra topology; agent-guide runbook step. |
+| `docs/oliva/UPGRADING.md` | modified | Section `## 1.9.0 — unreleased` with labelled actions (`[merge]`, `[local, guard: dev-ports]`, `[decision]`, `[host]`). |
+| `.env.example` | modified | `GATEWAY_PORT` replaces `BACKEND_PORT`/`FRONTEND_PORT`; `GATEWAY_*_UPSTREAM` and `SYMFONY_TRUSTED_PROXIES` as commented placeholders. |
+
+### Baseline (step 1 of the runbook, on `9160c24` before this branch's code changes)
+
+| Measurement | Value |
+|---|---|
+| `docker compose up -d --wait` | 18.6s |
+| `./oliva verify` | 13.3s, every step PASS (`ci-build` SKIP by design — `php-extensions.txt` empty) |
+| `curl :3000/health` | **`200 text/html`** (the regression this phase fixes) |
+| prod services, no profile | `backend database frontend` |
+| prod services, `--profile '*'` | `backend database frontend rabbitmq scheduler worker` |
+
+### Gate (step 11, dev — ran and read)
+
+1. `up -d --wait`: all four services healthy.
+2. `curl -sI localhost/` → `200`, `text/html`, `Content-Security-Policy` with `'unsafe-inline'` in `style-src` (dev variant) and nothing else that prod does not also carry.
+3. `curl -s localhost/health` → `{"status":"ok"} application/json`. **The regression of step 1 is gone.**
+7. `docker compose stop backend` → `curl localhost/api/x` = **502**, gateway still `healthy`. Then `start backend` returns to normal.
+8. `gateway/app.d/test.caddy` with `handle /x { respond "x" 200 }` → `/x` answers `x 200` after `docker compose restart gateway`, deleted at the end.
+9. `GATEWAY_PORT=8080 docker compose up -d --force-recreate gateway` → `/gateway-health` on `:8080` = 200 (nothing on `:80`); after bringing it back, `:80` = 200. `BACKEND_PORT=81` added to `.env` → the `dev-ports` guard prints the labelled warning and returns 1; removed.
+10. `./oliva env check` prints no new errors (gateway slot has no secrets to flag; a public `POSTGRES_PASSWORD` warning is expected on this checkout's volume).
+11. Linters: `caddy validate` on both gateway and frontend Caddyfiles → `Valid configuration`; `hadolint` on `gateway/Dockerfile` → no findings; `shellcheck -S warning` on the four scripts touched → clean; `actionlint` on the workflows → clean.
+
+### Gate (step 12, prod — the parts that need no scratch clone)
+
+- `config --services` with `prod.yml`: `backend database frontend gateway`; with `--profile '*'` adds `rabbitmq scheduler worker`. Staging (`-p oliva-staging` + `staging.yml`): same list.
+- **SSE through the gateway, measured (R3 of the runbook):** subscribe through `localhost/.well-known/mercure?topic=t`, publish from the backend immediately → delivered. Idle the subscription 90 seconds, publish again → delivered, same topic. The `encode` exclusion on `/.well-known/mercure*` holds.
+
+### What was not run
+
+- Step 11.4 (the scratch app born with `./oliva init` from a fake `9.9.x` release) and 11.5 (HMR in a browser): both need a release dry-run clone and a real browser. They are what proves R2 (the CSP covering the HMR websocket) and the "unreachable" → "ok" of `main.js.tpl`. Deferred.
+- Step 11.6 (two-browser Mercure demo).
+- Step 12.1 (building the prod stack on a scratch clone and asserting production CSP without `'unsafe-inline'`).
+- Step 13 (shared infra simulation and `$request->getClientIp()` behind the edge). The code path is small (one env var in the backend image and a `trusted_proxies` directive in the gateway) but the simulation stands up `proxy_net`, `data_net`, Postgres and an edge Caddy and deserves a session.
+- The release itself (`release.sh 1.9.0`).
+
+Phase 2 (realtime hub, target 1.10.0) starts at the runbook's step 1 and must decide on compat vs. modern Mercure tokens before touching code (R1). It is marked for a more capable model.
