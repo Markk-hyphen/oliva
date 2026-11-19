@@ -1,0 +1,69 @@
+{
+    # Trust X-Forwarded-* from proxies in the private Docker networks. In shared
+    # infra the edge proxy is on proxy_net (RFC 1918); in dev there is no outer
+    # proxy, so the matcher simply never applies. Decision 6 of E-unbundle-roles
+    # (option A: trust private subnets at both hops). The backend's second hop
+    # uses `SYMFONY_TRUSTED_PROXIES=PRIVATE_SUBNETS`, set as an ENV of the
+    # backend image.
+    servers {
+        trusted_proxies static {$GATEWAY_TRUSTED_PROXIES:private_ranges}
+    }
+}
+
+# `:80` and NEVER `localhost`: a `localhost` site address makes Caddy serve
+# HTTPS on 443 with its internal CA and redirect HTTP to HTTPS. TLS is
+# terminated by the edge (shared-infra's reverse proxy), not by the gateway.
+:80 {
+    # Compression. The Mercure endpoint is Server-Sent Events: compressing it
+    # would buffer the stream and break real-time delivery. Exclude it; the
+    # phase gate (E-unbundle-roles-runbook step 12.2) measures that an idle
+    # subscription for 90 seconds still receives events on time.
+    @encodable not path /.well-known/mercure*
+    encode @encodable zstd gzip
+
+    # One base CSP (prod value). GATEWAY_CSP_STYLE_EXTRA = ""  in prod (baked in
+    # the image); = "'unsafe-inline'" in dev (compose override). Keeping it one
+    # string per environment avoids two copies of the policy drifting.
+    header {
+        Content-Security-Policy "default-src 'self'; style-src 'self' {$GATEWAY_CSP_STYLE_EXTRA} https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self';"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer-when-downgrade"
+    }
+
+    log {
+        level {$GATEWAY_LOG_LEVEL:INFO}
+    }
+
+    # Gateway liveness: answered locally so the healthcheck works even when the
+    # backend is down. Never proxied.
+    handle /gateway-health {
+        respond "ok" 200
+    }
+
+    # Backend contract. A named matcher so BOTH `/api` and `/api/*` route
+    # together: `handle /api/*` alone would not match a bare `/api`, and
+    # `handle /api*` would also match `/apiary`. Caddy's inline `handle` form
+    # takes at most one path matcher, which is why this is named.
+    @backend path /api /api/* /health
+    handle @backend {
+        reverse_proxy {$GATEWAY_BACKEND_UPSTREAM:backend:80}
+    }
+
+    # Realtime hub. In 1.9.0 it is still served by the backend (same upstream);
+    # 1.10.0 points this at the `realtime` service.
+    handle /.well-known/mercure* {
+        reverse_proxy {$GATEWAY_REALTIME_UPSTREAM:backend:80}
+    }
+
+    # App routes. The /etc/caddy/app.d/ directory is owned by the app, not by
+    # Oliva (see owned-paths.txt). The import must come BEFORE the catch-all so
+    # an app route wins over the default frontend proxy. Caddy accepts a glob
+    # that matches nothing, so an empty app.d/ does not break startup.
+    import /etc/caddy/app.d/*.caddy
+
+    # Catch-all: the frontend.
+    handle {
+        reverse_proxy {$GATEWAY_FRONTEND_UPSTREAM:frontend:80}
+    }
+}

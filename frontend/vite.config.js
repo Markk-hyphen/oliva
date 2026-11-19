@@ -1,11 +1,14 @@
 import { defineConfig, loadEnv } from 'vite';
 
+// Vite is a plain upstream of the gateway (dev): it serves modules at :3000
+// inside the app_network and knows nothing about /api or /.well-known/mercure.
+// The gateway (gateway/Caddyfile) routes those to the backend; Vite's old
+// `proxy` block and `VITE_API_URL` are gone (grep shows no other reader).
+// HMR's clientPort is removed too: Vite 6 defaults to the page's own port,
+// which is the gateway's — see `importMetaUrl.port` in vite/dist/client/client.mjs.
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), ['VITE_']);
     return {
-            define: {
-                'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL)
-            },
         root: '.',
         build: {
             minify: "terser",
@@ -22,18 +25,6 @@ export default defineConfig(({ mode }) => {
             host: '0.0.0.0',
             port: 3000,
             strictPort: true,
-            hmr: {
-                clientPort: 3000
-            },
-            proxy: {
-                '/api': {
-                    target: env.VITE_API_URL, // Handled by Docker DNS
-                    changeOrigin: true, // Ensures the Host header matches the target
-                },
-                '/.well-known/mercure': {
-                    target: env.VITE_API_URL,
-                    changeOrigin: true,
-                },
-            },
-        }
-}});
+        },
+    };
+});
