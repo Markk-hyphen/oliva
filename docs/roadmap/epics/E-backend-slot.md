@@ -260,6 +260,14 @@ A leftover old name fails loudly: `target stage "frankenphp_dev" could not be fo
 Prod and staging build; the rename invalidated no cache (the prod image came out identical:
 RB6 closed). `verify` all green.
 
+**Step 2 — `oliva-seed` (2026-11-20).** `backend/frankenphp/seed.sh`, copied in the `dev`
+and `staging` stages only. Group = `OLIVA_SEED_GROUP`, else the environment. Measured: present
+in `dev` and `staging`, **absent from `prod`** (`docker run --entrypoint oliva-seed` → 127),
+next to the fixtures bundle already missing there (P4); dev seed purges and loads the `dev`
+group; `OLIVA_SEED_GROUP=staging` switches it; an unknown group fails (rc 1, "Could not find
+any fixture services"), as the contract's "fail on an incompatible target" asks.
+`deploy-staging.sh` calls `oliva-seed` (measured end to end at the gates, step 9).
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,

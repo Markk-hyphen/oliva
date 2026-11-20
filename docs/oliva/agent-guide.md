@@ -361,11 +361,11 @@ stack de producción.
 5. **Migrations:** automatic, by the `migrate` service, on the staging database (`.env.staging`
    loads last). To check:
    `docker exec <app>-staging-backend-1 bin/console doctrine:migrations:status`
-6. **Seeding:** la imagen `staging` sí tiene `doctrine:fixtures:load`
-   (a diferencia de prod). La DB de staging es desechable — la purga es inocua:
+6. **Seeding:** `oliva-seed` (since 1.12.0, the backend contract's Seed hook) exists in the
+   staging and dev images only; the production image has neither it nor the fixtures bundle.
+   It replaces the data (fixtures purge first), harmless on the disposable staging database:
    ```bash
-   docker exec <app>-staging-backend-1 \
-     bin/console doctrine:fixtures:load --group=staging --no-interaction
+   docker exec <app>-staging-backend-1 oliva-seed
    ```
 7. **Health:** `docker exec <app>-staging-backend-1 curl -s http://localhost/health`
 

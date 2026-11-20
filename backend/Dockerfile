@@ -206,6 +206,8 @@ RUN --mount=type=bind,from=ghcr.io/php/pie:1.5.3-bin,source=/pie,target=/usr/loc
 
 COPY --link frankenphp/conf.d/20-app.dev.ini $PHP_INI_DIR/app.conf.d/
 COPY --link frankenphp/worker.dev.Caddyfile /etc/caddy/worker.dev.Caddyfile
+# The Seed hook, in dev and staging ONLY (never in base or prod: see backend/frankenphp/seed.sh).
+COPY --link --chmod=755 frankenphp/seed.sh /usr/local/bin/oliva-seed
 
 # T5 — manifiesto de los inputs de build que se HORNEAN pero NO se bind-mountean en dev:
 # editarlos en el host no surte efecto hasta rebuildear, porque cambiarlos pide
@@ -257,6 +259,10 @@ RUN set -eux; \
 FROM prod AS staging
 
 ENV APP_ENV=staging
+
+# The Seed hook (backend contract). Here and in `dev`, never in `prod`, which this stage
+# inherits from: the production image cannot seed by construction.
+COPY --link --chmod=755 frankenphp/seed.sh /usr/local/bin/oliva-seed
 
 # prod horneó .env.local.php con APP_ENV=prod compilado (composer
 # dump-env prod) — heredarlo pisaría el ENV de arriba. Hay que borrarlo antes

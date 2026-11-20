@@ -78,8 +78,10 @@ if ! "${COMPOSE[@]}" up -d --build --wait --wait-timeout "${OLIVA_DEPLOY_WAIT_TI
   exit 1
 fi
 
-echo ">> seeding (fixtures:load --group=staging)"
-docker exec "${STAGING_PROJECT}-backend-1" bin/console doctrine:fixtures:load --group=staging --no-interaction
+# The backend contract's Seed hook. It exists only in the staging and dev images (the
+# production image has no seed capability at all), and it replaces the staging data.
+echo ">> seeding (oliva-seed: staging fixtures)"
+docker exec "${STAGING_PROJECT}-backend-1" oliva-seed
 
 echo ">> estado:"
 "${COMPOSE[@]}" ps
