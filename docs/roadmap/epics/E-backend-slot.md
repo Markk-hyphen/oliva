@@ -277,6 +277,19 @@ service and the hub carry the context in dev and prod (`config`); **bake with th
 byte-identical to the repository's; `env check` reads the new path (a historical
 `APP_SECRET` from git → "publicly known value", rc 1); `verify` all green.
 
+**Step 4 — five default fixes (2026-11-20).**
+
+| # | Fix | Measured |
+|---|---|---|
+| S44 | `SYMFONY_TRUSTED_HOSTS` declared (empty in `.env.example`), warned on a production stack while empty | empty behaves exactly as unset (any Host accepted, measured), so declaring it is safe; the warning appears on `--prod` only and disappears once set |
+| S45 | **Found while testing S44:** a value that does not accept `localhost` breaks the backend's own healthcheck (`curl http://localhost/health` → 400), so `up --wait` fails after `down` | `'^example\.org$'`: `up --wait` rc 1, health stuck in `starting`. `'^(localhost\|example\.org)$'`: healthy, the domain 200, a foreign Host 400. Now an `env check` **error** (deploys stop before `down`): bash ERE per comma-separated pattern, case-insensitive; Symfony splits on commas too (measured), and a pattern bash cannot parse (PCRE `(?:…)`, which Symfony accepts) is a warning, not a guess. The `.env.example` example keeps `localhost` |
+| S46 | Plain `DATABASE_URL` (manifest, `.env.example`, `backend/.env`); `charset: utf8` in `doctrine.yaml` | **libpq refuses the old form**: `psql` → `invalid URI query parameter: "serverVersion"`, so a non-PHP backend could not use the URL Oliva wrote. A fresh `env init` writes the plain URL; an old `.env` with the parameters still passes `env check`, and `env init` leaves it alone. With the cluster's default `client_encoding` switched to `SQL_ASCII`, Doctrine still talks UTF8 (the configured charset); the control without it was inconclusive (the cache-freshness race of X19 may have kept the old config), so the configured charset is the belt, not a measured necessity |
+| S47 | `oliva-migrate` fails fast and says why | wrong password, unknown database, unknown role: exit 1 in 0–1 s (was 67 s), last line `oliva-migrate: cannot reach the database: SQLSTATE[08006] … FATAL: …` (a wide `COLUMNS` keeps Symfony from wrapping it); an unresolvable host is still retried (74 s: the database may be starting); healthy: exit 0. `db_reason` survives `pipefail` with no match (the X17 class) |
+| S48 | The gateway's own 502/503/504 on `/api*` and `/health` as JSON, security headers in a shared snippet | backend stopped: `502 application/json {"error":"backend unavailable","status":502}` with `nosniff`; `/` unchanged; **an upstream's own 502 passes untouched** (`text/plain`, its body: RB3 closed) |
+| S49 | Gateway trust by topology (QB4): `prod.yml` `127.0.0.1/32`, shared infra `private_ranges`, dev unchanged; `env check` warns on a widened standalone production gateway | resolved values per stack as intended; the warning only on a widened standalone production stack; **a forged `X-Forwarded-For` from a private peer is dropped in standalone production** (`xff=[172.19.0.1]`; P8 forwarded it). Shared infra keeping the edge's address: measured at the gates |
+
+`verify` all green after the step.
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,
