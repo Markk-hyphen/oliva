@@ -14,7 +14,7 @@ three small default fixes. Still **nothing changes for an app that keeps the def
 beyond labelled upgrade actions; declaring a replaced backend is phase C.
 
 **State:** step 0 done 2026-11-20 (answers P1–P10, findings B-F1..B-F3 in the epic's "Phase B
-baseline"). B-F3 decided: **QB4, option C** (see the epic). Steps 1–4 done (results S44–S49 in the epic). Next: step 5, the contract document. Docs for steps 1–4 (guide: targets, seeding, trusted hosts, gateway trust) are step 8. Branch
+baseline"). B-F3 decided: **QB4, option C** (see the epic). Steps 1–5 done (results S44–S50 in the epic; step 5 found X20: the default's own errors are HTML, so the error envelope is a recommended clause the default does not meet yet). Next: step 6, the conformance suite. Docs for steps 1–4 (guide: targets, seeding, trusted hosts, gateway trust) are step 8. Branch
 `feat/backend-slot-b`, off `main` at `330c3f6` (1.11.0, CI green).
 
 **Step 0 outcome, folded into the steps below:**

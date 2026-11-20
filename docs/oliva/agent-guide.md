@@ -49,6 +49,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 - `backend/` — Symfony con FrankenPHP (Doctrine ORM/Migrations, pgvector, Mercure, Messenger)
 - `frontend/` — Vite (Node), incluye demo de Mercure en vivo (`src/js/live.js`, sección "Live" de `index.html`)
 - `docs/oliva/concepts.md` — glosario técnico del framework (pgvector, RabbitMQ, AMQP, modelo de sync, etc.). Solo lectura en una app; el glosario propio de la app es `docs/concepts.md`
+- `docs/oliva/backend-contract.md` — the backend contract: what any backend (the default or a replacement) must do (image targets, `/health`, `oliva-migrate`, `oliva-seed`, signals), should do, and declares; the backend-tied slots and their valid combinations. Read it before changing the backend's lifecycle, health route or error responses
 - `docs/oliva/qa-y-staging.md` — qué garantías ofrece el framework (verify.sh, los jobs de CI, stack de staging, seeding) y qué NO cubre. Es el doc humano de lo que acá está desperdigado en runbooks
 - `docs/oliva/` — docs **del framework** que bajan a cada fork: `actualizaciones.md` (sistema de updates) y `UPGRADING.md` (notas por versión)
 - `scripts/oliva/` — herramientas de mantenimiento y sync (`deps.sh`, `sync.sh`, `verify.sh`, `release.sh`, `owned-paths.txt`)

@@ -290,6 +290,14 @@ byte-identical to the repository's; `env check` reads the new path (a historical
 
 `verify` all green after the step.
 
+**Step 5 — the contract document (2026-11-20).** `docs/oliva/backend-contract.md`, product,
+linked from the guide and the README template. Written from the default as measured (P1–P10,
+S1–S49); the suite ids K1–K10 are cited, their checks are step 6.
+
+| # | Measurement | Result |
+|---|---|---|
+| S50 | The default backend's own error on `/api`, `prod` image | `GET /api/nope` → `404 text/html` (Symfony's error page), also with `Accept: application/json`: no serializer is installed, so errors render as HTML. The error envelope became a **recommended** clause the default does not meet; fixing the default is friction X20 (the maintainer's call: not in this phase) |
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,
