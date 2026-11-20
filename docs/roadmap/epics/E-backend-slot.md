@@ -241,6 +241,23 @@ Grace period: none of Oliva's services needs more than 10 s, so no fixed
 `.env`): S2 shows an app with long handlers needs a knob, and without one its only way out
 would be editing an Oliva file.
 
+**Step 2 — `oliva-migrate` and concurrency (2026-11-20).** R2 closed: **no lock.**
+
+| # | Measurement | Result |
+|---|---|---|
+| S7 | No database reachable | waits, gives up after 70 s (60 attempts), exit 1, the driver error on stderr |
+| S8 | Two runs 0.5 s apart, fresh database, a migration of `pg_sleep(5)` + `CREATE TABLE` | one exit 0 (both migrations applied); the other exit 7, `Unique violation … (extname)=(vector)` (two concurrent `CREATE EXTENSION IF NOT EXISTS` race, a known Postgres behaviour). Each version recorded once, the table created once |
+| S9 | Same with the extension already there (the usual case) | one exit 0; the other exit 7, `relation "race_probe2" already exists`, rolled back by `--all-or-nothing`. Each version once, the table once |
+| S10 | A third run after the race | exit 0, `Already at the latest version` |
+
+So the clause holds as "one wins, the other fails non-zero, nothing half-applied": Postgres
+DDL is transactional and `--all-or-nothing` keeps the whole run in one transaction. The
+loser's message points at the migration instead of at the race. A lock would turn it into
+"wait, then nothing to do", at the cost of a PHP wrapper holding a session lock; not worth
+it while a stack runs exactly one `migrate`. Does **not** hold for a migration that opts out
+of transactions (`isTransactional(): false`, `CREATE INDEX CONCURRENTLY`): the app's choice,
+one line in the guide.
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line

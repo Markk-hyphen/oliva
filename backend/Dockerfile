@@ -143,6 +143,8 @@ COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-en
 # The worker's command (service `worker`): expands WORKER_CONSUME_ARGS inside the container.
 COPY --link --chmod=755 frankenphp/consume-messages.sh /usr/local/bin/oliva-consume
 COPY --link --chmod=755 frankenphp/realtime-relay.sh /usr/local/bin/oliva-relay
+# The `migrate` service's command: wait for the database, then the migrations.
+COPY --link --chmod=755 frankenphp/migrate.sh /usr/local/bin/oliva-migrate
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
 # Read by docker-entrypoint: values a secret must never have in production.
 COPY --link frankenphp/known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
