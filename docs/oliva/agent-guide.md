@@ -49,7 +49,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 - `backend/` — Symfony con FrankenPHP (Doctrine ORM/Migrations, pgvector, Mercure, Messenger)
 - `frontend/` — Vite (Node), incluye demo de Mercure en vivo (`src/js/live.js`, sección "Live" de `index.html`)
 - `docs/oliva/concepts.md` — glosario técnico del framework (pgvector, RabbitMQ, AMQP, modelo de sync, etc.). Solo lectura en una app; el glosario propio de la app es `docs/concepts.md`
-- `docs/oliva/backend-contract.md` — the backend contract: what any backend (the default or a replacement) must do (image targets, `/health`, `oliva-migrate`, `oliva-seed`, signals), should do, and declares; the backend-tied slots and their valid combinations. Read it before changing the backend's lifecycle, health route or error responses
+- `docs/oliva/backend-contract.md` — the backend contract: what any backend (the default or a replacement) must do (image targets, `/health`, `oliva-migrate`, `oliva-seed`, signals), should do, and declares; the backend-tied slots and their valid combinations. Read it before changing the backend's lifecycle, health route or error responses. `./oliva conformance` tests this checkout's backend against it from outside (about a minute and a half; `--help`); a change to `/health`, `oliva-migrate`, `oliva-seed` or the stop behaviour is proven with it
 - `docs/oliva/qa-y-staging.md` — qué garantías ofrece el framework (verify.sh, los jobs de CI, stack de staging, seeding) y qué NO cubre. Es el doc humano de lo que acá está desperdigado en runbooks
 - `docs/oliva/` — docs **del framework** que bajan a cada fork: `actualizaciones.md` (sistema de updates) y `UPGRADING.md` (notas por versión)
 - `scripts/oliva/` — herramientas de mantenimiento y sync (`deps.sh`, `sync.sh`, `verify.sh`, `release.sh`, `owned-paths.txt`)
@@ -439,6 +439,7 @@ whatever was written in `.env` was ignored, with no error anywhere. Design and r
 - `GET /health` → `{"status": "ok"}` (`backend/src/Controller/HealthController.php`).
 - `.github/workflows/ci.yml`, job `env-contract` (sin build): `./oliva env init` + `env check` sobre los stacks dev y prod. Rojo si un archivo trackeado lleva un secreto real o pisa a `.env` con un placeholder o un valor públicamente conocido.
 - `.github/workflows/ci.yml`: build de imágenes, levanta los servicios (el servicio `migrate` aplica las migraciones; el CI chequea que no quede ninguna pendiente), chequea `/health` y `/.well-known/mercure`, valida el schema de Doctrine y corre PHPUnit. Job adicional de lint de Dockerfile con hadolint.
+- `.github/workflows/ci.yml`, job `conformance` (since 1.12.0): builds the `prod` and `staging` backend images and runs `./oliva conformance` on them, the backend contract tested from outside (`docs/oliva/backend-contract.md`). Red when a mandatory clause fails (a `/health` that touches the database, a migrate that is not idempotent, a seed in the production image, a server that ignores SIGTERM…). Not part of `./oliva verify`, to keep the dev loop fast: run it locally when you touch the backend's lifecycle.
 
 ## Protocolo de explicaciones conceptuales
 

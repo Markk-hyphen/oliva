@@ -65,15 +65,17 @@ salida lo imprime como `SKIP` en vez de `PASS` para que la excepción quede a la
 
 ## Capa 2 — CI: lo mismo, en limpio
 
-`.github/workflows/ci.yml` corre en cada push a `main`, con **seis jobs**:
+`.github/workflows/ci.yml` corre en cada push a `main`, con **estos jobs**:
 
 | Job | Qué hace |
 |---|---|
 | **Tests (smoke + PHPUnit)** | buildea las imágenes (con caché de capas de GHA), levanta los servicios, chequea alcanzabilidad HTTP y de Mercure, corre migraciones, valida el schema de Doctrine y corre PHPUnit. Si algo falla, vuelca los logs de los servicios |
 | **Prod config guard** | verifica que `APP_ENV` resuelve a `prod` en el stack de producción, en backend **y** scheduler. Es un guard de configuración, no de código: nació de que la precedencia de Compose (`environment:` > `env_file:` > `ENV` de la imagen) hizo que un entorno resolviera mal en silencio |
+| **Backend conformance** | since 1.12.0: builds the `prod` and `staging` backend images and runs `./oliva conformance` on them, the backend contract (`docs/oliva/backend-contract.md`) tested from outside: `/health` without the database, `oliva-migrate` (fresh, twice at once, unreachable database), no seed in production, SIGTERM, the gateway's `X-Forwarded-For` |
 | **Env contract** | `./oliva env init` + `env check` sobre los stacks dev y prod, sin build. Rojo si un archivo trackeado lleva un secreto real o pisa a `.env` |
 | **Composer constraints guard** | todo constraint de `composer.json` tiene techo |
-| **Docker Lint** | hadolint sobre el `Dockerfile` del backend |
+| **No pipe into head** | no `cmd \| head` in Oliva's scripts: under `pipefail` it kills the script with exit 141 (friction X17) |
+| **Docker Lint** | hadolint over the backend, gateway and realtime Dockerfiles |
 | **Image scan** | Trivy sobre las imágenes base, report-only |
 
 La diferencia con la capa 1 no es qué se prueba, es **dónde**: CI parte de cero, sin
@@ -192,6 +194,10 @@ Para no leer más garantías de las que hay:
   routed is left without it). That a dispatched message is actually handled was proven once,
   when it was built (`docs/roadmap/epics/E-queue-slot.md`); it would need a dispatch entry
   point in every app.
+- **Two clauses of the backend contract are declared, not tested.** That the backend trusts
+  `X-Forwarded-For` only from the gateway, and that a request in flight finishes on SIGTERM:
+  the conformance suite prints them as declared on every run, and they are measured for the
+  default at each release (`docs/oliva/backend-contract.md`).
 - **El audit de CVEs depende de que alguien lo corra.** `./oliva doctor` avisa a los 7 días
   (`deps.sh audit`: composer, yarn, Trivy y el runtime de PHP), pero nada lo ejecuta solo ni
   bloquea un deploy.
