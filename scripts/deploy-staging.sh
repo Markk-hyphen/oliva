@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Deploy del stack de STAGING de una app Oliva sobre infra compartida.
-# Análogo a deploy.sh, pero usa la imagen frankenphp_staging y un project
+# Análogo a deploy.sh, pero usa la imagen staging y un project
 # name propio (-p <app>-staging) para no interferir con el stack de producción.
 #
 # Prerequisitos (primera vez, una sola vez por app):
@@ -55,6 +55,7 @@ queue_guard "${COMPOSE[@]}" || queue_ok=0
 realtime_guard "${COMPOSE[@]}" || queue_ok=0
 if [[ -n "$PROD_CONFIG" ]]; then queue_guard_staging "$PROD_CONFIG" "${COMPOSE[@]}" || queue_ok=0; fi
 backend_health_guard || queue_ok=0
+build_guard "${COMPOSE[@]}" || queue_ok=0
 if (( ! queue_ok )); then
   echo "!! STAGING DEPLOY ABORTED (see above). Nothing was stopped." >&2
   exit 1
@@ -71,15 +72,17 @@ echo ">> down"
 # --wait, like deploy.sh: OK only when `migrate` exited 0 (it migrates the staging database,
 # .env.staging loads last) and every service is healthy. The explicit migrate that used to
 # follow is gone: the one-shot `migrate` service does it before anything else starts.
-echo ">> up -d --build --wait (target backend/scheduler/migrate: frankenphp_staging)"
+echo ">> up -d --build --wait (target backend/scheduler/migrate: staging)"
 if ! "${COMPOSE[@]}" up -d --build --wait --wait-timeout "${OLIVA_DEPLOY_WAIT_TIMEOUT:-300}"; then
   echo "!! up failed. Last lines of migrate, backend and gateway:" >&2
   "${COMPOSE[@]}" logs --no-color --tail 25 migrate backend gateway >&2 || true
   exit 1
 fi
 
-echo ">> seeding (fixtures:load --group=staging)"
-docker exec "${STAGING_PROJECT}-backend-1" bin/console doctrine:fixtures:load --group=staging --no-interaction
+# The backend contract's Seed hook. It exists only in the staging and dev images (the
+# production image has no seed capability at all), and it replaces the staging data.
+echo ">> seeding (oliva-seed: staging fixtures)"
+docker exec "${STAGING_PROJECT}-backend-1" oliva-seed
 
 echo ">> estado:"
 "${COMPOSE[@]}" ps

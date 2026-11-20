@@ -35,4 +35,5 @@ docker compose up -d --wait   # the migrate service applies it
 ./oliva sync start            # bring it in
 ```
 
-How the framework works, deploys and updates: `docs/oliva/`.
+How the framework works, deploys and updates: `docs/oliva/`. What the backend must keep
+doing (health, migrate, seed, signals), whatever it is built with: `docs/oliva/backend-contract.md`.

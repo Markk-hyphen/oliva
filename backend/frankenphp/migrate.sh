@@ -14,17 +14,33 @@ set -euo pipefail
 # Wait for the database. In standalone, depends_on (database healthy) already orders it;
 # in shared infra there is no local database to depend on, so this loop is the order.
 echo 'oliva-migrate: waiting for the database...'
+
+# The driver's own message, without Symfony's console box or the command's usage text
+# (until 1.12.0 the last line printed was `dbal:run-sql`'s usage, not the error).
+db_reason() {
+	printf '%s\n' "$1" | grep -E 'SQLSTATE|FATAL|could not|Connection refused|timeout' \
+		| sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | awk 'NF' | tail -1 || true
+}
+# `|| true`: under `set -euo pipefail` a message with none of those words would make grep
+# fail and kill the script on the assignment below (the class of bug of friction X17).
+
 attempts=60
-until db_error="$(php bin/console dbal:run-sql -q 'SELECT 1' 2>&1)"; do
+# COLUMNS: Symfony's console wraps an error box at the terminal width, which cut the driver's
+# message in pieces; wide enough, it stays on one line for db_reason.
+until db_error="$(COLUMNS=1000 php bin/console dbal:run-sql -q 'SELECT 1' 2>&1)"; do
 	rc=$?
-	if [ "$rc" -eq 255 ]; then
-		# Doctrine exits 255 on an unrecoverable error (bad credentials, unknown host...).
+	reason="$(db_reason "$db_error")"
+	# Errors that waiting cannot fix: give up at once instead of retrying for a minute
+	# (measured: a wrong password was retried 60 times, 67 s). A host that does not resolve
+	# yet, or refuses connections, is still retried: the database may be starting.
+	if [ "$rc" -eq 255 ] || printf '%s' "$db_error" | grep -qiE \
+		'password authentication failed|database "[^"]*" does not exist|role "[^"]*" does not exist|no pg_hba\.conf entry'; then
 		attempts=0
 	fi
 	attempts=$((attempts - 1))
 	if [ "$attempts" -le 0 ]; then
-		echo 'oliva-migrate: the database is not up or not reachable:' >&2
 		echo "$db_error" >&2
+		echo "oliva-migrate: cannot reach the database: ${reason:-see the output above}" >&2
 		exit 1
 	fi
 	sleep 1

@@ -1439,3 +1439,37 @@ Phase 2 (realtime hub, target 1.10.0) starts at the runbook's step 1 and must de
 - *JWT keys out of boot*: they came out root-owned and only the server had them. Found on a real checkout: a root-owned 0600 key the dev backend could not read while every check passed, so `env check` now looks at who can read it.
 - *Dev in worker mode* (decision Q4) so isolation bugs appear where they are written. The gate stopped once on Symfony's whole-second cache freshness (≈30% of rapid edits); the maintainer chose to keep worker mode with a detector (option A). Healing it automatically is X19.
 - **Not done here:** the release and the push (the maintainer's call); the long-jump sync rehearsal on the first app; a CI run.
+
+## [backend slot · phase B] the contract, written and tested from outside (1.12.0)
+**Hash:** `44971d2`, `50fead0`, `1886097`, `4a07a66`, `5c69ffa`, `cfc65e8`, `c63e9f0`, `22efaf9`, `88d1ce4`, `527e906`, `018bc3a`, `314558f`, `aa124e7`, `81f9e94`, plus this commit
+**Branch:** `feat/backend-slot-b`
+**Date:** 2026-11-20
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `docs/oliva/backend-contract.md` | new | The contract an app reads: preamble (behaviour, not connectivity), clauses mandatory / recommended / declared with the suite id that checks each, the backend-tied slots, the combination matrix, CORS, schema ownership, how to run the suite, what Oliva cannot see yet. |
+| `scripts/oliva/conformance.sh`, `scripts/oliva/conformance.compose.yml` | new | `./oliva conformance`: K1–K10 against any backend image from outside, in a throwaway harness (`<app>-conformance`, no host port, a probe container, always removed); database fingerprints for K3/K4; the gateway's trust read from what the compose files ship; `--staging`, `--keep`, `--down`, `--db-url-suffix`; INT/TERM traps. |
+| `backend/Dockerfile` | modified | Targets `dev`/`prod`/`staging` (were `frankenphp_*`); `oliva-seed` in `dev` and `staging` only; the public-secrets list through the `oliva` named context. |
+| `backend/frankenphp/seed.sh` | new | `oliva-seed`: `doctrine:fixtures:load --group=${OLIVA_SEED_GROUP:-$APP_ENV}`, says it replaces the data. |
+| `backend/frankenphp/migrate.sh` | modified | Fails fast on errors waiting cannot fix (auth, unknown database/role, pg_hba) and prints the driver's error last. |
+| `backend/frankenphp/known-public-secrets.sha256` → `scripts/oliva/known-public-secrets.sha256` | moved | So a replaced backend keeps a working `env check` and a buildable hub. |
+| `realtime/Dockerfile`, `docker-compose.yml` and overlays | modified | `x-backend-build` anchor with `additional_contexts: oliva`; target names; gateway trust per topology (`prod.yml` `127.0.0.1/32`, `shared-infra.yml` `private_ranges`). |
+| `gateway/Caddyfile` | modified | Its own 502/503/504 on `/api*` and `/health` as JSON, security headers in a shared snippet. |
+| `backend/config/packages/doctrine.yaml`, `backend/.env`, `.env.example`, `scripts/oliva/env.manifest` | modified | Plain `DATABASE_URL` (charset in `doctrine.yaml`); `SYMFONY_TRUSTED_HOSTS` declared; stale realtime upstream comment fixed. |
+| `scripts/lib/env-check.sh` | modified | Trusted hosts: warning in production while empty, error on a value that refuses `localhost`; warning on a widened standalone production gateway; new path of the public list. |
+| `scripts/lib/backend-guard.sh` | modified | `build_guard`: every service's target is a stage of its Dockerfile, every `--from=oliva` has its context. Self-contained (the deploys do not source `lib.sh`). |
+| `scripts/deploy.sh`, `scripts/deploy-staging.sh`, `scripts/oliva/verify.sh` | modified | `build_guard` before `down` and in verify step `backend`; staging seeds through `oliva-seed`; `ci-build` passes the `oliva` context. |
+| `oliva` | modified | Verb `conformance`. |
+| `.github/workflows/ci.yml` | modified | Job `conformance` (two `bake-action` builds with GHA cache scopes of their own, then the suite). |
+| `docs/oliva/UPGRADING.md`, `docs/oliva/agent-guide.md`, `docs/oliva/concepts.md`, `docs/oliva/qa-y-staging.md`, `README.md`, `scripts/oliva/templates/README.md.tpl` | modified | `## 1.12.0` with three labelled actions; "The backend's image and its contract"; trusted proxies by topology; the seed; CI tables. |
+| `docs/friction-log.md` | modified | X20 (the default backend's own errors are HTML), X21 (`deploy.sh` stops the stack before it builds). |
+| `docs/roadmap/epics/E-backend-slot.md`, `E-backend-slot-runbook-b.md` | modified / new | Decisions QB1–QB4, baseline P1–P10, results S44–S59, gates GB1–GB6. |
+
+### Why
+- *A contract nobody can check is prose.* So the suite tests from outside, image and HTTP only, the same for any backend, and **every assertion was made to fail**: 22 negative controls (a Python backend broken one way at a time, plus the default's own PHP with a `/health` that queries the database), and a conforming Python backend passing everything is what proves it is not testing PHP. Idempotence and "nothing half-applied" are judged on a fingerprint of the database (schema plus row counts), not on exit codes.
+- *The controls found six silent failures in the suite itself* (a `diff` under `pipefail` killing the run before its verdict, Ctrl-C not stopping it and the run ending CONFORMANT, `docker logs --since` read as local time, a missing image read as a seed in production, a removal command that removed nothing, images that never reached Docker with CI's builder). Each would have shipped green.
+- *The gateway's trust follows the topology* (QB4): a standalone gateway is the edge, and on a host where Docker hands it a bridge address, trusting private ranges let anyone pick their IP. Re-measured: a forged header through the standalone gateway now resolves to the peer (was `6.6.6.6`); behind the shared-infra edge the client's address survives.
+- *Defaults the ground truth exposed*: libpq refuses `?serverVersion=…` (a non-PHP backend could not use Oliva's URL), `oliva-migrate` retried a wrong password for a minute and printed usage text, the gateway's 502 had no body, a trusted-hosts value without `localhost` made the backend never healthy.
+- *`build_guard`* because the two breaking changes an app can miss (old target, missing context) fail after `down`, one of them with a misleading message. The shared-infra gate found the guard printing nothing in the deploys (`warn` comes from a file they do not source): fixed and re-measured.
+- **Not done here:** the release push (the maintainer's call); a real host (none: whether a standalone gateway sees NAT or a bridge address stays open); the long-jump rehearsal on the first app; the error envelope of the default backend (X20) and building before `down` (X21), recorded.

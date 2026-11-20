@@ -116,6 +116,10 @@ services:
 
   gateway:
     ports: !override []
+    environment:
+      # Behind the shared edge proxy (on proxy_net, a private range): trust it, so the
+      # client's address it forwards reaches the app. prod.yml trusts nothing (standalone).
+      GATEWAY_TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-private_ranges}
     networks:
       app_network:
       proxy_net:

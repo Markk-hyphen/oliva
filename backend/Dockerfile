@@ -7,7 +7,7 @@
 # 1.13.2-php8.3.36 (2026-10-21) es un bump de SEGURIDAD, no de rutina:
 #   - PHP 8.3.36 arregla PHP2Shell (CVE-2026-109618/109619, CVSS 9.2, RCE sin auth). El
 #     109619 es estado de request stale que un worker reusa en el request siguiente → pega
-#     de lleno en el worker mode de frankenphp_prod, no es un CVE de espectador.
+#     de lleno en el worker mode de prod, no es un CVE de espectador.
 #   - FrankenPHP 1.13.2 arregla además 4 vulns propias, 2 aplican acá: fuga de fragmentos
 #     del input del cliente anterior vía error_get_last() en worker mode
 #     (GHSA-4gfw-9v29-gp9h) y thread pool ocupable por un cliente sin auth que encola y
@@ -147,7 +147,10 @@ COPY --link --chmod=755 frankenphp/realtime-relay.sh /usr/local/bin/oliva-relay
 COPY --link --chmod=755 frankenphp/migrate.sh /usr/local/bin/oliva-migrate
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
 # Read by docker-entrypoint: values a secret must never have in production.
-COPY --link frankenphp/known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
+# From the `oliva` named build context (scripts/oliva/, docker-compose.yml): Oliva's list,
+# not the backend's, so it survives an app replacing the backend.
+# hadolint ignore=DL3022
+COPY --link --from=oliva known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
 COPY --link scheduler/crontab /etc/supercronic/crontab
 
 # Install dependencies from versioned composer.json
@@ -179,7 +182,7 @@ HEALTHCHECK --start-period=60s CMD curl -fsS -o /dev/null http://localhost/healt
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile" ]
 
 # Dev FrankenPHP image
-FROM frankenphp_base AS frankenphp_dev
+FROM frankenphp_base AS dev
 
 ENV APP_ENV=dev XDEBUG_MODE=off
 # Worker mode in dev too (since 1.11.0), with a watcher (worker.dev.Caddyfile). Until then dev
@@ -206,6 +209,8 @@ RUN --mount=type=bind,from=ghcr.io/php/pie:1.5.3-bin,source=/pie,target=/usr/loc
 
 COPY --link frankenphp/conf.d/20-app.dev.ini $PHP_INI_DIR/app.conf.d/
 COPY --link frankenphp/worker.dev.Caddyfile /etc/caddy/worker.dev.Caddyfile
+# The Seed hook, in dev and staging ONLY (never in base or prod: see backend/frankenphp/seed.sh).
+COPY --link --chmod=755 frankenphp/seed.sh /usr/local/bin/oliva-seed
 
 # T5 — manifiesto de los inputs de build que se HORNEAN pero NO se bind-mountean en dev:
 # editarlos en el host no surte efecto hasta rebuildear, porque cambiarlos pide
@@ -224,7 +229,7 @@ RUN --mount=type=bind,source=php-extensions.txt,target=/run/oliva/php-extensions
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--watch" ]
 
 # Prod FrankenPHP image
-FROM frankenphp_base AS frankenphp_prod
+FROM frankenphp_base AS prod
 
 ENV APP_ENV=prod
 ENV FRANKENPHP_CONFIG="import worker.Caddyfile"
@@ -254,11 +259,15 @@ RUN set -eux; \
 # Staging FrankenPHP image — inherits from prod, adds seeding tooling (Foundry + fixtures)
 # Prod image is --no-dev so this command is unavailable there: structural guard against
 # accidentally seeding production.
-FROM frankenphp_prod AS frankenphp_staging
+FROM prod AS staging
 
 ENV APP_ENV=staging
 
-# frankenphp_prod horneó .env.local.php con APP_ENV=prod compilado (composer
+# The Seed hook (backend contract). Here and in `dev`, never in `prod`, which this stage
+# inherits from: the production image cannot seed by construction.
+COPY --link --chmod=755 frankenphp/seed.sh /usr/local/bin/oliva-seed
+
+# prod horneó .env.local.php con APP_ENV=prod compilado (composer
 # dump-env prod) — heredarlo pisaría el ENV de arriba. Hay que borrarlo antes
 # del install para que el entorno de staging se resuelva en runtime.
 RUN set -eux; \

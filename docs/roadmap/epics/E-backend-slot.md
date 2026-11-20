@@ -1,7 +1,9 @@
 # Epic — The backend slot: split the lifecycle, write the contract, make replacement declared
 
-> **Status:** 🧭 designed, decisions taken 2026-11-20 (section "Decisions"). Phase A has a
-> runbook: [`E-backend-slot-runbook.md`](E-backend-slot-runbook.md). No code yet ·
+> **Status:** phase A ✅ released in **1.11.0** (2026-11-20, CI green;
+> [`E-backend-slot-runbook.md`](E-backend-slot-runbook.md)). Phase B ✅ released in **1.12.0**
+> (2026-11-20, CI green on the branch, run 44810961331; decisions QB1–QB4, runbook
+> [`E-backend-slot-runbook-b.md`](E-backend-slot-runbook-b.md)). Phase C: design notes below ·
 > Branch `feat/backend-slot` · **Origin:** roadmap item 2, "The backend: the
 > hardest slot", and friction X16 (the phase-3 probe of `E-unbundle-roles.md`). Written
 > 2026-11-20 against `main` at `6230607` (1.10.0), after reading the code, measuring the
@@ -204,6 +206,196 @@ service plus `depends_on: service_completed_successfully` behaves as needed. `up
 returns 0 when it exits 0 and 1 with `service "migrate" didn't complete successfully` when
 it fails; a second `up` re-runs it, so `docker compose up -d` still applies a new migration
 in dev.
+
+### Decisions for phase B (2026-11-20, the maintainer's)
+
+| # | Question | Decision |
+|---|---|---|
+| QB1 | Conformance clauses with nothing observable from outside in the default backend: "trusts `X-Forwarded-*` only from private networks" (its effect shows in login throttling, which the default does not ship) and "SIGTERM lets an in-flight request finish" (every default request takes milliseconds) | **Phase B tests what is observable from outside**, the same way for any backend: liveness without the database, `oliva-migrate` (fresh, twice at once, re-run, unreachable database), `oliva-seed` absent from `prod`, idle SIGTERM, plain `DATABASE_URL`, HTTP on `:80`, logs on stdout. The `X-Forwarded-For` half that lives in the gateway (Oliva's) is tested there. The two clauses stay **declared**, verified for the default at release gates. **Not because no second backend exists** (the point of the epic is that one can), but because of ownership and attack surface; the intermediate design below is phase C's |
+| QB2 | `SYMFONY_TRUSTED_HOSTS` default | **Unset** (today's behaviour), declared in the manifest; `env check` **warns in production** when it is unset and names the fix |
+| QB3 | Where the suite runs | **Always in CI** against the default image, plus **`./oliva conformance [image]`** on demand (what a replaced backend runs). Not inside `verify`: the dev loop stays as fast |
+| QB4 | B-F3: how far the gateway trusts `X-Forwarded-*` (decided after step 0) | **Option C: topology-aware default plus a warning.** A standalone production stack trusts no proxy at the gateway (it is the edge, nothing is in front); the shared-infra overlay trusts the private ranges again (the edge proxy is there). `env check` warns on a standalone production stack whose gateway trust was opened again. K10 tests it. `data_net` peers reaching the backend directly stay a threat-model note (every app has the same owner) |
+
+### Phase C design notes (recorded 2026-11-20, to apply when phase C starts)
+
+**A probe for the two declared clauses, without dirtying ownership or growing the attack
+surface.** The maintainer's constraint: the system has to be ready for other backends, so
+"no second backend exists yet" is not an argument; the real costs are ownership and attack
+surface. The intermediate design to evaluate first in phase C:
+
+- **Never routed by the gateway.** It lives under a prefix the gateway does not route
+  (`/_oliva/…`; the gateway routes only `/api`, `/health`, `/.well-known/mercure` to
+  backends), so even if left on it is unreachable from outside the app's private network.
+- **Off unless the conformance harness turns it on**, with a variable only the throwaway
+  conformance stack sets (never in dev, staging or production compose files), and the env
+  check errors if that variable ever reaches a real stack.
+- **In Oliva-owned files, not the app's `src/`.** For the default, served from Oliva's side
+  (the backend Caddyfile or a file under `backend/frankenphp/`), so an app never edits or
+  owns it. To check first: whether it can exercise Symfony's own trusted-proxy handling
+  without living in the app's kernel (if it only reads the environment variable, it tests the
+  configuration, not the framework, and says so).
+- **For a replacement: recommended, not mandatory.** A replacement that implements it gets
+  the two clauses tested; one that does not gets them reported, every run, as "declared, not
+  tested". Never silent.
+- What it would answer: the client address the backend resolved for a request carrying a
+  forged `X-Forwarded-For` (from inside and outside the private ranges), and a request that
+  takes a known time (to send SIGTERM while it is in flight).
+
+**The universal template, made concrete at birth.** `./oliva init --backend=external` writes,
+in the app's own files, a contract card to fill (mandatory clauses first, then recommended),
+with placeholders where a value is needed (the image, the migrate and seed commands, the
+health path). Every clause is then visible in three places: the card, `doctor` (which clauses
+are mandatory and failing, which recommended and unmet, which declared and untested) and
+`verify`/CI through `./oliva conformance`. Mandatory clauses block a deploy (Q3); recommended
+ones warn on every run; declared ones are announced on every run. The default backend fills
+the card out of the box.
+
+## Phase B results
+
+**Step 1 — slot-neutral targets (2026-11-20).** `frankenphp_dev`/`frankenphp_prod`/`frankenphp_staging`
+→ `dev`/`prod`/`staging` in the Dockerfile, the compose files, the scripts and the live docs
+(old `UPGRADING.md` sections, `agent-commits.md` and closed epics keep the old names as
+history). `frankenphp_upstream`/`frankenphp_base` kept (internal, parsed by the scripts).
+A leftover old name fails loudly: `target stage "frankenphp_dev" could not be found` (rc 17).
+Prod and staging build; the rename invalidated no cache (the prod image came out identical:
+RB6 closed). `verify` all green.
+
+**Step 2 — `oliva-seed` (2026-11-20).** `backend/frankenphp/seed.sh`, copied in the `dev`
+and `staging` stages only. Group = `OLIVA_SEED_GROUP`, else the environment. Measured: present
+in `dev` and `staging`, **absent from `prod`** (`docker run --entrypoint oliva-seed` → 127),
+next to the fixtures bundle already missing there (P4); dev seed purges and loads the `dev`
+group; `OLIVA_SEED_GROUP=staging` switches it; an unknown group fails (rc 1, "Could not find
+any fixture services"), as the contract's "fail on an incompatible target" asks.
+`deploy-staging.sh` calls `oliva-seed` (measured end to end at the gates, step 9).
+
+**Step 3 — the public-secrets list leaves `backend/frankenphp/` (2026-11-20).** Now
+`scripts/oliva/known-public-secrets.sha256`, reaching the backend and hub builds through a
+named build context `oliva` (one YAML anchor shared by the five services built from the
+backend image; `verify`'s `ci-build` passes `--build-context`). Measured: every backend-image
+service and the hub carry the context in dev and prod (`config`); **bake with the
+`docker-container` driver, as CI, builds both images (RB1 closed)** and the list inside is
+byte-identical to the repository's; `env check` reads the new path (a historical
+`APP_SECRET` from git → "publicly known value", rc 1); `verify` all green.
+
+**Step 4 — five default fixes (2026-11-20).**
+
+| # | Fix | Measured |
+|---|---|---|
+| S44 | `SYMFONY_TRUSTED_HOSTS` declared (empty in `.env.example`), warned on a production stack while empty | empty behaves exactly as unset (any Host accepted, measured), so declaring it is safe; the warning appears on `--prod` only and disappears once set |
+| S45 | **Found while testing S44:** a value that does not accept `localhost` breaks the backend's own healthcheck (`curl http://localhost/health` → 400), so `up --wait` fails after `down` | `'^example\.org$'`: `up --wait` rc 1, health stuck in `starting`. `'^(localhost\|example\.org)$'`: healthy, the domain 200, a foreign Host 400. Now an `env check` **error** (deploys stop before `down`): bash ERE per comma-separated pattern, case-insensitive; Symfony splits on commas too (measured), and a pattern bash cannot parse (PCRE `(?:…)`, which Symfony accepts) is a warning, not a guess. The `.env.example` example keeps `localhost` |
+| S46 | Plain `DATABASE_URL` (manifest, `.env.example`, `backend/.env`); `charset: utf8` in `doctrine.yaml` | **libpq refuses the old form**: `psql` → `invalid URI query parameter: "serverVersion"`, so a non-PHP backend could not use the URL Oliva wrote. A fresh `env init` writes the plain URL; an old `.env` with the parameters still passes `env check`, and `env init` leaves it alone. With the cluster's default `client_encoding` switched to `SQL_ASCII`, Doctrine still talks UTF8 (the configured charset); the control without it was inconclusive (the cache-freshness race of X19 may have kept the old config), so the configured charset is the belt, not a measured necessity |
+| S47 | `oliva-migrate` fails fast and says why | wrong password, unknown database, unknown role: exit 1 in 0–1 s (was 67 s), last line `oliva-migrate: cannot reach the database: SQLSTATE[08006] … FATAL: …` (a wide `COLUMNS` keeps Symfony from wrapping it); an unresolvable host is still retried (74 s: the database may be starting); healthy: exit 0. `db_reason` survives `pipefail` with no match (the X17 class) |
+| S48 | The gateway's own 502/503/504 on `/api*` and `/health` as JSON, security headers in a shared snippet | backend stopped: `502 application/json {"error":"backend unavailable","status":502}` with `nosniff`; `/` unchanged; **an upstream's own 502 passes untouched** (`text/plain`, its body: RB3 closed) |
+| S49 | Gateway trust by topology (QB4): `prod.yml` `127.0.0.1/32`, shared infra `private_ranges`, dev unchanged; `env check` warns on a widened standalone production gateway | resolved values per stack as intended; the warning only on a widened standalone production stack; **a forged `X-Forwarded-For` from a private peer is dropped in standalone production** (`xff=[172.19.0.1]`; P8 forwarded it). Shared infra keeping the edge's address: measured at the gates |
+
+`verify` all green after the step.
+
+**Step 5 — the contract document (2026-11-20).** `docs/oliva/backend-contract.md`, product,
+linked from the guide and the README template. Written from the default as measured (P1–P10,
+S1–S49); the suite ids K1–K10 are cited, their checks are step 6.
+
+| # | Measurement | Result |
+|---|---|---|
+| S50 | The default backend's own error on `/api`, `prod` image | `GET /api/nope` → `404 text/html` (Symfony's error page), also with `Accept: application/json`: no serializer is installed, so errors render as HTML. The error envelope became a **recommended** clause the default does not meet; fixing the default is friction X20 (the maintainer's call: not in this phase) |
+
+**Step 6 — the conformance suite (2026-11-20).** `scripts/oliva/conformance.sh` and its
+throwaway harness `scripts/oliva/conformance.compose.yml` (project `<app>-conformance`, no host
+port, a probe container makes every request, always removed). K1–K10 as in the runbook, with
+three sharpenings measured into them: K1 also requires `Content-Type: application/json` and a
+body Postgres parses as JSON (no `jq` on the host); K3/K4 compare a **fingerprint** of the
+database (schema from `pg_dump` plus an exact row count per table), so "idempotent" and
+"nothing half-applied" are observed, not inferred from exit codes; K6 seeds staging twice and
+requires the same data (replaces, does not add). K10 reads the gateway's trust from what
+`docker-compose.prod.yml` and `docker-compose.shared-infra.yml` ship (resolved by Compose in a
+scratch directory with the host's `.env` ignored), and tests both topologies.
+
+| # | Measurement | Result |
+|---|---|---|
+| S51 | The default (this checkout's `prod` and `staging`) | CONFORMANT, 73–85 s; K5: unreachable database exit 1 in 64–67 s, wrong password in 1 s; K7 exit 0 in 0.1–0.2 s; K4 `exit 7 and 0` (the extension race of S8) |
+| S52 | **Positive control: a conforming backend in Python** (scratch image: `http.server`, `psql`, a SIGTERM handler) | CONFORMANT, 37 s. The suite holds for a non-PHP backend |
+| S53 | **Negative controls, each with one thing broken** (scratch images, not committed) | every one fails its assertion: `/health` as HTML, 404, non-JSON → K1; `/health` querying the database → K2, **also with the default's own PHP** (500 `text/html`); a migrate that is not idempotent or that appends → K3; one that races (check, sleep, insert) → K4 only; one that exits 0 on error or never gives up → K5 (the latter by timeout, 141 s); `oliva-seed` in `prod`, missing in `staging`, or appending → K6; a PID 1 ignoring SIGTERM → K7 (137); a silent server → K9 (WARN, exit 0); a migrate needing a URL parameter → K3 FAIL and K8 WARN, and with `--db-url-suffix` K8 WARN only; standalone trust widened to `private_ranges` → K10, shared-infra trust narrowed to `127.0.0.1/32` → K10 (the edge's address lost); no `--staging` → K6 SKIP, exit 2. Final regression with the final script: 22/22 as expected, no leftover |
+| S54 | Interrupts: SIGINT and SIGTERM to the process group at 2, 12 and 20 s | exit 130 / 143, `INTERRUPTED`/`TERMINATED: no verdict`, nothing left (containers, networks, volumes, temp directory) |
+| S55 | A second run while one is in progress; `--keep` then `--down` | the second is refused and the first ends CONFORMANT; `--down` removes everything, twice in a row |
+| S56 | A builder of the `docker-container` driver (CI's) | CONFORMANT, 93 s from untagged images |
+
+Found by the controls and fixed in the step (each would have been silent): **a `diff` under
+`pipefail` killed the run** right after printing a K3/K4/K6 difference, so the remaining
+assertions and the verdict never appeared; **Ctrl-C did not stop a run** (`docker compose`
+catches SIGINT and exits normally, bash went on, and the run ended CONFORMANT after an
+interrupted step), then the trap's message went to a redirected file the cleanup deleted;
+**`docker logs --since` without a zone is local time**, so K9 failed on this UTC−3 host while
+CI (UTC) would have passed, and on a UTC+ host it would have passed a backend that never logs a
+request; **a missing image read as "oliva-seed exists in production"** (`docker run` exit 125);
+**the removal command `--keep` printed did nothing** (it needs variables only the script
+sets); **with a `docker-container` builder the built images never reached Docker**; Compose
+2.26's `up --wait` rejects a service with `healthcheck: disable`. K4 is SKIP, not FAIL, when K3
+fails: its failures would only repeat K3's.
+
+**Step 7 — CI and the verb (2026-11-20).** `./oliva conformance [<image> [--staging
+<image>]]`, `--down`, `--keep`, `--db-url-suffix`. CI job `conformance`: two `bake-action`
+builds (prod, staging; GHA cache in scopes of their own, since a plain `docker buildx bake`
+step has no access to the cache token) and the suite on `oliva-ci-backend:prod`/`:staging`.
+The bakes were run locally as CI runs them (`docker-container` driver): both images build;
+the job itself runs on the first push.
+
+**Step 8 — docs and upgrade notes (2026-11-20).** `UPGRADING.md` 1.12.0 (header "unreleased"
+until step 10), three labelled actions, the linter of `release.sh` green: `[merge, guard:
+backend]` the targets and the `oliva` context, `[decision, guard: env]` trusted hosts, `[host]`
+a proxy in front of a standalone stack (not detectable: acknowledged). The guide gains "The
+backend's image and its contract"; concepts (trusted proxies now by topology, the seed),
+qa-y-staging and the README follow.
+
+| # | Measurement | Result |
+|---|---|---|
+| S57 | A build without the `oliva` context; a build of `frankenphp_dev` | `pull access denied, repository does not exist` (BuildKit takes `--from=oliva` for an image: misleading); `target stage "frankenphp_dev" could not be found`. Both after `down` in a deploy |
+| S58 | New `build_guard` (every service with a `build:`: target is a stage of its Dockerfile; `--from=oliva` needs the context), wired into verify step `backend` and both deploys before `down` | flags an override with `frankenphp_dev` (names the new target) and an app service building `backend/Dockerfile` without the context (prints the fix); passes the dev, prod and four-overlay staging stacks and an app service with the context. First version had a false positive: tab-separated fields collapsed an empty target under `read`, fixed with `\x1f` |
+| S59 | `verify` on this checkout after steps 6–8 | all green, 44 s |
+
+Found while documenting, fixed: `.env.example` still named `backend:80` as the realtime
+upstream (stale since 1.10.0); `concepts.md` showed `docker compose build --target`, a flag
+that command does not have; the CI table of `qa-y-staging.md` and the README missed jobs.
+Out of scope, recorded: friction X21 (`deploy.sh` stops the stack before building).
+
+**Step 9 — gates (2026-11-20).** Besides the per-step measurements (S44–S59):
+
+| # | Gate | Result |
+|---|---|---|
+| GB1 | `verify` on this checkout, final tree | 16 PASS, `ci-build` skipped (no extensions); shellcheck clean on the touched scripts |
+| GB2 | The suite on the default; every negative control | S51–S56: CONFORMANT; 22/22 controls as expected |
+| GB3 | **Shared-infra simulation** (`proxy_net`, `data_net`, `pgvector:pg15` aliased `postgres`, databases provisioned with non-superuser roles and the extension created as superuser, as `~/infra` does; a scratch app with a probe controller, never committed) | `deploy.sh` rc 0 in 25 s, `migrate` against the external Postgres as a non-superuser; an edge (`caddy`, `tls internal`, on `proxy_net`): Symfony resolves the address **the edge saw** (`172.19.0.1`) with `isSecure()` true, a forged `X-Forwarded-For` from outside is dropped by the edge; frontend off `proxy_net`, backend on `data_net`. `deploy-staging.sh` rc 0 in 28 s, seeded through `oliva-seed` on its own database, production's untouched. The trusted-hosts warning shows on the production deploy, not on staging. **`build_guard` in the real deploys** (an old target and an app service without the `oliva` context injected): both abort before `down`, the running stacks untouched and serving. **Found:** in the deploys the guard printed only `warn: command not found` (the deploys do not source `lib.sh`); fixed in `aa124e7`, then both print the service and the fix |
+| GB4 | **The declared clauses, re-measured on 1.12.0** (scratch probe) | Draining (P10), production worker mode behind the edge, ×2: the 3 s request completes (200), the stop waits 2.84–2.89 s, exit 0. Client address (P9), standalone production: host → gateway with a forged header → the peer (`172.23.0.1`; was `6.6.6.6`); a container on the app network → gateway, forged → its own address (was `6.6.6.6`); a container on the app network → backend directly, forged → `6.6.6.6` (the backend trusts the private ranges: the limit the contract states) |
+| GB5 | **Sync rehearsal**: a copy of the third app (on **1.10.0**, a double jump) against a scratch 1.12.0 cut made by the real `release.sh` (composer audit clean, `release` without Oliva's project files) | the app's own 1.10.0 `check` dies with 141 (X17, fixed since 1.11.0's script; the row already says to go to `start`); `start`: **clean merge**, the shared override taken with the new targets; `doctor`: the JWT error with its fix, and as pending only the unguarded `[host]` item; `env init`: JWT pair generated, the old `DATABASE_URL` with parameters left alone, `env check` ok; `locks`: no change; `verify`: all green, `ci-build` included (the app has `bcmath`), 2 min; `./oliva conformance` on the app's backend: CONFORMANT, 85 s (its fixtures carry the `staging` group) |
+| GB6 | Manual steps the sync needed | one: `./oliva env init`, 1.11.0's `[local, guard: env]` action. Nothing unlabelled |
+| — | Not run | CI (the branch is not pushed: the `conformance` job runs for the first time there, its GHA cache cold); a real host (there is none: the standalone NAT-vs-proxy question of B-F3 stays open); the long jump of the first app (1.5.1) |
+
+## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
+
+Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,
+`/api/gt/slow`) for 0.7 only, never committed. What the suite must later reproduce.
+
+| # | Question | Answer |
+|---|---|---|
+| P1 | `/health` with the database stopped | 200 `application/json` `{"status":"ok"}`, direct and through the gateway; the backend stays `healthy` 35 s later. Liveness has no I/O |
+| P2 | `oliva-migrate`, database unreachable | exit 1 after 68 s |
+| P3 | `oliva-migrate`, **wrong password** | exit 1 after 67 s too: an authentication failure is retried 60 times although waiting cannot fix it (the exit-255 shortcut does not catch it), and the last line printed is `dbal:run-sql`'s usage text, not the error (finding B-F1) |
+| P4 | Seeding in prod | `doctrine:fixtures:load` not defined (rc 1); `oliva-seed` does not exist yet |
+| P5 | A plain `DATABASE_URL` (`postgresql://u:p@database:5432/app`) | `oliva-migrate` exit 0, the same as with `?serverVersion=15&charset=utf8`; the parsed parameters carry no `serverVersion` and nothing breaks (`doctrine.yaml` sets it) |
+| P6 | Client encoding without `charset` | UTF8 on a UTF8 database **and on a `SQL_ASCII` one** (where `psql` reports `SQL_ASCII`): without `charset` the driver gets the cluster's default `client_encoding` (UTF8, `source=default`). On an external Postgres whose cluster default was changed, it would follow that (finding B-F2) |
+| P7 | Gateway with the backend stopped | `/api/x` and `/health`: **502, empty body, no `Content-Type`**; `/` still served |
+| P8 | Gateway `X-Forwarded-For`, echo upstream, host at `172.19.0.1` | default `private_ranges`: a forged `6.6.6.6` is forwarded as `6.6.6.6, 172.19.0.1` (the host is a private peer, so trusted); `GATEWAY_TRUSTED_PROXIES` narrowed to a range without the host: forwarded as `172.19.0.1`, the forgery dropped |
+| P9 | Client IP Symfony resolves | through the gateway, forged: `6.6.6.6`; straight to the backend from any container on the app network, forged: `6.6.6.6`; with `SYMFONY_TRUSTED_PROXIES=127.0.0.1`: the peer (`172.19.0.2`). The trust does what it is configured to do; the breadth of the configuration is the question (B-F3) |
+| P10 | SIGTERM during a 3 s request, worker mode, ×2 | the response completes (200, `slept` 3.0), the stop waits the remainder (2.4–2.5 s), exit 0. The declared draining clause holds for the default |
+
+**B-F3, the one that matters.** Both hops trust every private peer by default (gateway
+`private_ranges`, backend `PRIVATE_SUBNETS`). Right behind the shared-infra edge proxy. But:
+(a) in a **standalone** production stack the gateway is the edge, and whether it sees the
+client's real address or a Docker bridge address (private, so trusted) depends on how Docker
+publishes the port on that host (NAT keeps the client address; a userland proxy does not).
+If it sees a bridge address, anyone can forge their IP and login throttling is void. Not
+measurable without a real host; to verify on one. (b) In shared infra, any container of any
+app on `data_net` can reach this backend directly with a forged header (noted in phase A as
+a threat-model line; P9 confirms the mechanism). Decision needed before step 4 (see the
+runbook's step 0 outcome).
 
 ## Phase A baseline (step 0, 2026-11-20, on 1.10.0)
 

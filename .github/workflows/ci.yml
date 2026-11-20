@@ -130,6 +130,68 @@ jobs:
           scripts/lib/test-db.sh
           docker compose exec -T backend php vendor/bin/phpunit
 
+  conformance:
+    # The backend contract (docs/oliva/backend-contract.md), tested from outside against this
+    # checkout's prod and staging images: the same suite an app with another backend runs
+    # (./oliva conformance <image>). Since 1.12.0. Its own job so it runs in parallel with
+    # the tests: most of its time is K5, a database that never answers, retried by design.
+    name: Backend conformance
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      -
+        # Compose needs every env_file it names to exist to read the files, even to build; their
+        # content is not used by a build. The suite itself never reads them: it makes its own
+        # environment.
+        name: Env files for the build
+        run: |
+          ./oliva env init
+          touch .env.staging
+
+      -
+        # The prod and staging targets with the GHA layer cache, through bake-action (a plain
+        # `docker buildx bake` step has no access to the cache service's token). A scope of its
+        # own: two jobs writing one scope overwrite each other's index. Images
+        # oliva-ci-backend:prod and :staging (COMPOSE_PROJECT_NAME above).
+        name: Build the prod backend image
+        uses: docker/bake-action@v5
+        with:
+          files: |
+            docker-compose.yml
+            docker-compose.prod.yml
+          targets: backend
+          load: true
+          set: |
+            *.cache-from=type=gha,scope=conformance
+            *.cache-to=type=gha,scope=conformance,mode=max
+
+      -
+        name: Build the staging backend image
+        uses: docker/bake-action@v5
+        with:
+          files: |
+            docker-compose.yml
+            docker-compose.prod.yml
+            docker-compose.staging.yml
+          targets: backend
+          load: true
+          # Its prod layers come from the builder's local cache (the step above, same builder);
+          # what it adds (the dev dependencies of staging) has a scope of its own.
+          set: |
+            *.cache-from=type=gha,scope=conformance-staging
+            *.cache-to=type=gha,scope=conformance-staging,mode=max
+
+      -
+        name: Run the conformance suite
+        run: ./oliva conformance oliva-ci-backend:prod --staging oliva-ci-backend:staging
+
   prod-config:
     # Guarda barata (sin build, segundos): el stack prod solo se testea acá vía
     # `config`. Atrapa la clase de bug donde un override de Compose pisa APP_ENV

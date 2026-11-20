@@ -15,8 +15,9 @@
 #                 (profile `queues`), or OLIVA_QUEUE_CONSUMER=external says they are consumed
 #                 elsewhere (scripts/lib/queue-guard.sh). Not to be confused with prod-worker.
 #   [backend]     static, before `up`: the app answers GET /health (since 1.11.0 the backend's
-#                 healthcheck; without the route `up --wait` can never pass). Same guard as the
-#                 deploys (scripts/lib/backend-guard.sh)
+#                 healthcheck; without the route `up --wait` can never pass), and every service
+#                 builds a target its Dockerfile has, with the `oliva` context it needs (1.12.0).
+#                 Same guards as the deploys (scripts/lib/backend-guard.sh)
 #   [up]          docker compose up -d --build --wait (respeta COMPOSE_PROFILES del .env)
 #   [php-version] el PHP que CORRE coincide con el pin de backend/Dockerfile
 #   [health]      GET /health
@@ -92,7 +93,14 @@ do_app() {
     return 1
   fi
 }
-do_backend()    { backend_health_guard && echo "GET /health route present"; }
+# Plus the builds of the dev and prod stacks: every target exists, every `oliva` context is
+# passed (build_guard). The deploys run the same checks before `down`.
+do_backend() {
+  backend_health_guard || return 1
+  build_guard docker compose || return 1
+  build_guard docker compose -f docker-compose.yml -f docker-compose.prod.yml || return 1
+  echo "GET /health route present; every build target and build context resolves (dev, prod)"
+}
 do_up()         { docker compose up -d --build --wait; }
 do_health()     { be curl -fsS http://localhost/health && echo; }
 # From the host, through the gateway: proves the three routes the gateway owns
@@ -150,7 +158,7 @@ fork_has_extensions() { grep -qvE '^[[:space:]]*(#|$)' backend/php-extensions.tx
 do_ci_build() {
   docker buildx inspect oliva-ci >/dev/null 2>&1 \
     || docker buildx create --name oliva-ci --driver docker-container >/dev/null
-  docker buildx build --builder oliva-ci --target frankenphp_dev -q backend >/dev/null
+  docker buildx build --builder oliva-ci --build-context oliva=scripts/oliva --target dev -q backend >/dev/null
 }
 
 # Versión de PHP que CORRE en el backend vs. el pin de backend/Dockerfile.

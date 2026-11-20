@@ -87,6 +87,12 @@ if ! backend_health_guard; then
   echo "!! DEPLOY ABORTED (see above). Nothing was stopped: the current stack is still running." >&2
   exit 1
 fi
+# Builds (lib/backend-guard.sh): a target the Dockerfile does not have, or a missing `oliva`
+# build context, fails the `up --build` below, after `down`. Static: stop here instead.
+if ! build_guard "${COMPOSE[@]}"; then
+  echo "!! DEPLOY ABORTED (see above). Nothing was stopped: the current stack is still running." >&2
+  exit 1
+fi
 
 # Docs internos: no pertenecen al host de prod. El código de la app vive
 # en los builds Docker; estos archivos no los necesita nadie en el server.
