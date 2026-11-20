@@ -59,10 +59,18 @@ case "$cmd" in
       local label="$1"; shift
       echo
       echo "── $label ──"
-      if "$@"; then return 0; else
-        echo "   (no disponible: salió $?)"
-        return 0
+      local rc=0
+      "$@" || rc=$?
+      (( rc == 0 )) && return 0
+      # Say what the code means. A bare "exit 141" read as a network problem while it was a
+      # script killed by SIGPIPE, a bug in Oliva (friction X17).
+      if (( rc > 128 )); then
+        local sig; sig="$(kill -l $((rc - 128)) 2>/dev/null || echo "?")"
+        echo "   !! this step was killed by signal SIG$sig (exit $rc): a bug in Oliva's script, not your setup. Run it alone to see where: $*"
+      else
+        echo "   (not available: exit $rc)"
       fi
+      return 0
     }
 
     step "rama" git branch --show-current

@@ -84,6 +84,13 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
   Symfony judges its caches fresh by whole seconds: a config file saved in the same second
   as a recompile can be missed; `doctor` and `verify` (`dev-cache`) detect it and print the
   fix.
+- **`sync.sh check` no longer dies silently** on an app far behind (friction X17): a
+  `git log | head -1` under `pipefail` exited 141 before printing anything, and `doctor`
+  showed it as "not available". Every `| head` in Oliva's scripts is now `sed -n`, a CI job
+  forbids new ones, and `doctor` names the signal when a step is killed. **An app still on
+  an older Oliva runs its own old `check`:** if it prints nothing, go straight to
+  `scripts/oliva/sync.sh start` (it works; measured on an app 83 commits behind). After the
+  sync the app has the fixed script.
 
 ## 1.10.0 — unreleased
 

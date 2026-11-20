@@ -77,7 +77,7 @@ hub_newer_tags() {
   repo="${image%%:*}"; tag="${image##*:}"
   [[ "$repo" == */* ]] || repo="library/$repo"
   regex="^$(printf '%s' "$tag" | sed -E 's/[.]/\\./g; s/[0-9]+/[0-9]+/g')\$"
-  frag="$(printf '%s' "$tag" | tr -s '0-9.' '\n' | awk 'length>1' | head -1)"
+  frag="$(printf '%s' "$tag" | tr -s '0-9.' '\n' | awk 'length>1' | sed -n 1p)"
   url="https://hub.docker.com/v2/repositories/${repo}/tags?page_size=100&ordering=last_updated&name=${frag}"
   {
     while [[ -n "$url" && "$url" != null && $page -le 4 ]]; do
@@ -91,7 +91,7 @@ hub_newer_tags() {
 eol_line() {  # eol_line <producto endoflife.date> <ciclo>
   local product="$1" cycle="$2" eol today
   eol="$(curl -fsS "https://endoflife.date/api/v1/products/${product}/" 2>/dev/null \
-        | jq -r --arg c "$cycle" '.result.releases[] | select(.name==$c or (.name|startswith($c+"."))) | .eolFrom // "?"' | head -1)"
+        | jq -r --arg c "$cycle" '.result.releases[] | select(.name==$c or (.name|startswith($c+"."))) | .eolFrom // "?"' | sed -n 1p)"
   [[ -z "$eol" ]] && { echo "   $product $cycle: sin datos"; return; }
   today="$(date +%F)"
   if [[ "$eol" != "?" && "$eol" < "$today" ]]; then
@@ -135,10 +135,10 @@ report_images() {
 report_eol() {
   echo "## Ciclos de vida (EOL)"
   local php node pg rabbit sf
-  php="$(backend_base_image | grep -oE 'php[0-9]+\.[0-9]+' | head -1 | sed 's/php//')"
+  php="$(backend_base_image | grep -oE 'php[0-9]+\.[0-9]+' | sed -n 1p | sed 's/php//')"
   node="$(frontend_base_image | grep -oE ':[0-9]+' | tr -d ':')"
   pg="$(grep -oE '^POSTGRES_VERSION=[0-9]+' .env.example | cut -d= -f2)"
-  rabbit="$(grep -hoE 'rabbitmq:[0-9]+' docker-compose.yml | cut -d: -f2 | head -1)"
+  rabbit="$(grep -hoE 'rabbitmq:[0-9]+' docker-compose.yml | cut -d: -f2 | sed -n 1p)"
   sf="$(jq -r '.extra.symfony.require // empty' backend/composer.json | grep -oE '[0-9]+\.[0-9]+')"
   [[ -n "$php" ]]    && eol_line php "$php"
   [[ -n "$node" ]]   && eol_line nodejs "$node"
@@ -263,7 +263,7 @@ check_runtime() {
 check_php_runtime() {
   local tag="$1" php branch body versions newer v tags vdate
   # C2 — extraer X.Y.Z de "…-phpX.Y.Z". Regex estricto: 3 componentes numéricos.
-  php="$(grep -oE 'php[0-9]+\.[0-9]+\.[0-9]+' <<<"$tag" | head -1 | sed 's/^php//' || true)"
+  php="$(grep -oE 'php[0-9]+\.[0-9]+\.[0-9]+' <<<"$tag" | sed -n 1p | sed 's/^php//' || true)"
   if [[ -z "$php" ]]; then
     warn "runtime PHP: no pude extraer la versión de PHP del tag '$tag' (¿cambió el formato del FROM?) — salteado"
     return 0
@@ -302,7 +302,7 @@ check_php_runtime() {
 # dunglas/frankenphp (el repo se movió) → curl -L es obligatorio o vuelve null.
 check_frankenphp_runtime() {
   local tag="$1" cur latest newest
-  cur="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' <<<"$tag" | head -1 || true)"
+  cur="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' <<<"$tag" | sed -n 1p || true)"
   if [[ -z "$cur" ]]; then
     warn "runtime FrankenPHP: no pude extraer la versión del tag '$tag' — salteado"
     return 0

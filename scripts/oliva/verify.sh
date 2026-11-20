@@ -116,7 +116,7 @@ do_gateway() {
   [[ "$code" == 200 && "$ct" == text/html* ]] \
     || { warn "/ through the gateway = $code $ct (expected 200 text/html; is the frontend upstream reachable?)"; return 1; }
   # CSP header present (missing = the gateway stopped owning the policy).
-  hdr="$(curl -sI "$base/" | tr -d '\r' | grep -i '^content-security-policy:' | head -1)"
+  hdr="$(curl -sI "$base/" | tr -d '\r' | grep -i '^content-security-policy:' | sed -n 1p)"
   [[ -n "$hdr" ]] || { warn "no Content-Security-Policy header through the gateway"; return 1; }
   echo "/gateway-health ok; /health JSON; / HTML; CSP present"
 }

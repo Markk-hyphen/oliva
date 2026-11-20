@@ -211,7 +211,7 @@ ack_upgrade_actions() {
 # devuelve 1 si hubo alguno. Versiones anteriores a OLIVA_TAGGED_SINCE no se validan.
 lint_upgrade_actions() {
   local ver="$1" file="${2:-docs/oliva/UPGRADING.md}" errs=0 line tag place part gid found
-  [[ "$(printf '%s\n%s\n' "$OLIVA_TAGGED_SINCE" "$ver" | sort -V | head -1)" == "$OLIVA_TAGGED_SINCE" ]] || return 0
+  [[ "$(printf '%s\n%s\n' "$OLIVA_TAGGED_SINCE" "$ver" | sort -V | sed -n 1p)" == "$OLIVA_TAGGED_SINCE" ]] || return 0
 
   found="$(awk -v v="$ver" '
     /^## [0-9]+\.[0-9]+\.[0-9]+/ { sec = ($2 == v); inact = 0; next }
