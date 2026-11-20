@@ -27,7 +27,7 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
-## 1.12.0 — unreleased
+## 1.12.0 — 2026-11-20
 
 > **The backend contract, written and tested.** Phase B of the backend-slot epic
 > (`docs/roadmap/epics/E-backend-slot.md` in Oliva's repository; apps do not carry it).

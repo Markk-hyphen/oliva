@@ -159,7 +159,7 @@ second default when someone owns its net, not before.
 |---|---|---|---|---|
 | Edge / gateway | Caddy, its own `gateway` service | routes `/api`, `/health` and realtime to their slots; security headers, CSP; `/gateway-health`; trusted_proxies | independent | own container since 1.9.0; `GATEWAY_*_UPSTREAM` to replace any slot behind it |
 | Frontend | Vite build, served by Caddy | static assets behind the gateway, same-origin API | independent | plain upstream of the gateway (no routing, no CSP) since 1.9.0 |
-| Backend / API | Symfony on FrankenPHP | HTTP `:80`, `/api`, a real `GET /health`, `migrate` and `seed` hooks | anchor | the realtime hub left in 1.10.0; since 1.11.0 migrations are a one-shot `migrate` service and `/health` is the healthcheck. Contract and replacement: [`epics/E-backend-slot.md`](roadmap/epics/E-backend-slot.md) |
+| Backend / API | Symfony on FrankenPHP | HTTP `:80`, `/api`, a real `GET /health`, `migrate` and `seed` hooks | anchor | the realtime hub left in 1.10.0; since 1.11.0 migrations are a one-shot `migrate` service and `/health` is the healthcheck. since 1.12.0 the contract is [`docs/oliva/backend-contract.md`](oliva/backend-contract.md), tested from outside by `./oliva conformance` (CI). Replacement: [`epics/E-backend-slot.md`](roadmap/epics/E-backend-slot.md) |
 | Realtime | Mercure hub | HTTP publish with a JWT, SSE subscribe | independent | own `realtime` service (profile `realtime`) since 1.10.0; backend publishes through the bus + `realtime-relay` |
 | Database | Postgres + pgvector | `DATABASE_URL`, Postgres ≥ 15 with `vector` | backend-tied | always on locally; external via shared-infra |
 | Queue | RabbitMQ (`queues`) | AMQP DSN | backend-tied | optional; external via shared-infra |
@@ -207,8 +207,10 @@ never replace anything: each piece becomes individually optional too.
 
 ### The backend: the hardest slot
 
-In progress: [`epics/E-backend-slot.md`](roadmap/epics/E-backend-slot.md) (phase A, the
-default honouring its own contract, ships in 1.11.0). Beyond the unbundling, these coupling points are implicit today and the
+In progress: [`epics/E-backend-slot.md`](roadmap/epics/E-backend-slot.md). Phase A (the
+default honouring its own contract) shipped in 1.11.0; phase B (the contract written,
+[`docs/oliva/backend-contract.md`](oliva/backend-contract.md), and the conformance suite that
+tests any backend image against it) in 1.12.0. Phase C makes a replaced backend declared. Beyond the unbundling, these coupling points are implicit today and the
 contract has to make them explicit:
 
 - **Network:** HTTP on `:80` (no TLS), and a real health check (until 1.11.0 the

@@ -13,9 +13,10 @@ structural guard kept, decouple what still hides under `backend/frankenphp/`, an
 three small default fixes. Still **nothing changes for an app that keeps the default**
 beyond labelled upgrade actions; declaring a replaced backend is phase C.
 
-**State:** step 0 done 2026-11-20 (answers P1–P10, findings B-F1..B-F3 in the epic's "Phase B
-baseline"). B-F3 decided: **QB4, option C** (see the epic). Steps 1–7 done (results S44–S56 in the epic; step 5 found X20: the default's own errors are HTML, so the error envelope is a recommended clause the default does not meet yet; step 6's negative controls, 22/22, are recorded there). Step 8 done (S57–S59; new `build_guard`; friction X21 recorded). Step 9 done locally (GB1–GB6 in the epic; the gate found a guard that printed nothing in the deploys, fixed in `aa124e7`); CI after the push is the gate left. Next: step 10, only with the maintainer's OK. `UPGRADING.md` says "unreleased" in the 1.12.0 header: step 10 puts the date. Docs for steps 1–4 (guide: targets, seeding, trusted hosts, gateway trust) are step 8. Branch
-`feat/backend-slot-b`, off `main` at `330c3f6` (1.11.0, CI green).
+**State:** phase B done and released as **1.12.0** (2026-11-20). Every step's results are in
+the epic (P1–P10, S44–S59, GB1–GB6). CI green on the branch before the release (run
+44810961331, workflow_dispatch: 10/10 jobs; `conformance` 231 s on a cold GHA cache, longer than
+the tests job's 142 s: check it on the next, warm run). Branch `feat/backend-slot-b`.
 
 **Step 0 outcome, folded into the steps below:**
 - B-F1 → step 4 gains a fourth fix: `oliva-migrate` fails fast on an error waiting cannot

@@ -1,9 +1,9 @@
 # Epic — The backend slot: split the lifecycle, write the contract, make replacement declared
 
 > **Status:** phase A ✅ released in **1.11.0** (2026-11-20, CI green;
-> [`E-backend-slot-runbook.md`](E-backend-slot-runbook.md)). Phase B 🧭 designed, decisions
-> QB1–QB3 taken, runbook [`E-backend-slot-runbook-b.md`](E-backend-slot-runbook-b.md), target
-> 1.12.0. Phase C: design notes below ·
+> [`E-backend-slot-runbook.md`](E-backend-slot-runbook.md)). Phase B ✅ released in **1.12.0**
+> (2026-11-20, CI green on the branch, run 44810961331; decisions QB1–QB4, runbook
+> [`E-backend-slot-runbook-b.md`](E-backend-slot-runbook-b.md)). Phase C: design notes below ·
 > Branch `feat/backend-slot` · **Origin:** roadmap item 2, "The backend: the
 > hardest slot", and friction X16 (the phase-3 probe of `E-unbundle-roles.md`). Written
 > 2026-11-20 against `main` at `6230607` (1.10.0), after reading the code, measuring the
