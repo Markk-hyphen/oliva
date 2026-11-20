@@ -26,8 +26,9 @@
 
 OLIVA_MANIFESTS=(scripts/oliva/env.manifest env.manifest)
 OLIVA_PUBLIC_LIST="backend/frankenphp/known-public-secrets.sha256"
-# Where the JWT private key can be: dev (bind mount of backend/config) and prod (./secrets).
-OLIVA_JWT_KEYS=(backend/config/jwt/private.pem secrets/jwt/private.pem)
+# Where the JWT private key can be. Since 1.11.0: ./secrets/jwt in every environment, made
+# by `./oliva env init`. backend/config/jwt is where dev kept it before; `env init` moves it.
+OLIVA_JWT_KEYS=(secrets/jwt/private.pem backend/config/jwt/private.pem)
 
 # ── Manifests ────────────────────────────────────────────────────────────────────
 # Prints NAME<TAB>SLOT<TAB>KIND<TAB>VALUE for every variable; 1 (with the errors on
@@ -104,6 +105,11 @@ _ec_service_env() {
       gsub(/\$\$/, "$", val)
       print name "\t" val
     }'
+}
+
+# _ec_service_block <service> → the lines of that service in a `config` output.
+_ec_service_block() {
+  awk -v s="  $1:" '/^[^ ]/ { top = $0; ins = 0; next } top == "services:" && /^  [^ ]/ { ins = ($0 == s); next } ins'
 }
 
 # Host of a URL-shaped value: scheme://user:pass@HOST:port/…
@@ -282,6 +288,35 @@ env_check() {
         errors=1
       done <<< "$rows"
     done < <(git ls-files 2>/dev/null | grep -E '(^|/)\.env[^/]*$')
+  fi
+
+  # The key pair must exist: since 1.11.0 nothing generates it at boot, and without it the
+  # backend starts fine and every login fails. Only where the default backend runs.
+  if [[ -n "${RES[JWT_PASSPHRASE]:-}" && "$services" == *" backend "* && -z "${REPLACED[backend]:-}" \
+        && ! -e "${OLIVA_JWT_KEYS[0]}" ]]; then
+    if [[ -e "${OLIVA_JWT_KEYS[1]}" ]]; then
+      global_err+=("the JWT key pair is still in ${OLIVA_JWT_KEYS[1]%/*}, where the backend no longer reads it (since Oliva 1.11.0) → ./oliva env init (it moves it, same keys)")
+    else
+      global_err+=("there is no JWT key pair in ${OLIVA_JWT_KEYS[0]%/*}: every login would fail → ./oliva env init (it generates it)")
+    fi
+    errors=1
+  fi
+
+  # The key must be readable by the user the backend runs as. In dev that is the host user
+  # (`user:` in the override), and a root-owned 0600 key, left by a production stack before
+  # 1.11.0, cannot be read: the backend starts and every login fails. The passphrase check
+  # below would still pass, since it reaches a root-owned key through a root container.
+  if [[ -e "${OLIVA_JWT_KEYS[0]}" && ! -r "${OLIVA_JWT_KEYS[0]}" && "$services" == *" backend "* ]]; then
+    if _ec_service_block backend <<< "$cfg" | grep -qE '^    user: "?[1-9]'; then
+      global_err+=("${OLIVA_JWT_KEYS[0]} is not readable by you, and this stack's backend runs as you: every login would fail → ./oliva env init (it gives the directory back to you)")
+      errors=1
+    else
+      global_warn+=("${OLIVA_JWT_KEYS[0]} is owned by root → ./oliva env init gives it back to you (the backend here runs as root and can read it)")
+    fi
+  fi
+  # A pair left in the pre-1.11.0 dev location next to the real one is no longer read.
+  if [[ -e "${OLIVA_JWT_KEYS[0]}" && -e "${OLIVA_JWT_KEYS[1]}" ]]; then
+    global_warn+=("${OLIVA_JWT_KEYS[1]%/*} still holds a key pair the backend no longer reads (it reads ${OLIVA_JWT_KEYS[0]%/*}) → delete it: rm -r ${OLIVA_JWT_KEYS[1]%/*}")
   fi
 
   # The JWT private key must open with the passphrase the backend will get.

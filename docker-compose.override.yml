@@ -20,6 +20,24 @@ services:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
 
+  # The one-shot migrate (docker-compose.yml). Dev image, the host's user (a migration it
+  # writes stays yours) and the backend's bind mounts: a migration you just generated is
+  # applied by the next `docker compose up -d`, with no rebuild. A migration can use app
+  # classes, hence src and config too.
+  migrate:
+    image: ${COMPOSE_PROJECT_NAME}-backend:dev
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    build:
+      target: frankenphp_dev
+    volumes:
+      - ./backend/.env:/app/.env:ro
+      - ./backend/src:/app/src
+      - ./backend/config:/app/config
+      - ./backend/migrations:/app/migrations
+      - ./backend/var:/app/var
+    environment:
+      APP_ENV: dev
+
   # El servicio vive en docker-compose.yml (profile, comando, depends_on, healthcheck);
   # acá solo lo de dev. Un consumidor no recarga código: tras editar un handler,
   # `docker compose restart worker`.
@@ -33,6 +51,8 @@ services:
       - ./backend/src:/app/src
       - ./backend/config:/app/config
       - ./backend/var:/app/var
+      # The JWT key pair (./oliva env init), over the config mount: same place as prod.
+      - ./secrets/jwt:/app/config/jwt:ro
     environment:
       APP_ENV: dev
       # = -vv sin tocar el comando: loguea cada mensaje consumido.
@@ -59,6 +79,8 @@ services:
       - ./backend/src:/app/src
       - ./backend/config:/app/config
       - ./backend/var:/app/var
+      # The JWT key pair (./oliva env init), over the config mount: same place as prod.
+      - ./secrets/jwt:/app/config/jwt:ro
     environment:
       APP_ENV: dev
       SHELL_VERBOSITY: 2
@@ -84,6 +106,8 @@ services:
       - ./backend/src:/app/src
       - ./backend/config:/app/config
       - ./backend/var:/app/var
+      # The JWT key pair (./oliva env init), over the config mount: same place as prod.
+      - ./secrets/jwt:/app/config/jwt:ro
       - ./backend/scheduler/crontab:/etc/supercronic/crontab:ro
     environment:
       APP_ENV: dev
@@ -124,8 +148,14 @@ services:
       # propósito: cambiarlos pide rebuild, no copiar el archivo; `doctor` los compara.
       - ./backend/phpunit.dist.xml:/app/phpunit.dist.xml:ro
       - ./backend/frankenphp/Caddyfile:/etc/caddy/Caddyfile
+      # Dev worker block and its watch patterns: editable without a rebuild (restart backend).
+      - ./backend/frankenphp/worker.dev.Caddyfile:/etc/caddy/worker.dev.Caddyfile:ro
       - ./backend/frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro
       - ./backend/config:/app/config
+      # The JWT key pair, made by ./oliva env init (since 1.11.0; before, the backend generated
+      # it at boot into backend/config/jwt). Mounted over the config mount, read-only: the
+      # same place as in production.
+      - ./secrets/jwt:/app/config/jwt:ro
     environment:
       XDEBUG_MODE: "${XDEBUG_MODE:-off}"
       APP_ENV: dev

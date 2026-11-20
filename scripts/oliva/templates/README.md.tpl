@@ -24,7 +24,7 @@ docker compose up -d --wait
 ```bash
 docker compose exec backend bin/console make:entity
 docker compose exec backend bin/console make:migration
-docker compose exec backend bin/console doctrine:migrations:migrate
+docker compose up -d --wait   # the migrate service applies it
 ./oliva verify                # everything CI checks, before you push
 ```
 

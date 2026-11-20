@@ -108,8 +108,10 @@ jobs:
           [ "$code" = 200 ] && { [ "$rc" = 0 ] || [ "$rc" = 28 ]; }
 
       -
-        name: Run migrations
-        run: docker compose exec -T backend bin/console doctrine:migrations:migrate --no-interaction
+        # The one-shot `migrate` service ran them during `up --wait` (since 1.11.0, an `up`
+        # fails if it does not exit 0). This proves it left nothing pending.
+        name: Migrations applied by the migrate service
+        run: docker compose exec -T backend bin/console doctrine:migrations:up-to-date
 
       -
         # Opt-out por fork sin editar este archivo (es de Oliva): variable de repo
@@ -247,6 +249,26 @@ jobs:
           docker run --rm -v "$PWD:/w:ro" -w /w composer/composer:2 \
             php scripts/oliva/unbound-constraints.php backend/composer.json \
             || { echo "::error file=backend/composer.json::constraints sin techo (ver arriba): ponerles techo, ej. \">=3.7.1\" → \"^3.7.1\""; exit 1; }
+
+  shell-pipes:
+    # Cheap guard (no build). `cmd | head -N` under `set -o pipefail` kills the script with
+    # exit 141 when `cmd` is still writing after head closes the pipe: `sync.sh check` died
+    # silently that way on every app far enough behind (friction X17). Use `sed -n '1,Np'`,
+    # which reads to the end.
+    name: No pipe into head in Oliva's scripts
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+
+      -
+        name: Forbid `| head` outside comments
+        run: |
+          if grep -rnE '\|[[:space:]]*head([[:space:]]|$)' scripts oliva | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'; then
+            echo "::error::a pipe into head (above): under pipefail it kills the script with exit 141 (X17). Use sed -n '1,Np' instead."
+            exit 1
+          fi
 
   lint:
     name: Docker Lint

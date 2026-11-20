@@ -18,6 +18,7 @@ source "$(dirname "$0")/lib/docker-prune.sh"
 source "$(dirname "$0")/lib/upgrade-guards.sh"
 source "$(dirname "$0")/lib/env-check.sh"
 source "$(dirname "$0")/lib/queue-guard.sh"
+source "$(dirname "$0")/lib/backend-guard.sh"
 assert_not_staging_name "$APP_NAME"
 assert_project_owned_here "$APP_NAME"
 
@@ -79,6 +80,14 @@ if ! realtime_guard "${COMPOSE[@]}"; then
   exit 1
 fi
 
+# Backend (lib/backend-guard.sh): the healthcheck is the app's GET /health and the `up` below
+# waits for it. Without the route the backend never becomes healthy and the deploy would
+# fail after `down`; stop here instead, with the old stack serving.
+if ! backend_health_guard; then
+  echo "!! DEPLOY ABORTED (see above). Nothing was stopped: the current stack is still running." >&2
+  exit 1
+fi
+
 # Docs internos: no pertenecen al host de prod. El código de la app vive
 # en los builds Docker; estos archivos no los necesita nadie en el server.
 echo ">> limpieza de docs internos"
@@ -98,15 +107,17 @@ rm -rf docs/
 echo ">> down"
 "${COMPOSE[@]}" --profile '*' down --remove-orphans
 
-echo ">> up -d --build"
-if ! "${COMPOSE[@]}" up -d --build; then
-  # The reason is in the container's log, not in the output of `up` (e.g. the backend
-  # refusing to start on a public secret): bring it to the terminal.
-  # Since 1.9.0 either the backend OR the gateway can be the one failing. The
-  # gateway sits in front of everything; a bad Caddyfile makes the whole stack
-  # look down even when the backend is fine.
-  echo "!! up failed. Last lines of the backend and gateway logs:" >&2
-  "${COMPOSE[@]}" logs --no-color --tail 25 backend gateway >&2 || true
+# --wait: OK only when the one-shot `migrate` exited 0 and every long-running service is
+# healthy (the backend's healthcheck is its own GET /health). Until 1.11.0 a plain `up -d`
+# returned 0 with the backend in a restart loop on a failed migration (E-backend-slot, M1).
+# The timeout bounds a service that never becomes healthy (the backend's start period is 60 s).
+echo ">> up -d --build --wait"
+if ! "${COMPOSE[@]}" up -d --build --wait --wait-timeout "${OLIVA_DEPLOY_WAIT_TIMEOUT:-300}"; then
+  # The reason is in the containers' logs, not in the output of `up` (a failed migration,
+  # the backend refusing to start on a public secret, a bad Caddyfile in the gateway, which
+  # makes the whole stack look down even when the backend is fine): bring them here.
+  echo "!! up failed: the stack is NOT serving. Last lines of migrate, backend and gateway:" >&2
+  "${COMPOSE[@]}" logs --no-color --tail 25 migrate backend gateway >&2 || true
   exit 1
 fi
 
