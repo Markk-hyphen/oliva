@@ -14,8 +14,7 @@ three small default fixes. Still **nothing changes for an app that keeps the def
 beyond labelled upgrade actions; declaring a replaced backend is phase C.
 
 **State:** step 0 done 2026-11-20 (answers P1–P10, findings B-F1..B-F3 in the epic's "Phase B
-baseline"). **Blocked on one decision before step 4: B-F3** (how far each hop trusts
-`X-Forwarded-*` in a standalone production stack). Steps 1–3 do not depend on it. Branch
+baseline"). B-F3 decided: **QB4, option C** (see the epic). Next: steps 1–3. Branch
 `feat/backend-slot-b`, off `main` at `330c3f6` (1.11.0, CI green).
 
 **Step 0 outcome, folded into the steps below:**
@@ -26,7 +25,11 @@ baseline"). **Blocked on one decision before step 4: B-F3** (how far each hop tr
   the database's default `client_encoding` must be UTF8 (Postgres' default), since that is
   what the driver uses without it (P6).
 - P7 → step 4.3 confirmed: today the 502 has no body at all.
-- B-F3 → decision pending; it shapes K10 and possibly the prod overlay.
+- B-F3 → QB4 (option C) → step 4 gains a fifth fix: in `docker-compose.prod.yml` the gateway
+  trusts no proxy (`GATEWAY_TRUSTED_PROXIES` set to a range nothing comes from; 🔍 what Caddy
+  accepts as "none"); `docker-compose.shared-infra.yml` sets it back to `private_ranges`;
+  `env check` warns when a standalone production stack resolves it to something wider. K10
+  asserts the standalone default drops a forged header from a private peer.
 
 ## Decisions already taken (do not reopen)
 
