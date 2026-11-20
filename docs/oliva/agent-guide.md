@@ -24,7 +24,9 @@ El `docker-compose.override.yml` se aplica automáticamente: monta el código fu
 
 **Dos apps a la vez en dev:** desde 1.9.0 el único puerto HTTP que publica el stack es el del `gateway` (default `:80`); backend y frontend viven en la red privada de la app. Los puertos del host (`:80`, `:5432`, y los de RabbitMQ) salen de variables con esos defaults. Una sola app no configura nada. Para levantar una segunda app Oliva en paralelo —que si no choca con *"port is already allocated"*— poné `GATEWAY_PORT`, `DB_PORT` (y, con el profile `queues`, `RABBITMQ_PORT`/`RABBITMQ_MANAGEMENT_PORT`) con otros valores en el `.env` de esa app. `BACKEND_PORT`/`FRONTEND_PORT` en un `.env` pre-1.9.0 quedaron sin uso; el guard `dev-ports` lo avisa.
 
-**Usuario del host en dev:** los containers del backend corren como `${HOST_UID:-1000}:${HOST_GID:-1000}`, así lo que generan (claves JWT en `config/jwt`, la migración que creás con `migrations:diff`, el cache de `var/`) queda tuyo en el host y no root-owned (antes había que `sudo chown` para borrar el dir). Si tu `id -u` no es `1000`, poné `HOST_UID`/`HOST_GID` en tu `.env`; `./oliva doctor` lo chequea y avisa si no coinciden. Prod corre como root a propósito (no define `user:`). El frontend sigue como root (su `node_modules` es un volumen anónimo, no toca el host).
+**Usuario del host en dev:** los containers del backend corren como `${HOST_UID:-1000}:${HOST_GID:-1000}`, así lo que generan (la migración que creás con `migrations:diff`, el cache de `var/`) queda tuyo en el host y no root-owned (antes había que `sudo chown` para borrar el dir). Si tu `id -u` no es `1000`, poné `HOST_UID`/`HOST_GID` en tu `.env`; `./oliva doctor` lo chequea y avisa si no coinciden. Prod corre como root a propósito (no define `user:`). El frontend sigue como root (su `node_modules` es un volumen anónimo, no toca el host).
+
+**JWT keys (since 1.11.0):** the pair lives in `./secrets/jwt` in every environment (gitignored), created by `./oliva env init`, owned by you, and mounted read-only into every PHP service. Nothing generates it at boot any more. `env init` moves a pre-1.11.0 dev pair out of `backend/config/jwt`, and gives back a `secrets/jwt` left root-owned by an older production stack; `env check` errors when the pair is missing or unreadable by the user the backend runs as.
 
 **Archivos horneados que no se montan:** `phpunit.dist.xml` se bind-mountea, así que editarlo surte efecto sin rebuild. Los *inputs de build* (`composer.json`/`.lock`, `symfony.lock`, `php-extensions.txt`) NO se montan a propósito: cambiarlos pide `composer install` o recompilar extensiones, no copiar el archivo. `./oliva doctor` (paso "imagen vs fuente") compara sus hashes con la imagen y te dice "rebuildeá" si driftearon — así no corrés con una imagen vieja sin darte cuenta.
 
@@ -95,8 +97,8 @@ reasons: `docs/roadmap/epics/E-queue-slot.md`.
   vhost → `deploy*.sh` abort before `down` (the running stack keeps serving), `verify` step
   `queue` is red, `doctor` shows it. A consumer that lives outside the stack on purpose is
   declared with `OLIVA_QUEUE_CONSUMER=external` in `.env`, and announced on every run.
-- **Known limit:** the production worker does not mount the JWT keys (`./secrets/jwt`), same as
-  the scheduler. A handler that signs tokens needs that mount added in Oliva.
+- **JWT keys:** since 1.11.0 the worker, the scheduler and the relay mount `./secrets/jwt`
+  read-only, like the backend: a handler that signs or reads tokens works there too.
 
 ### The realtime hub
 
@@ -285,12 +287,11 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
    boot (`doctrine:migrations:migrate`), junto con la generación de las claves
    JWT y el wait-for-db. Solo verificar que no quedaron pendientes:
    `docker exec <app>-backend-1 bin/console doctrine:migrations:status`.
-8. **Claves JWT:** en el primer boot el entrypoint las genera en `./secrets/jwt`
-   (bind-mount al host, gitignored) usando `JWT_PASSPHRASE`. **Backupear**
-   `~/<app>/secrets/jwt/{private,public}.pem` + la `JWT_PASSPHRASE` al gestor de
-   claves. De ahí en más persisten y NUNCA se regeneran (recrear el container no
-   desloguea a nadie). Para restaurar en un host nuevo: poné los `.pem` ahí antes
-   del `up`.
+8. **JWT keys:** `./oliva env init` (step 2) creates them in `./secrets/jwt` (gitignored,
+   owned by you, mounted read-only into every PHP service), encrypted with `JWT_PASSPHRASE`.
+   **Back up** `~/<app>/secrets/jwt/{private,public}.pem` and `JWT_PASSPHRASE` to the
+   password manager. They persist and are never regenerated (recreating containers logs
+   nobody out). To restore on a new host: put the `.pem` files there before `env init`.
 9. **Health:** `docker exec <app>-backend-1 curl -s http://localhost/health` → `{"status":"ok"}`.
 10. **(Opt-in) Levantar el stack de staging:** staging es una app aparte en el VPS
     con su propia DB desechable. Ver **"Runbook de staging"** más abajo.

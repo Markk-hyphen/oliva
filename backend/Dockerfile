@@ -172,7 +172,7 @@ ENTRYPOINT ["docker-entrypoint"]
 # The worker, scheduler and relay override it (they serve no HTTP); migrate disables it.
 # Deploys run `up --wait`, so an unhealthy backend fails the deploy.
 HEALTHCHECK --start-period=60s CMD curl -fsS -o /dev/null http://localhost/health || exit 1
-# Never wrap this in `sh -c`: the entrypoint recognises its setup block (JWT keys, the
+# Never wrap this in `sh -c`: the entrypoint recognises its setup block (the
 # ACLs on var/) by `[ "$1" = 'frankenphp' ]`. With `sh -c "..."`, $1 becomes `sh` and the
 # whole block is skipped silently in production. Waiting for the database and migrating
 # are not here since 1.11.0: the `migrate` service runs them before this container starts.

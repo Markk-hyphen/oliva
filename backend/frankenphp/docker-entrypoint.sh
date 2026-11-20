@@ -43,7 +43,7 @@ fi
 # service waits for. Here, a failed migration put the server in a restart loop while
 # `up -d` reported success (E-backend-slot, finding M1).
 #
-# A queue consumer never runs the setup below (JWT keys, ACLs). The worker's own command
+# A queue consumer never runs the setup below (the ACLs on var/). The worker's own command
 # (oliva-consume) never matches the list; the messenger:consume check covers an app whose
 # override still runs it directly.
 oliva_setup=0
@@ -51,16 +51,10 @@ if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then
 if [ "${2:-}" = 'messenger:consume' ] || [ "${3:-}" = 'messenger:consume' ]; then oliva_setup=0; fi
 
 if [ "$oliva_setup" = 1 ]; then
-	# Generate JWT keys if they don't exist (first deploy or fresh environment)
-    JWT_DIR="$PROJECT_DIR/config/jwt"
-
-    if [ -n "$JWT_PASSPHRASE" ] && [ ! -f "$JWT_DIR/private.pem" ]; then
-    	echo "Generating JWT keys in $JWT_DIR..."
-    	mkdir -p "$JWT_DIR"
-		openssl genrsa -aes256 -passout pass:"$JWT_PASSPHRASE" -out "$JWT_DIR/private.pem" 2048
-        openssl rsa -pubout -in "$JWT_DIR/private.pem" -out "$JWT_DIR/public.pem" --passin pass:"$JWT_PASSPHRASE"
-        echo "JWT keys generated."
-    fi
+	# The JWT key pair is NOT generated here since 1.11.0: `./oliva env init` creates it in
+	# ./secrets/jwt (owned by the host user, mounted read-only into every PHP service), and
+	# `env check` errors when it is missing. Generated at boot, it came out root-owned in
+	# production and only the server container had it.
 
 	# `id -u` (UID numérico), NO `whoami`: en dev el container corre como el usuario
 	# del host (docker-compose.override.yml), un UID que no tiene entrada en el

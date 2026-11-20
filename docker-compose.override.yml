@@ -51,6 +51,8 @@ services:
       - ./backend/src:/app/src
       - ./backend/config:/app/config
       - ./backend/var:/app/var
+      # The JWT key pair (./oliva env init), over the config mount: same place as prod.
+      - ./secrets/jwt:/app/config/jwt:ro
     environment:
       APP_ENV: dev
       # = -vv sin tocar el comando: loguea cada mensaje consumido.
@@ -77,6 +79,8 @@ services:
       - ./backend/src:/app/src
       - ./backend/config:/app/config
       - ./backend/var:/app/var
+      # The JWT key pair (./oliva env init), over the config mount: same place as prod.
+      - ./secrets/jwt:/app/config/jwt:ro
     environment:
       APP_ENV: dev
       SHELL_VERBOSITY: 2
@@ -102,6 +106,8 @@ services:
       - ./backend/src:/app/src
       - ./backend/config:/app/config
       - ./backend/var:/app/var
+      # The JWT key pair (./oliva env init), over the config mount: same place as prod.
+      - ./secrets/jwt:/app/config/jwt:ro
       - ./backend/scheduler/crontab:/etc/supercronic/crontab:ro
     environment:
       APP_ENV: dev
@@ -144,6 +150,10 @@ services:
       - ./backend/frankenphp/Caddyfile:/etc/caddy/Caddyfile
       - ./backend/frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro
       - ./backend/config:/app/config
+      # The JWT key pair, made by ./oliva env init (since 1.11.0; before, the backend generated
+      # it at boot into backend/config/jwt). Mounted over the config mount, read-only: the
+      # same place as in production.
+      - ./secrets/jwt:/app/config/jwt:ro
     environment:
       XDEBUG_MODE: "${XDEBUG_MODE:-off}"
       APP_ENV: dev

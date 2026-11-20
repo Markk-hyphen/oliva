@@ -17,11 +17,11 @@ services:
     environment:
       - APP_ENV=prod
     volumes:
-      # Claves JWT persistidas en el host (secreto gestionado, no en la imagen):
-      # el entrypoint las genera una sola vez en el primer boot si el dir está
-      # vacío, y de ahí en más persisten y NUNCA se regeneran (recrear el
-      # container no desloguea a nadie). Backupear ./secrets/jwt + JWT_PASSPHRASE.
-      - ./secrets/jwt:/app/config/jwt
+      # The JWT key pair, on the host (a managed secret, never in the image). Since 1.11.0
+      # `./oliva env init` creates it, owned by the host user; before, the entrypoint did, as
+      # root. It persists and is never regenerated: recreating the container logs nobody
+      # out. Read-only: no container writes it. Back up ./secrets/jwt + JWT_PASSPHRASE.
+      - ./secrets/jwt:/app/config/jwt:ro
 
   scheduler:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
@@ -32,8 +32,12 @@ services:
       - APP_ENV=prod
     # El scheduler corre supercronic (cron), NO el server frankenphp. Sin este
     # override heredaría el CMD del backend. Con $1=supercronic el bloque de
-    # setup del entrypoint se saltea a propósito (solo el backend migra/genera).
+    # setup del entrypoint se saltea a propósito (es del server; migrar es del servicio migrate).
     command: ["supercronic", "/etc/supercronic/crontab"]
+    # The JWT key pair, read-only, like the backend: a handler that signs or reads tokens
+    # works here too (until 1.11.0 only the server container had the keys).
+    volumes:
+      - ./secrets/jwt:/app/config/jwt:ro
 
   # El worker de producción (hasta 1.8.0 no existía). Comando, profile `queues`,
   # depends_on y healthcheck vienen de docker-compose.yml; acá solo imagen y entorno.
@@ -43,6 +47,10 @@ services:
       target: frankenphp_prod
     environment:
       - APP_ENV=prod
+    # The JWT key pair, read-only, like the backend: a handler that signs or reads tokens
+    # works here too (until 1.11.0 only the server container had the keys).
+    volumes:
+      - ./secrets/jwt:/app/config/jwt:ro
 
   # Realtime (profile `realtime`). El hub usa su propia imagen; el relay, la del backend.
   # Comando/profile/depends_on/healthcheck/additional_contexts vienen de docker-compose.yml.
@@ -55,6 +63,10 @@ services:
       target: frankenphp_prod
     environment:
       - APP_ENV=prod
+    # The JWT key pair, read-only, like the backend: a handler that signs or reads tokens
+    # works here too (until 1.11.0 only the server container had the keys).
+    volumes:
+      - ./secrets/jwt:/app/config/jwt:ro
 
   frontend:
     image: ${COMPOSE_PROJECT_NAME}-frontend:prod

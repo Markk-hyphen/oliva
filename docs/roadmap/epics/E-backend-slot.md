@@ -291,6 +291,21 @@ a `pgvector:pg15` container aliased `postgres`, a scratch app pointing `DATABASE
 R6 closed: every long-running service has a healthcheck except the frontend, which `--wait`
 treats as ready once running, as `verify` already did. Not a regression; noted.
 
+**Step 6 — JWT keys under provisioning (2026-11-20).** The pair lives in `./secrets/jwt` in
+every environment, created by `./oliva env init`, mounted read-only into backend, worker,
+scheduler and relay; the entrypoint no longer generates it.
+
+| # | Measurement | Result |
+|---|---|---|
+| S25 | Fresh `env init` | pair generated, `private.pem` 0600 and `public.pem` 0644, owned by the host user; `env check` ok |
+| S26 | Pair missing | `env check` error: "every login would fail → ./oliva env init" |
+| S27 | Pre-1.11.0 dev pair only in `backend/config/jwt` | `env check` error naming the move; `env init` moved it, byte-identical private key, `env check` ok |
+| S28 | Empty `secrets/jwt` owned by root | `env init` gave it back to the host user (through a root container) and generated the pair |
+| S29 | Dev, `lexik:jwt:check-config` in backend, worker, relay | "correct" in all three; the nested `./secrets/jwt` mount wins over `./backend/config` (R5 closed) |
+| S30 | Prod (root in the container), same command | "correct" in all three; the mount is read-only (`touch` refused); `secrets/jwt` still owned by the host user after the run (the root-owned gotcha is gone) |
+| S31 | **Found on this checkout:** `secrets/jwt` root-owned 0600 from an older local prod run, plus a different pair in `backend/config/jwt` | the dev backend (uid 1000) could not read the key (`does not exist or is not readable`) while `env check` passed, since its passphrase check reaches root-owned keys through a root container. A silent failure: fixed in this step. `env check` now errors when the key is unreadable by the user the backend runs as (dev) and warns otherwise; `env init` gives such a directory back; a leftover pair in the old location is a warning ("no longer read, delete it"). After `env init`: `The configuration seems correct.` |
+| S32 | `verify` on this checkout | all green |
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line
