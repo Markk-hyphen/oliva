@@ -1,7 +1,9 @@
 # Epic — The backend slot: split the lifecycle, write the contract, make replacement declared
 
-> **Status:** 🧭 designed, decisions taken 2026-11-20 (section "Decisions"). Phase A has a
-> runbook: [`E-backend-slot-runbook.md`](E-backend-slot-runbook.md). No code yet ·
+> **Status:** phase A ✅ released in **1.11.0** (2026-11-20, CI green;
+> [`E-backend-slot-runbook.md`](E-backend-slot-runbook.md)). Phase B 🧭 designed, decisions
+> QB1–QB3 taken, runbook [`E-backend-slot-runbook-b.md`](E-backend-slot-runbook-b.md), target
+> 1.12.0. Phase C: design notes below ·
 > Branch `feat/backend-slot` · **Origin:** roadmap item 2, "The backend: the
 > hardest slot", and friction X16 (the phase-3 probe of `E-unbundle-roles.md`). Written
 > 2026-11-20 against `main` at `6230607` (1.10.0), after reading the code, measuring the
@@ -204,6 +206,48 @@ service plus `depends_on: service_completed_successfully` behaves as needed. `up
 returns 0 when it exits 0 and 1 with `service "migrate" didn't complete successfully` when
 it fails; a second `up` re-runs it, so `docker compose up -d` still applies a new migration
 in dev.
+
+### Decisions for phase B (2026-11-20, the maintainer's)
+
+| # | Question | Decision |
+|---|---|---|
+| QB1 | Conformance clauses with nothing observable from outside in the default backend: "trusts `X-Forwarded-*` only from private networks" (its effect shows in login throttling, which the default does not ship) and "SIGTERM lets an in-flight request finish" (every default request takes milliseconds) | **Phase B tests what is observable from outside**, the same way for any backend: liveness without the database, `oliva-migrate` (fresh, twice at once, re-run, unreachable database), `oliva-seed` absent from `prod`, idle SIGTERM, plain `DATABASE_URL`, HTTP on `:80`, logs on stdout. The `X-Forwarded-For` half that lives in the gateway (Oliva's) is tested there. The two clauses stay **declared**, verified for the default at release gates. **Not because no second backend exists** (the point of the epic is that one can), but because of ownership and attack surface; the intermediate design below is phase C's |
+| QB2 | `SYMFONY_TRUSTED_HOSTS` default | **Unset** (today's behaviour), declared in the manifest; `env check` **warns in production** when it is unset and names the fix |
+| QB3 | Where the suite runs | **Always in CI** against the default image, plus **`./oliva conformance [image]`** on demand (what a replaced backend runs). Not inside `verify`: the dev loop stays as fast |
+
+### Phase C design notes (recorded 2026-11-20, to apply when phase C starts)
+
+**A probe for the two declared clauses, without dirtying ownership or growing the attack
+surface.** The maintainer's constraint: the system has to be ready for other backends, so
+"no second backend exists yet" is not an argument; the real costs are ownership and attack
+surface. The intermediate design to evaluate first in phase C:
+
+- **Never routed by the gateway.** It lives under a prefix the gateway does not route
+  (`/_oliva/…`; the gateway routes only `/api`, `/health`, `/.well-known/mercure` to
+  backends), so even if left on it is unreachable from outside the app's private network.
+- **Off unless the conformance harness turns it on**, with a variable only the throwaway
+  conformance stack sets (never in dev, staging or production compose files), and the env
+  check errors if that variable ever reaches a real stack.
+- **In Oliva-owned files, not the app's `src/`.** For the default, served from Oliva's side
+  (the backend Caddyfile or a file under `backend/frankenphp/`), so an app never edits or
+  owns it. To check first: whether it can exercise Symfony's own trusted-proxy handling
+  without living in the app's kernel (if it only reads the environment variable, it tests the
+  configuration, not the framework, and says so).
+- **For a replacement: recommended, not mandatory.** A replacement that implements it gets
+  the two clauses tested; one that does not gets them reported, every run, as "declared, not
+  tested". Never silent.
+- What it would answer: the client address the backend resolved for a request carrying a
+  forged `X-Forwarded-For` (from inside and outside the private ranges), and a request that
+  takes a known time (to send SIGTERM while it is in flight).
+
+**The universal template, made concrete at birth.** `./oliva init --backend=external` writes,
+in the app's own files, a contract card to fill (mandatory clauses first, then recommended),
+with placeholders where a value is needed (the image, the migrate and seed commands, the
+health path). Every clause is then visible in three places: the card, `doctor` (which clauses
+are mandatory and failing, which recommended and unmet, which declared and untested) and
+`verify`/CI through `./oliva conformance`. Mandatory clauses block a deploy (Q3); recommended
+ones warn on every run; declared ones are announced on every run. The default backend fills
+the card out of the box.
 
 ## Phase A baseline (step 0, 2026-11-20, on 1.10.0)
 
