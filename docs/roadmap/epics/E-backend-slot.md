@@ -306,6 +306,27 @@ scheduler and relay; the entrypoint no longer generates it.
 | S31 | **Found on this checkout:** `secrets/jwt` root-owned 0600 from an older local prod run, plus a different pair in `backend/config/jwt` | the dev backend (uid 1000) could not read the key (`does not exist or is not readable`) while `env check` passed, since its passphrase check reaches root-owned keys through a root container. A silent failure: fixed in this step. `env check` now errors when the key is unreadable by the user the backend runs as (dev) and warns otherwise; `env init` gives such a directory back; a leftover pair in the old location is a warning ("no longer read, delete it"). After `env init`: `The configuration seems correct.` |
 | S32 | `verify` on this checkout | all green |
 
+**Step 7 — dev in worker mode (2026-11-20).** `worker.dev.Caddyfile` (the prod worker block
+plus `watch` on `src/**/*.php`, `config/**/*.{yaml,yml,php}`, `.env`, `public/index.php`).
+The gate stopped once, as Q4 requires; the maintainer chose option A (worker mode plus a
+detector), recorded here.
+
+| # | Measurement | Result |
+|---|---|---|
+| S33 | Patterns for `templates/` and `translations/` (absent in Oliva and in all three apps) | each floods the log on start (`watcher was closed prematurely` ×5, `giving up watching`). Removed: Twig checks template freshness on render in debug |
+| S34 | Code reload (same probe as B5) | 0.01–0.32 s (classic: 0.9–2.9 s) |
+| S35 | YAML reload, edits spaced 3 s, rename and in-place writes | 0.2–0.75 s, all six seen |
+| S36 | Idle 120 s | 0 watcher restarts: no reload loop |
+| S37 | Syntax error in a controller | readable error, recovery 0.06 s after the fix, no restart |
+| S38 | Xdebug with a trigger, listener on the host | DBGp `<init … fileuri="file:///app/public/index.php">` received from a worker request |
+| S39 | Request isolation smoke | a `ResetInterface` service is reset between requests (Symfony's `services_resetter` runs in dev workers); a `static` property leaks between users (`bob` sees `alice`). That leak class used to appear first in staging |
+| S40 | **Code edit then YAML edit, back to back** | the old YAML value served (worker mode 2/8, then 9/30); `services.yaml` and the compiled container carry the **same mtime second**. Symfony's freshness check is in whole seconds, equal counts as fresh; `touch` triggers no watcher event. **Also in classic mode:** a stale container compiled in the same second as a restore was found after the classic run (1 in 17). Worker mode makes it far likelier because it recompiles right after each edit |
+| S41 | Detector (`dev_cache_stale_check`: same whole second, later nanoseconds, for every path a `*.meta.json` tracks) against the real outcome | 44 runs: 10 true positives, 0 false positives, 34 true negatives, 0 false negatives; the printed fix worked 10/10 |
+| S42 | `verify` `worker-mode` with `FRANKENPHP_CONFIG=` in `.env` | red; green again once removed |
+| S43 | `verify` on this checkout (dev now in worker mode) | all green, `phpunit` included; `doctor` shows the cache line |
+
+Healing it on its own (rather than detecting it) is friction X19, with a design to measure.
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line

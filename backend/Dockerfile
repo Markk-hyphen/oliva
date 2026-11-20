@@ -182,7 +182,11 @@ CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile" ]
 FROM frankenphp_base AS frankenphp_dev
 
 ENV APP_ENV=dev XDEBUG_MODE=off
-ENV FRANKENPHP_CONFIG=""
+# Worker mode in dev too (since 1.11.0), with a watcher (worker.dev.Caddyfile). Until then dev
+# ran classic mode while production ran workers, so a request-isolation bug could never show
+# up in dev (E-backend-slot, finding M4, decision Q4). Never define FRANKENPHP_CONFIG in .env:
+# an empty value turns worker mode off (the 1.4.3 trap; guard_worker_env covers dev as well).
+ENV FRANKENPHP_CONFIG="import worker.dev.Caddyfile"
 
 RUN mv "$PHP_INI_DIR/php.ini-development" "$PHP_INI_DIR/php.ini"
 
@@ -201,6 +205,7 @@ RUN --mount=type=bind,from=ghcr.io/php/pie:1.5.3-bin,source=/pie,target=/usr/loc
 	rm -rf /var/lib/apt/lists/*
 
 COPY --link frankenphp/conf.d/20-app.dev.ini $PHP_INI_DIR/app.conf.d/
+COPY --link frankenphp/worker.dev.Caddyfile /etc/caddy/worker.dev.Caddyfile
 
 # T5 — manifiesto de los inputs de build que se HORNEAN pero NO se bind-mountean en dev:
 # editarlos en el host no surte efecto hasta rebuildear, porque cambiarlos pide

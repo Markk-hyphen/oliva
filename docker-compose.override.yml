@@ -148,6 +148,8 @@ services:
       # propósito: cambiarlos pide rebuild, no copiar el archivo; `doctor` los compara.
       - ./backend/phpunit.dist.xml:/app/phpunit.dist.xml:ro
       - ./backend/frankenphp/Caddyfile:/etc/caddy/Caddyfile
+      # Dev worker block and its watch patterns: editable without a rebuild (restart backend).
+      - ./backend/frankenphp/worker.dev.Caddyfile:/etc/caddy/worker.dev.Caddyfile:ro
       - ./backend/frankenphp/conf.d/20-app.dev.ini:/usr/local/etc/php/app.conf.d/20-app.dev.ini:ro
       - ./backend/config:/app/config
       # The JWT key pair, made by ./oliva env init (since 1.11.0; before, the backend generated

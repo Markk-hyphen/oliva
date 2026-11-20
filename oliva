@@ -129,6 +129,17 @@ case "$cmd" in
     }
     step "imagen vs fuente" build_inputs_drift
 
+    # Dev runs FrankenPHP worker mode since 1.11.0. Symfony's freshness check for its compiled
+    # caches works in whole seconds: a file saved in the same second as a recompile, after it,
+    # is never picked up (measured: ~30% of rapid code+config edits). Nanosecond check, dev only.
+    dev_cache_board() {
+      # shellcheck source=/dev/null
+      source scripts/lib/backend-guard.sh || return 0
+      dev_cache_stale_check && echo "   every compiled Symfony cache is newer than what it tracks"
+      return 0
+    }
+    step "symfony cache (dev)" dev_cache_board
+
     # T7 — en dev el backend corre como el usuario del host (HOST_UID/HOST_GID) para que
     # lo que escribe (JWT, migración generada, var) quede tuyo y no root-owned. Avisa si
     # el UID del container no coincide con el tuyo (ej. HOST_UID sin setear en un host != 1000).
