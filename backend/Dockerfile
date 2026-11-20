@@ -168,10 +168,10 @@ RUN composer dump-autoload --optimize
 ENTRYPOINT ["docker-entrypoint"]
 
 HEALTHCHECK --start-period=60s CMD curl -f http://localhost:2019/metrics || exit 1
-# NO envolver en `sh -c`: el entrypoint distingue su bloque de setup (genera JWT,
-# espera la DB, migra) con `[ "$1" = 'frankenphp' ]`. Si el CMD es `sh -c "..."`,
-# $1 pasa a ser `sh` y TODO ese bloque se saltea silenciosamente en prod.
-# La race de DB la cubre el wait-for-db del entrypoint (60 reintentos), no un sleep.
+# Never wrap this in `sh -c`: the entrypoint recognises its setup block (JWT keys, the
+# ACLs on var/) by `[ "$1" = 'frankenphp' ]`. With `sh -c "..."`, $1 becomes `sh` and the
+# whole block is skipped silently in production. Waiting for the database and migrating
+# are not here since 1.11.0: the `migrate` service runs them before this container starts.
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile" ]
 
 # Dev FrankenPHP image

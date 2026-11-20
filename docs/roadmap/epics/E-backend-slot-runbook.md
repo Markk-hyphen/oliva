@@ -11,7 +11,7 @@ real, put the JWT keys under provisioning, and run dev in worker mode. **Nothing
 of a replaced backend yet** (that is phases B and C). An app that changes nothing keeps
 working after the sync.
 
-**State:** steps 0–2 done 2026-11-20 (baseline B1–B6, results S1–S10 in the epic). Next: step 3. Branch `feat/backend-slot`, off `main` at `6230607` (1.10.0).
+**State:** steps 0–4 done 2026-11-20 (baseline B1–B6, results S1–S17 in the epic). Next: step 5. Branch `feat/backend-slot`, off `main` at `6230607` (1.10.0).
 
 ## Decisions already taken (do not reopen)
 

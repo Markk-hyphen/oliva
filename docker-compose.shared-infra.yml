@@ -49,14 +49,29 @@ services:
   rabbitmq:
     profiles: !override ["disabled-in-shared-infra"]
 
-  backend:
+  # The one-shot migrate: no local `database` to wait for (oliva-migrate's own loop waits for
+  # the shared Postgres), and it reaches that Postgres on data_net.
+  migrate:
     depends_on: !override {}
     networks:
       app_network:
       data_net:
 
+  # `!override` REPLACES the whole depends_on map (that is how the local `database` goes
+  # away): each service below re-declares `migrate`, or shared infra would lose the order
+  # "schema first" without a word.
+  backend:
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      app_network:
+      data_net:
+
   scheduler:
-    depends_on: !override {}
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
     networks:
       app_network:
       data_net:
@@ -68,6 +83,8 @@ services:
   # data_net: el broker y la base compartidos (un handler suele usar Doctrine).
   worker:
     depends_on: !override
+      migrate:
+        condition: service_completed_successfully
       backend:
         condition: service_healthy
     networks:
@@ -84,6 +101,8 @@ services:
   # hub (realtime) no necesita bloque: queda en app_network solo, no toca data_net ni proxy_net.
   realtime-relay:
     depends_on: !override
+      migrate:
+        condition: service_completed_successfully
       backend:
         condition: service_healthy
     networks:

@@ -258,6 +258,22 @@ it while a stack runs exactly one `migrate`. Does **not** hold for a migration t
 of transactions (`isTransactional(): false`, `CREATE INDEX CONCURRENTLY`): the app's choice,
 one line in the guide.
 
+**Steps 3–4 — the entrypoint lets go, the `migrate` service (2026-11-20).** One commit:
+taking the migrations out of the entrypoint without the service would leave the repository
+broken in between. JWT key generation stays in the entrypoint until step 6, for the same
+reason. Nothing in `scripts/`, `docs/oliva/` or CI relied on `compose run backend …`
+migrating as a side effect (grep).
+
+| # | Measurement | Result |
+|---|---|---|
+| S11 | `config --format json`, five stacks (dev; prod; prod+shared-infra; prod+shared-infra+staging; prod+staging), `--profile '*'` | `migrate` with the right image and target in each, `healthcheck: disable`, `data_net` in shared infra and no `database` dependency there; backend, scheduler, worker and relay depend on `migrate: completed_successfully` in all five; worker and relay keep `backend: healthy`. R3 (the `!override` trap) closed |
+| S12 | Staging with a marker `DATABASE_URL` in `.env.staging` | `migrate` resolves `APP_ENV=staging` and the staging database, like every other service |
+| S13 | **M1 again, prod, no profiles, plain `up -d --build` (what `deploy.sh` runs today, no `--wait`)** | **rc 1**, `service "migrate" didn't complete successfully: exit 7`; the backend stays `Created`, never started on a broken schema. Before: rc 0 and a restart loop (B1). Migration fixed: rc 0, everything healthy |
+| S14 | Dev: a new migration added to a running stack, then `docker compose up -d --wait` | applied (rc 0, table created) |
+| S15 | Dev: a broken migration added to a running stack | rc 1 with the migrate message; the running backend stays up and healthy |
+| S16 | Two plain `up -d --wait` in a row | only `migrate` runs again; backend, worker and relay are not restarted |
+| S17 | `verify` on this checkout | all green; `migrate Exited (0)` |
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line

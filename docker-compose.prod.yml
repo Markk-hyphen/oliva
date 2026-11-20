@@ -1,6 +1,14 @@
 # Imágenes `<project>-<servicio>:prod`: el project name (-p en el VPS) las hace
 # únicas por app — dos apps en el mismo host no se pisan la imagen de prod.
 services:
+  # The one-shot migrate (docker-compose.yml): the production image, APP_ENV=prod.
+  migrate:
+    image: ${COMPOSE_PROJECT_NAME}-backend:prod
+    build:
+      target: frankenphp_prod
+    environment:
+      - APP_ENV=prod
+
   backend:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:

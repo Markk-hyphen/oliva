@@ -38,11 +38,14 @@ fi
 # refusal now (realtime/docker-entrypoint.sh). The backend no longer serves Mercure; it
 # only signs tokens, with MERCURE_JWT_SECRET (checked above in prod/staging).
 
-# A queue consumer never runs the setup below (JWT keys, wait-for-db, migrations, ACLs):
-# the backend does it, and the worker starts only once the backend is healthy, that is,
-# migrated (depends_on in docker-compose.yml). Until 1.8.0 the dev worker ran `migrate` at
-# the same time as the backend. The worker's own command (oliva-consume) never matches the
-# list; the messenger:consume check covers an app whose override still runs it directly.
+# Waiting for the database and migrating are NOT done here since 1.11.0: they are the
+# one-shot `migrate` service (oliva-migrate, backend/frankenphp/migrate.sh), which every PHP
+# service waits for. Here, a failed migration put the server in a restart loop while
+# `up -d` reported success (E-backend-slot, finding M1).
+#
+# A queue consumer never runs the setup below (JWT keys, ACLs). The worker's own command
+# (oliva-consume) never matches the list; the messenger:consume check covers an app whose
+# override still runs it directly.
 oliva_setup=0
 if [ "$1" = 'frankenphp' ] || [ "$1" = 'php' ] || [ "$1" = 'bin/console' ]; then oliva_setup=1; fi
 if [ "${2:-}" = 'messenger:consume' ] || [ "${3:-}" = 'messenger:consume' ]; then oliva_setup=0; fi
@@ -58,33 +61,6 @@ if [ "$oliva_setup" = 1 ]; then
         openssl rsa -pubout -in "$JWT_DIR/private.pem" -out "$JWT_DIR/public.pem" --passin pass:"$JWT_PASSPHRASE"
         echo "JWT keys generated."
     fi
-
-	if grep -q ^DATABASE_URL= .env; then
-		echo 'Waiting for database to be ready...'
-		ATTEMPTS_LEFT_TO_REACH_DATABASE=60
-		until [ $ATTEMPTS_LEFT_TO_REACH_DATABASE -eq 0 ] || DATABASE_ERROR=$(php bin/console dbal:run-sql -q "SELECT 1" 2>&1); do
-			if [ $? -eq 255 ]; then
-				# If the Doctrine command exits with 255, an unrecoverable error occurred
-				ATTEMPTS_LEFT_TO_REACH_DATABASE=0
-				break
-			fi
-			sleep 1
-			ATTEMPTS_LEFT_TO_REACH_DATABASE=$((ATTEMPTS_LEFT_TO_REACH_DATABASE - 1))
-			echo "Still waiting for database to be ready... Or maybe the database is not reachable. $ATTEMPTS_LEFT_TO_REACH_DATABASE attempts left."
-		done
-
-		if [ $ATTEMPTS_LEFT_TO_REACH_DATABASE -eq 0 ]; then
-			echo 'The database is not up or not reachable:'
-			echo "$DATABASE_ERROR"
-			exit 1
-		else
-			echo 'The database is now ready and reachable'
-		fi
-
-		if [ "$( find ./migrations -iname '*.php' -print -quit )" ]; then
-			php bin/console doctrine:migrations:migrate --no-interaction --all-or-nothing
-		fi
-	fi
 
 	# `id -u` (UID numérico), NO `whoami`: en dev el container corre como el usuario
 	# del host (docker-compose.override.yml), un UID que no tiene entrada en el
