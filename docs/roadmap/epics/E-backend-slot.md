@@ -249,6 +249,35 @@ are mandatory and failing, which recommended and unmet, which declared and untes
 ones warn on every run; declared ones are announced on every run. The default backend fills
 the card out of the box.
 
+## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
+
+Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,
+`/api/gt/slow`) for 0.7 only, never committed. What the suite must later reproduce.
+
+| # | Question | Answer |
+|---|---|---|
+| P1 | `/health` with the database stopped | 200 `application/json` `{"status":"ok"}`, direct and through the gateway; the backend stays `healthy` 35 s later. Liveness has no I/O |
+| P2 | `oliva-migrate`, database unreachable | exit 1 after 68 s |
+| P3 | `oliva-migrate`, **wrong password** | exit 1 after 67 s too: an authentication failure is retried 60 times although waiting cannot fix it (the exit-255 shortcut does not catch it), and the last line printed is `dbal:run-sql`'s usage text, not the error (finding B-F1) |
+| P4 | Seeding in prod | `doctrine:fixtures:load` not defined (rc 1); `oliva-seed` does not exist yet |
+| P5 | A plain `DATABASE_URL` (`postgresql://u:p@database:5432/app`) | `oliva-migrate` exit 0, the same as with `?serverVersion=15&charset=utf8`; the parsed parameters carry no `serverVersion` and nothing breaks (`doctrine.yaml` sets it) |
+| P6 | Client encoding without `charset` | UTF8 on a UTF8 database **and on a `SQL_ASCII` one** (where `psql` reports `SQL_ASCII`): without `charset` the driver gets the cluster's default `client_encoding` (UTF8, `source=default`). On an external Postgres whose cluster default was changed, it would follow that (finding B-F2) |
+| P7 | Gateway with the backend stopped | `/api/x` and `/health`: **502, empty body, no `Content-Type`**; `/` still served |
+| P8 | Gateway `X-Forwarded-For`, echo upstream, host at `172.19.0.1` | default `private_ranges`: a forged `6.6.6.6` is forwarded as `6.6.6.6, 172.19.0.1` (the host is a private peer, so trusted); `GATEWAY_TRUSTED_PROXIES` narrowed to a range without the host: forwarded as `172.19.0.1`, the forgery dropped |
+| P9 | Client IP Symfony resolves | through the gateway, forged: `6.6.6.6`; straight to the backend from any container on the app network, forged: `6.6.6.6`; with `SYMFONY_TRUSTED_PROXIES=127.0.0.1`: the peer (`172.19.0.2`). The trust does what it is configured to do; the breadth of the configuration is the question (B-F3) |
+| P10 | SIGTERM during a 3 s request, worker mode, ×2 | the response completes (200, `slept` 3.0), the stop waits the remainder (2.4–2.5 s), exit 0. The declared draining clause holds for the default |
+
+**B-F3, the one that matters.** Both hops trust every private peer by default (gateway
+`private_ranges`, backend `PRIVATE_SUBNETS`). Right behind the shared-infra edge proxy. But:
+(a) in a **standalone** production stack the gateway is the edge, and whether it sees the
+client's real address or a Docker bridge address (private, so trusted) depends on how Docker
+publishes the port on that host (NAT keeps the client address; a userland proxy does not).
+If it sees a bridge address, anyone can forge their IP and login throttling is void. Not
+measurable without a real host; to verify on one. (b) In shared infra, any container of any
+app on `data_net` can reach this backend directly with a forged header (noted in phase A as
+a threat-model line; P9 confirms the mechanism). Decision needed before step 4 (see the
+runbook's step 0 outcome).
+
 ## Phase A baseline (step 0, 2026-11-20, on 1.10.0)
 
 Scratch clone of `8239ab0`, project `m1`, this machine. The numbers phase A is compared to.

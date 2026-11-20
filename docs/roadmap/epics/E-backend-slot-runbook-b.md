@@ -13,7 +13,20 @@ structural guard kept, decouple what still hides under `backend/frankenphp/`, an
 three small default fixes. Still **nothing changes for an app that keeps the default**
 beyond labelled upgrade actions; declaring a replaced backend is phase C.
 
-**State:** not started. Branch `feat/backend-slot-b`, off `main` at `330c3f6` (1.11.0, CI green).
+**State:** step 0 done 2026-11-20 (answers P1–P10, findings B-F1..B-F3 in the epic's "Phase B
+baseline"). **Blocked on one decision before step 4: B-F3** (how far each hop trusts
+`X-Forwarded-*` in a standalone production stack). Steps 1–3 do not depend on it. Branch
+`feat/backend-slot-b`, off `main` at `330c3f6` (1.11.0, CI green).
+
+**Step 0 outcome, folded into the steps below:**
+- B-F1 → step 4 gains a fourth fix: `oliva-migrate` fails fast on an error waiting cannot
+  fix (authentication, unknown database), and prints the driver's error as its last line,
+  not `dbal:run-sql`'s usage (P3).
+- B-F2 → step 4.2 drops `serverVersion`; `charset` goes too only with the contract saying
+  the database's default `client_encoding` must be UTF8 (Postgres' default), since that is
+  what the driver uses without it (P6).
+- P7 → step 4.3 confirmed: today the 502 has no body at all.
+- B-F3 → decision pending; it shapes K10 and possibly the prod overlay.
 
 ## Decisions already taken (do not reopen)
 
