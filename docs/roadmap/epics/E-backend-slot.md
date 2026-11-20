@@ -298,6 +298,46 @@ S1–S49); the suite ids K1–K10 are cited, their checks are step 6.
 |---|---|---|
 | S50 | The default backend's own error on `/api`, `prod` image | `GET /api/nope` → `404 text/html` (Symfony's error page), also with `Accept: application/json`: no serializer is installed, so errors render as HTML. The error envelope became a **recommended** clause the default does not meet; fixing the default is friction X20 (the maintainer's call: not in this phase) |
 
+**Step 6 — the conformance suite (2026-11-20).** `scripts/oliva/conformance.sh` and its
+throwaway harness `scripts/oliva/conformance.compose.yml` (project `<app>-conformance`, no host
+port, a probe container makes every request, always removed). K1–K10 as in the runbook, with
+three sharpenings measured into them: K1 also requires `Content-Type: application/json` and a
+body Postgres parses as JSON (no `jq` on the host); K3/K4 compare a **fingerprint** of the
+database (schema from `pg_dump` plus an exact row count per table), so "idempotent" and
+"nothing half-applied" are observed, not inferred from exit codes; K6 seeds staging twice and
+requires the same data (replaces, does not add). K10 reads the gateway's trust from what
+`docker-compose.prod.yml` and `docker-compose.shared-infra.yml` ship (resolved by Compose in a
+scratch directory with the host's `.env` ignored), and tests both topologies.
+
+| # | Measurement | Result |
+|---|---|---|
+| S51 | The default (this checkout's `prod` and `staging`) | CONFORMANT, 73–85 s; K5: unreachable database exit 1 in 64–67 s, wrong password in 1 s; K7 exit 0 in 0.1–0.2 s; K4 `exit 7 and 0` (the extension race of S8) |
+| S52 | **Positive control: a conforming backend in Python** (scratch image: `http.server`, `psql`, a SIGTERM handler) | CONFORMANT, 37 s. The suite holds for a non-PHP backend |
+| S53 | **Negative controls, each with one thing broken** (scratch images, not committed) | every one fails its assertion: `/health` as HTML, 404, non-JSON → K1; `/health` querying the database → K2, **also with the default's own PHP** (500 `text/html`); a migrate that is not idempotent or that appends → K3; one that races (check, sleep, insert) → K4 only; one that exits 0 on error or never gives up → K5 (the latter by timeout, 141 s); `oliva-seed` in `prod`, missing in `staging`, or appending → K6; a PID 1 ignoring SIGTERM → K7 (137); a silent server → K9 (WARN, exit 0); a migrate needing a URL parameter → K3 FAIL and K8 WARN, and with `--db-url-suffix` K8 WARN only; standalone trust widened to `private_ranges` → K10, shared-infra trust narrowed to `127.0.0.1/32` → K10 (the edge's address lost); no `--staging` → K6 SKIP, exit 2. Final regression with the final script: 22/22 as expected, no leftover |
+| S54 | Interrupts: SIGINT and SIGTERM to the process group at 2, 12 and 20 s | exit 130 / 143, `INTERRUPTED`/`TERMINATED: no verdict`, nothing left (containers, networks, volumes, temp directory) |
+| S55 | A second run while one is in progress; `--keep` then `--down` | the second is refused and the first ends CONFORMANT; `--down` removes everything, twice in a row |
+| S56 | A builder of the `docker-container` driver (CI's) | CONFORMANT, 93 s from untagged images |
+
+Found by the controls and fixed in the step (each would have been silent): **a `diff` under
+`pipefail` killed the run** right after printing a K3/K4/K6 difference, so the remaining
+assertions and the verdict never appeared; **Ctrl-C did not stop a run** (`docker compose`
+catches SIGINT and exits normally, bash went on, and the run ended CONFORMANT after an
+interrupted step), then the trap's message went to a redirected file the cleanup deleted;
+**`docker logs --since` without a zone is local time**, so K9 failed on this UTC−3 host while
+CI (UTC) would have passed, and on a UTC+ host it would have passed a backend that never logs a
+request; **a missing image read as "oliva-seed exists in production"** (`docker run` exit 125);
+**the removal command `--keep` printed did nothing** (it needs variables only the script
+sets); **with a `docker-container` builder the built images never reached Docker**; Compose
+2.26's `up --wait` rejects a service with `healthcheck: disable`. K4 is SKIP, not FAIL, when K3
+fails: its failures would only repeat K3's.
+
+**Step 7 — CI and the verb (2026-11-20).** `./oliva conformance [<image> [--staging
+<image>]]`, `--down`, `--keep`, `--db-url-suffix`. CI job `conformance`: two `bake-action`
+builds (prod, staging; GHA cache in scopes of their own, since a plain `docker buildx bake`
+step has no access to the cache token) and the suite on `oliva-ci-backend:prod`/`:staging`.
+The bakes were run locally as CI runs them (`docker-container` driver): both images build;
+the job itself runs on the first push.
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,

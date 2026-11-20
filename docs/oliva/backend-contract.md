@@ -34,17 +34,18 @@ from outside proves it in general; the backend states it, and Oliva verifies it 
 default at every release.
 
 **Check.** The ids `K1`–`K10` are the assertions of the conformance suite
-(`./oliva conformance [image]`, run in CI against the default). A backend that wants to know
-whether it honours this contract runs the suite against its image.
+(`./oliva conformance [image]`, run in CI against the default; see "The conformance suite"
+below). A backend that wants to know whether it honours this contract runs the suite against
+its image.
 
 | Clause | Requirement | Kind | Check |
 |---|---|---|---|
 | Image | One image, built from `backend/Dockerfile`, with the build targets `dev`, `prod` and `staging`. The compose files build those targets by name | mandatory | the build (`target stage … could not be found` otherwise) |
-| Server | The image's default command serves plain HTTP on `:80` (no TLS: the edge terminates it). `GET /health` answers `200` with a JSON body, without touching the database or any other dependency, and without authentication. It is the backend's healthcheck | mandatory | K1, K2; the healthcheck and `up --wait` |
-| Migrate | An executable `oliva-migrate` in every target. It waits for the database, applies the schema, and exits: `0` when the schema is current (a second run is a no-op that exits `0`), non-zero on any failure. Two runs at once are safe: at most one fails, and nothing is half-applied | mandatory | K3, K4, K5; the one-shot `migrate` service, which every backend-tied service waits for |
-| Seed | An executable `oliva-seed` in the `dev` and `staging` targets, **absent from `prod`**. It replaces the database's data with known data, and fails on a target that has nothing to load | mandatory | K6; `deploy-staging.sh` calls it |
+| Server | The image's default command serves plain HTTP on `:80` (no TLS: the edge terminates it). `GET /health` answers `200`, `Content-Type: application/json`, with a JSON body, without touching the database or any other dependency, and without authentication. It is the backend's healthcheck | mandatory | K1, K2; the healthcheck and `up --wait` |
+| Migrate | An executable `oliva-migrate` in every target. It waits for the database, applies the schema, and exits: `0` when the schema is current (a second run exits `0` and changes nothing), non-zero on any failure, and within 120 s when the database never answers. Two runs at once are safe: at most one fails, and the result is the same as one run's | mandatory | K3, K4, K5; the one-shot `migrate` service, which every backend-tied service waits for |
+| Seed | An executable `oliva-seed` in the `dev` and `staging` targets, **absent from `prod`**. It replaces the database's data with known data (seeding twice leaves the same data, it does not add to it), and exits non-zero when it cannot seed | mandatory | K6 (`prod` and `staging`; `dev` is not tested); `deploy-staging.sh` calls it |
 | Signals | On `SIGTERM` the server stops and exits within the grace period (10 s), not by `SIGKILL` | mandatory | K7 |
-| Logs | The server writes to stdout/stderr; nothing that matters only to a file inside the container | recommended | K9 |
+| Logs | The server writes to stdout/stderr, requests included; nothing that matters only to a file inside the container | recommended | K9 |
 | Database URL | Reads a plain `postgresql://user:password@host:port/db` URL, with no driver-specific parameters | recommended | K8 |
 | Trusted hosts | Honours `SYMFONY_TRUSTED_HOSTS` (or its own equivalent): when set, a request with another `Host` is refused | recommended | `env check` (production warns while it is empty) |
 | Error envelope | Errors on `/api` are JSON: `{"error": "<message>", "status": <code>}`, the shape of the gateway's own errors | recommended | none yet. **The default does not meet it** (friction X20) |
@@ -58,8 +59,9 @@ What each clause means in the default backend, and the details a replacement nee
 
 - `dev`: development (the compose override mounts the source; the default runs FrankenPHP in
   worker mode with a file watcher). `prod`: what runs in production. `staging`: production's
-  build plus the seed. The default's `staging` inherits from `prod`, so they differ only in
-  what `staging` adds.
+  build plus the seed and what it needs. The default's `staging` inherits from `prod` and adds
+  `oliva-seed` and its dev dependencies (the fixtures), so they differ only in what `staging`
+  adds.
 - Oliva builds the same image for every backend-tied service: `migrate`, `backend`, and, with
   their profiles, `worker`, `scheduler` and `realtime-relay`. Each runs another command of
   that image.
@@ -74,8 +76,9 @@ What each clause means in the default backend, and the details a replacement nee
 - `/health` is **liveness**, not readiness: the database stopped, it still answers `200`
   (measured on the default: `{"status":"ok"}`, the container stays healthy). Readiness, "the
   schema is there", is the `migrate` service having exited `0`, which the backend's start
-  already waits for. A `/health` that queries the database turns a database blip into a
-  restart of every backend container, and is what K2 rejects.
+  already waits for. A `/health` that queries the database turns a database blip into an
+  unhealthy backend: `up --wait` and every deploy fail, and the services that wait for a
+  healthy backend (worker, relay) do not start. K2 rejects it.
 - The gateway routes `/api`, `/api/*` and `/health` to the backend; the backend serves
   nothing else to the outside. `/gateway-health` is the gateway's own and never reaches it.
 - Image healthcheck in the default: `curl -fsS http://localhost/health`. A backend whose
@@ -107,7 +110,7 @@ What each clause means in the default backend, and the details a replacement nee
 
 ### Signals
 
-- In the default: the server stops in about 0.3 s, exit `0`. The worker finishes the message
+- In the default: the server stops in well under a second (measured 0.1–0.3 s), exit `0`. The worker finishes the message
   in hand and exits; a handler longer than `WORKER_STOP_GRACE_PERIOD` (default `10s`) is
   killed and its message redelivered (delivery is at least once). The relay stops between
   updates.
@@ -213,6 +216,45 @@ they run the default's code against a schema and messages they do not know.
 None needed: the frontend, the backend and the hub are served under one origin by the
 gateway. A backend that adds CORS headers widens what other origins can do and is not asked
 to.
+
+## The conformance suite
+
+`./oliva conformance` builds this checkout's `prod` and `staging` backend targets and tests
+them; `./oliva conformance <prod-image> --staging <staging-image>` tests any other backend.
+It needs nothing from the backend's code: it runs the image and makes HTTP requests.
+
+- **The harness** is a throwaway stack (`scripts/oliva/conformance.compose.yml`) under its own
+  project name, `<app>-conformance`: a Postgres, the image under test, Oliva's gateway, and a
+  probe container every request comes from. It publishes no host port, so it runs next to a
+  dev stack, and it is always removed, volumes included. It never reads the app's `.env`: the
+  backend gets `.env.example` with every generated secret of the manifests freshly made, then
+  `.env.backend`, as a real stack would.
+- **The gateway's trust (K10)** is read from what `docker-compose.prod.yml` and
+  `docker-compose.shared-infra.yml` ship, not from this host's `.env`.
+- **Output:** one line per assertion, `PASS`, `FAIL` (mandatory, with the reason), `WARN`
+  (recommended), `SKIP` (not tested, and why), `DECLARED`. Exit `0` when every mandatory
+  assertion passed, `1` when one failed, `2` when none failed but one was not tested (for
+  example K6's staging half, without `--staging`).
+- **`--db-url-suffix '?k=v'`** for a backend that cannot read a plain URL: the other clauses get
+  tested, and K8 is reported unmet. **`--keep`** leaves the harness up to look at it;
+  **`--down`** removes it (and a harness left by a killed run).
+- **One run at a time per app.** A harness already there is refused, never taken down: it may
+  be another run in progress. An interrupted run (Ctrl-C, a cancelled CI job) prints
+  `INTERRUPTED: no verdict`, exits `130` (`143` on SIGTERM) and removes the harness.
+- **Time:** about a minute and a half on the default (measured 74–85 s with its images built).
+  Most of it is K5's unreachable database, which the default retries for about a minute by
+  design; it runs in the background while the other assertions do.
+- **Every assertion can fail.** Each one was run against a backend broken on purpose, and
+  failed: a `/health` that queries the database (K2, also with the default's own PHP), a
+  migrate that is not idempotent or that races (K3, K4), that exits `0` on an error or never
+  gives up (K5), a production image with a seed, a seed that adds instead of replacing (K6), a
+  PID 1 that ignores `SIGTERM` (K7), a silent server (K9), a gateway whose standalone trust
+  was widened or whose shared-infra trust was narrowed (K10). A conforming backend written in
+  Python passes all of them, which is what "the same for any backend" means.
+
+Not tested by the suite: a migration that fails on its own SQL (the suite cannot write one
+into an image it did not build), the seed in `dev`, the error envelope, and the declared
+clauses.
 
 ## What Oliva cannot see yet
 
