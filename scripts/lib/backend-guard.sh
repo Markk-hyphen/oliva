@@ -52,6 +52,10 @@ EOF
 # that points elsewhere: BuildKit takes `--from=oliva` for an image and answers "pull access
 # denied, repository does not exist" (measured). A service of the app's own that builds
 # backend/Dockerfile is the likely case. Static (`config`, no container): runs before `down`.
+# Self-contained on purpose: the deploys source this file without scripts/oliva/lib.sh, so its
+# `warn` does not exist there (measured: the deploy aborted printing only "warn: command not
+# found", with no reason and no fix).
+_bg_warn() { echo "!! $*" >&2; }
 build_guard() {
   local cfg svc ctx df target ctxs dockerfile bad=0
   cfg="$("$@" --profile '*' config 2>/dev/null)" || return 0   # an unresolvable config is env_check's to report
@@ -62,14 +66,14 @@ build_guard() {
     if [[ "$df" == /* ]]; then dockerfile="$df"; else dockerfile="$ctx/${df:-Dockerfile}"; fi
     [[ -f "$dockerfile" ]] || continue
     if [[ -n "$target" ]] && ! awk -v t="$target" 'toupper($1) == "FROM" && toupper($(NF-1)) == "AS" && $NF == t { f = 1 } END { exit !f }' "$dockerfile"; then
-      warn "service '$svc' builds target '$target', which ${dockerfile#"$PWD"/} does not have."
-      [[ "$target" == frankenphp_* ]] && warn "  Since Oliva 1.12.0 the backend's targets are dev, prod, staging: '${target#frankenphp_}' (docs/oliva/UPGRADING.md)."
+      _bg_warn "service '$svc' builds target '$target', which ${dockerfile#"$PWD"/} does not have."
+      [[ "$target" == frankenphp_* ]] && _bg_warn "  Since Oliva 1.12.0 the backend's targets are dev, prod, staging: '${target#frankenphp_}' (docs/oliva/UPGRADING.md)."
       bad=1
     fi
     if grep -qE -- '--from=oliva([[:space:]]|$)' "$dockerfile" && [[ ",$ctxs," != *",oliva,"* ]]; then
-      warn "service '$svc' builds ${dockerfile#"$PWD"/} without the 'oliva' build context it copies from."
-      warn "  Add to its build:   additional_contexts: { oliva: ./scripts/oliva }   (or reuse docker-compose.yml's x-backend-build)"
-      warn "  Without it the build fails with a misleading \"pull access denied, repository does not exist\"."
+      _bg_warn "service '$svc' builds ${dockerfile#"$PWD"/} without the 'oliva' build context it copies from."
+      _bg_warn "  Add to its build:   additional_contexts: { oliva: ./scripts/oliva }   (or reuse docker-compose.yml's x-backend-build)"
+      _bg_warn "  Without it the build fails with a misleading \"pull access denied, repository does not exist\"."
       bad=1
     fi
   done < <(awk '
