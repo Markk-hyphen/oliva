@@ -106,7 +106,7 @@ project name (`-p <app>-staging`), así que convive con producción sin interfer
 Staging es un stage del Dockerfile que **extiende** el de prod:
 
 ```
-frankenphp_prod  →  frankenphp_staging
+prod  →  staging
 ```
 
 Y le cambia tres cosas:

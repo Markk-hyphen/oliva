@@ -87,7 +87,7 @@ guard_dev_ports() {
   return 1
 }
 
-# La imagen del backend debe hornear worker mode (backend/Dockerfile, stage frankenphp_prod;
+# La imagen del backend debe hornear worker mode (backend/Dockerfile, stage prod;
 # staging hereda de ahí). La imagen sale del `config` del servicio, no de `config --images`:
 # ese lista también las imágenes de los depends_on, en orden no determinista.
 guard_worker_image() {
@@ -104,7 +104,7 @@ guard_worker_image() {
   docker image inspect "$img" --format '{{range .Config.Env}}{{println .}}{{end}}' \
     | grep -qx 'FRANKENPHP_CONFIG=import worker.Caddyfile' && return 0
   echo "!! worker-image: $img NO hornea FRANKENPHP_CONFIG=import worker.Caddyfile" >&2
-  echo "!!   worker mode arrancaría APAGADO (ver backend/Dockerfile, stage frankenphp_prod)" >&2
+  echo "!!   worker mode arrancaría APAGADO (ver backend/Dockerfile, stage prod)" >&2
   return 1
 }
 

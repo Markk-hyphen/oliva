@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Deploy del stack de STAGING de una app Oliva sobre infra compartida.
-# Análogo a deploy.sh, pero usa la imagen frankenphp_staging y un project
+# Análogo a deploy.sh, pero usa la imagen staging y un project
 # name propio (-p <app>-staging) para no interferir con el stack de producción.
 #
 # Prerequisitos (primera vez, una sola vez por app):
@@ -71,7 +71,7 @@ echo ">> down"
 # --wait, like deploy.sh: OK only when `migrate` exited 0 (it migrates the staging database,
 # .env.staging loads last) and every service is healthy. The explicit migrate that used to
 # follow is gone: the one-shot `migrate` service does it before anything else starts.
-echo ">> up -d --build --wait (target backend/scheduler/migrate: frankenphp_staging)"
+echo ">> up -d --build --wait (target backend/scheduler/migrate: staging)"
 if ! "${COMPOSE[@]}" up -d --build --wait --wait-timeout "${OLIVA_DEPLOY_WAIT_TIMEOUT:-300}"; then
   echo "!! up failed. Last lines of migrate, backend and gateway:" >&2
   "${COMPOSE[@]}" logs --no-color --tail 25 migrate backend gateway >&2 || true

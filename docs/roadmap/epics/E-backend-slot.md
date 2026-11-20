@@ -250,6 +250,16 @@ are mandatory and failing, which recommended and unmet, which declared and untes
 ones warn on every run; declared ones are announced on every run. The default backend fills
 the card out of the box.
 
+## Phase B results
+
+**Step 1 — slot-neutral targets (2026-11-20).** `frankenphp_dev`/`frankenphp_prod`/`frankenphp_staging`
+→ `dev`/`prod`/`staging` in the Dockerfile, the compose files, the scripts and the live docs
+(old `UPGRADING.md` sections, `agent-commits.md` and closed epics keep the old names as
+history). `frankenphp_upstream`/`frankenphp_base` kept (internal, parsed by the scripts).
+A leftover old name fails loudly: `target stage "frankenphp_dev" could not be found` (rc 17).
+Prod and staging build; the rename invalidated no cache (the prod image came out identical:
+RB6 closed). `verify` all green.
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,

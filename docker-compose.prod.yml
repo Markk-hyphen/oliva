@@ -5,14 +5,14 @@ services:
   migrate:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     environment:
       - APP_ENV=prod
 
   backend:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     restart: unless-stopped
     environment:
       - APP_ENV=prod
@@ -26,7 +26,7 @@ services:
   scheduler:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     restart: unless-stopped
     environment:
       - APP_ENV=prod
@@ -44,7 +44,7 @@ services:
   worker:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     environment:
       - APP_ENV=prod
     # The JWT key pair, read-only, like the backend: a handler that signs or reads tokens
@@ -60,7 +60,7 @@ services:
   realtime-relay:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     environment:
       - APP_ENV=prod
     # The JWT key pair, read-only, like the backend: a handler that signs or reads tokens

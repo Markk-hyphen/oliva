@@ -281,17 +281,17 @@ AppFixtures (FixtureGroupInterface)
 
 `AppFixtures` implementa `FixtureGroupInterface` → permite segmentar con `--group=staging` (QA/devs) vs `--group=dev` (desarrollo local) sin peligro de correr datos de prueba en prod.
 
-### Guard de producción — target Docker `frankenphp_staging`
+### Guard de producción — target Docker `staging`
 
 Las dependencias de seeding son `require-dev`. La imagen prod se compila con `--no-dev`, así que **el comando `doctrine:fixtures:load` no existe en prod**. Es una garantía estructural, no una convención:
 
 ```dockerfile
 # Hereda de prod (no dev): mantiene representatividad del entorno
-FROM frankenphp_prod AS frankenphp_staging
+FROM prod AS staging
 RUN composer install ...   # re-instala incluyendo dev-deps
 ```
 
-Nunca hereda de `frankenphp_dev` — staging debe ser prod + tooling de seeding, no dev + tooling de seeding. Si diverge de prod, deja de testear lo que realmente corre.
+Nunca hereda de `dev` — staging debe ser prod + tooling de seeding, no dev + tooling de seeding. Si diverge de prod, deja de testear lo que realmente corre.
 
 ### Uso (en staging)
 
@@ -304,7 +304,7 @@ Nunca hereda de `frankenphp_dev` — staging debe ser prod + tooling de seeding,
 ```bash
 # 1. Construir imagen staging
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  build --target frankenphp_staging backend
+  build --target staging backend
 
 # 2. Cargar fixtures (contra la DB de STAGING, no la de prod)
 docker exec <app>-staging-backend-1 bin/console doctrine:fixtures:load \
@@ -471,7 +471,7 @@ el EntityManager de Doctrine, loggers con buffer, etc.). Por defecto FrankenPHP 
   `.env`, `public/index.php`): the watcher restarts the workers on a change. Until then dev ran
   classic, so a request-isolation bug could only show up in staging or production. Known limit:
   Symfony judges its caches fresh by whole seconds; `doctor`/`verify` detect a stale one.
-- **Prod:** la intención es worker — `frankenphp_prod` setea
+- **Prod:** la intención es worker — `prod` setea
   `FRANKENPHP_CONFIG="import worker.Caddyfile"` y el `Caddyfile` lo inyecta en el bloque
   global `frankenphp { {$FRANKENPHP_CONFIG} }`.
 - **⚠️ Hallazgo 2026-10-23:** en la práctica prod corría **clásico**. `backend` carga

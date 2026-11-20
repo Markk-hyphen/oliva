@@ -149,7 +149,7 @@ These are the pieces Oliva makes robust, and the ones its guards, CI and update 
 | Real-time | [Mercure](https://mercure.rocks/) hub, built into the backend's Caddy |
 | Queues | RabbitMQ + Symfony Messenger |
 | Scheduled tasks | `supercronic` running `backend/scheduler/crontab` |
-| Staging / seeding | [Foundry](https://symfony.com/bundles/ZenstruckFoundryBundle/current/index.html) + Doctrine Fixtures · `frankenphp_staging` image stage (the fixtures command doesn't exist in the prod image) |
+| Staging / seeding | [Foundry](https://symfony.com/bundles/ZenstruckFoundryBundle/current/index.html) + Doctrine Fixtures · `staging` image stage (the fixtures command doesn't exist in the prod image) |
 | API testing | a [Bruno](https://www.usebruno.com/) collection in `api/`, per app (not shipped by Oliva: the requests are 100% domain) |
 | Infrastructure | Docker Compose · multi-stage builds (dev / prod / staging) |
 

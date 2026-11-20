@@ -7,7 +7,7 @@
 # 1.13.2-php8.3.36 (2026-10-21) es un bump de SEGURIDAD, no de rutina:
 #   - PHP 8.3.36 arregla PHP2Shell (CVE-2026-109618/109619, CVSS 9.2, RCE sin auth). El
 #     109619 es estado de request stale que un worker reusa en el request siguiente → pega
-#     de lleno en el worker mode de frankenphp_prod, no es un CVE de espectador.
+#     de lleno en el worker mode de prod, no es un CVE de espectador.
 #   - FrankenPHP 1.13.2 arregla además 4 vulns propias, 2 aplican acá: fuga de fragmentos
 #     del input del cliente anterior vía error_get_last() en worker mode
 #     (GHSA-4gfw-9v29-gp9h) y thread pool ocupable por un cliente sin auth que encola y
@@ -179,7 +179,7 @@ HEALTHCHECK --start-period=60s CMD curl -fsS -o /dev/null http://localhost/healt
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile" ]
 
 # Dev FrankenPHP image
-FROM frankenphp_base AS frankenphp_dev
+FROM frankenphp_base AS dev
 
 ENV APP_ENV=dev XDEBUG_MODE=off
 # Worker mode in dev too (since 1.11.0), with a watcher (worker.dev.Caddyfile). Until then dev
@@ -224,7 +224,7 @@ RUN --mount=type=bind,source=php-extensions.txt,target=/run/oliva/php-extensions
 CMD [ "frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--watch" ]
 
 # Prod FrankenPHP image
-FROM frankenphp_base AS frankenphp_prod
+FROM frankenphp_base AS prod
 
 ENV APP_ENV=prod
 ENV FRANKENPHP_CONFIG="import worker.Caddyfile"
@@ -254,11 +254,11 @@ RUN set -eux; \
 # Staging FrankenPHP image — inherits from prod, adds seeding tooling (Foundry + fixtures)
 # Prod image is --no-dev so this command is unavailable there: structural guard against
 # accidentally seeding production.
-FROM frankenphp_prod AS frankenphp_staging
+FROM prod AS staging
 
 ENV APP_ENV=staging
 
-# frankenphp_prod horneó .env.local.php con APP_ENV=prod compilado (composer
+# prod horneó .env.local.php con APP_ENV=prod compilado (composer
 # dump-env prod) — heredarlo pisaría el ENV de arriba. Hay que borrarlo antes
 # del install para que el entorno de staging se resuelva en runtime.
 RUN set -eux; \

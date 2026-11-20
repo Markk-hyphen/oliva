@@ -346,7 +346,7 @@ stack de producción.
 3. **Build + up** (project name `-p <app>-staging` propio; staging como app en
    shared-infra). `up -d --build` buildea automáticamente cualquier servicio
    con sección `build` (backend/scheduler con tag `<app>-staging-backend:staging`,
-   target `frankenphp_staging`; frontend con tag `<app>-staging-frontend:staging`) —
+   target `staging`; frontend con tag `<app>-staging-frontend:staging`) —
    no se enumeran servicios a propósito, ver gotcha más abajo:
    ```bash
    docker compose -p <app>-staging \
@@ -361,7 +361,7 @@ stack de producción.
 5. **Migrations:** automatic, by the `migrate` service, on the staging database (`.env.staging`
    loads last). To check:
    `docker exec <app>-staging-backend-1 bin/console doctrine:migrations:status`
-6. **Seeding:** la imagen `frankenphp_staging` sí tiene `doctrine:fixtures:load`
+6. **Seeding:** la imagen `staging` sí tiene `doctrine:fixtures:load`
    (a diferencia de prod). La DB de staging es desechable — la purga es inocua:
    ```bash
    docker exec <app>-staging-backend-1 \
@@ -389,7 +389,7 @@ con `-v` agregado al comando de los 4 overlays.
 > Síntoma real: `fixtures:load` fallaba con "command not defined" porque
 > `prod` no está en `bundles.php`. Por eso `docker-compose.staging.yml`
 > fija `environment: [APP_ENV=staging]` explícito en backend/scheduler, y el
-> stage `frankenphp_staging` del Dockerfile borra el `.env.local.php` heredado
+> stage `staging` del Dockerfile borra el `.env.local.php` heredado
 > de prod (otra capa que pisaba el entorno). Regla general para diagnosticar
 > cualquier env var que no toma el valor esperado: primero
 > `docker exec <c> printenv VAR` + `docker compose ... config` (de qué capa

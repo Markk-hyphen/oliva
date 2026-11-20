@@ -150,7 +150,7 @@ fork_has_extensions() { grep -qvE '^[[:space:]]*(#|$)' backend/php-extensions.tx
 do_ci_build() {
   docker buildx inspect oliva-ci >/dev/null 2>&1 \
     || docker buildx create --name oliva-ci --driver docker-container >/dev/null
-  docker buildx build --builder oliva-ci --target frankenphp_dev -q backend >/dev/null
+  docker buildx build --builder oliva-ci --target dev -q backend >/dev/null
 }
 
 # Versión de PHP que CORRE en el backend vs. el pin de backend/Dockerfile.

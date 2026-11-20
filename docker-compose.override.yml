@@ -28,7 +28,7 @@ services:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     build:
-      target: frankenphp_dev
+      target: dev
     volumes:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
@@ -45,7 +45,7 @@ services:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ver backend: usuario del host en dev
     build:
-      target: frankenphp_dev
+      target: dev
     volumes:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
@@ -73,7 +73,7 @@ services:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ver backend: usuario del host en dev
     build:
-      target: frankenphp_dev
+      target: dev
     volumes:
       - ./backend/.env:/app/.env:ro
       - ./backend/src:/app/src
@@ -92,7 +92,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: frankenphp_dev
+      target: dev
     command: ["supercronic", "/etc/supercronic/crontab"]
     restart: unless-stopped
     env_file:
@@ -117,7 +117,7 @@ services:
   backend:
     image: ${COMPOSE_PROJECT_NAME}-backend:dev
     build:
-      target: frankenphp_dev
+      target: dev
     # Corre como el usuario del host (default = el UID/GID típico de Linux, 1000).
     # Antes corría como root → los archivos que escribe en los bind-mounts (claves
     # JWT en config/jwt, migración generada, cache en var) quedaban root-owned en el

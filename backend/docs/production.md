@@ -72,7 +72,7 @@ Your server is up and running, and a HTTPS certificate has been automatically ge
 Go to `https://your-domain-name.example.com` and enjoy!
 
 > [!NOTE]
-> The worker mode of FrankenPHP is enabled by default in prod: the `frankenphp_prod` image bakes
+> The worker mode of FrankenPHP is enabled by default in prod: the `prod` image bakes
 > `FRANKENPHP_CONFIG=import worker.Caddyfile`. To disable it (run classic), add `FRANKENPHP_CONFIG=`
 > empty to the `environment:` of the `backend` service in `docker-compose.prod.yml` — a deliberate,
 > per-deployment opt-out. **Do NOT** put `FRANKENPHP_CONFIG` in `.env`/`.env.example`: the base
