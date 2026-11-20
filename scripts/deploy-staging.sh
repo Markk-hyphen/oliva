@@ -55,6 +55,7 @@ queue_guard "${COMPOSE[@]}" || queue_ok=0
 realtime_guard "${COMPOSE[@]}" || queue_ok=0
 if [[ -n "$PROD_CONFIG" ]]; then queue_guard_staging "$PROD_CONFIG" "${COMPOSE[@]}" || queue_ok=0; fi
 backend_health_guard || queue_ok=0
+build_guard "${COMPOSE[@]}" || queue_ok=0
 if (( ! queue_ok )); then
   echo "!! STAGING DEPLOY ABORTED (see above). Nothing was stopped." >&2
   exit 1
