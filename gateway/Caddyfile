@@ -10,6 +10,17 @@
     }
 }
 
+# The security headers, as a snippet: the normal routes and the gateway's own error
+# responses (handle_errors below) carry the same ones.
+(oliva_security_headers) {
+    header {
+        Content-Security-Policy "default-src 'self'; style-src 'self' {$GATEWAY_CSP_STYLE_EXTRA} https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self';"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer-when-downgrade"
+    }
+}
+
 # `:80` and NEVER `localhost`: a `localhost` site address makes Caddy serve
 # HTTPS on 443 with its internal CA and redirect HTTP to HTTPS. TLS is
 # terminated by the edge (shared-infra's reverse proxy), not by the gateway.
@@ -24,12 +35,7 @@
     # One base CSP (prod value). GATEWAY_CSP_STYLE_EXTRA = ""  in prod (baked in
     # the image); = "'unsafe-inline'" in dev (compose override). Keeping it one
     # string per environment avoids two copies of the policy drifting.
-    header {
-        Content-Security-Policy "default-src 'self'; style-src 'self' {$GATEWAY_CSP_STYLE_EXTRA} https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self';"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "no-referrer-when-downgrade"
-    }
+    import oliva_security_headers
 
     log {
         level {$GATEWAY_LOG_LEVEL:INFO}
@@ -66,5 +72,19 @@
     # Catch-all: the frontend.
     handle {
         reverse_proxy {$GATEWAY_FRONTEND_UPSTREAM:frontend:80}
+    }
+
+    # The gateway's OWN errors on the backend's routes, as JSON (since 1.12.0). When the
+    # backend is down or not answering, Caddy produced a 502 with no body and no content type,
+    # where the frontend expects JSON (measured, E-backend-slot P7). A 5xx the backend itself
+    # returns is a response, not a gateway error, and passes through untouched. Other routes
+    # keep Caddy's default.
+    handle_errors 502 503 504 {
+        import oliva_security_headers
+        @backend_routes path /api /api/* /health
+        handle @backend_routes {
+            header Content-Type "application/json"
+            respond `{"error":"backend unavailable","status":{err.status_code}}` {err.status_code}
+        }
     }
 }

@@ -27,6 +27,76 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.12.0 — 2026-11-20
+
+> **The backend contract, written and tested.** Phase B of the backend-slot epic
+> (`docs/roadmap/epics/E-backend-slot.md` in Oliva's repository; apps do not carry it).
+> `docs/oliva/backend-contract.md` says what any backend must do, should do and declares;
+> `./oliva conformance` tests a backend image against it from outside, and CI runs it on every
+> push. The build targets lose their FrankenPHP names, seeding gets its own entrypoint
+> (`oliva-seed`) that the production image cannot have, and five defaults are fixed: trusted
+> hosts, a plain `DATABASE_URL`, a fast-failing `oliva-migrate`, the gateway's own errors in
+> JSON, and the gateway's proxy trust following the topology.
+
+**Action required in the app**
+
+- [merge, guard: backend] The backend's build targets are now `dev`, `prod` and `staging`
+  (were `frankenphp_dev`, `frankenphp_prod`, `frankenphp_staging`). `docker-compose.override.yml`
+  (shared) takes Oliva's `target: dev`. A service of the app's own that builds
+  `backend/Dockerfile` also names the new target and adds the `oliva` build context:
+  `additional_contexts: { oliva: ./scripts/oliva }`. Until then `verify` (step `backend`) and
+  `deploy*.sh` stop before anything else, naming the service and the fix (the build alone
+  would fail after `down`, the missing context with a misleading "pull access denied").
+- [decision, guard: env] Set `SYMFONY_TRUSTED_HOSTS` on each production host's `.env` to the
+  app's domain as a regex, keeping `localhost`: `'^(localhost|example\.org)$'`. Empty, any
+  `Host` is accepted and a forged one ends up in absolute URLs (a reset link, a redirect).
+  `env check` warns on a production stack while it is empty, and errors on a value without
+  `localhost` (the healthcheck calls it: the backend would never be healthy).
+- [host] Only for a **standalone** production stack (not the shared-infra overlay) with a
+  reverse proxy in front of the gateway: set `GATEWAY_TRUSTED_PROXIES` in that host's `.env`
+  to the proxy's address. The standalone gateway now trusts no proxy, so behind an
+  undeclared one every client would look like the proxy (one IP for everyone: an IP-based
+  login throttle locks out all users together). Nothing can tell from the stack whether a
+  proxy sits in front: acknowledge with `./oliva ack` once checked. No known app runs in
+  production today.
+
+**What changed**
+
+- **The backend contract** (`docs/oliva/backend-contract.md`): mandatory clauses (image
+  targets, `/health` on `:80` without I/O, `oliva-migrate`, `oliva-seed`, SIGTERM),
+  recommended (logs on stdout, a plain database URL, trusted hosts, a JSON error envelope),
+  declared (trusted proxies, draining, request isolation); the backend-tied slots, the valid
+  combinations, CORS, schema ownership.
+- **`./oliva conformance [<image> [--staging <image>]]`**: K1–K10 against any backend image,
+  in a throwaway harness (`<app>-conformance`, no host port, always removed). `--keep`,
+  `--down`, `--db-url-suffix`. About a minute and a half. **CI job `conformance`**: builds the
+  `prod` and `staging` images and runs it. It goes red when the app's backend breaks a
+  mandatory clause, for example a `/health` that queries the database. All known apps use
+  Oliva's `HealthController`.
+- **`oliva-seed`** (the Seed clause): in the `dev` and `staging` images only. Runs
+  `doctrine:fixtures:load` with the environment's group (`OLIVA_SEED_GROUP` picks another);
+  it replaces the data. `deploy-staging.sh` uses it. `fixtures:load` still works as before.
+- **Build targets** `dev`/`prod`/`staging`. `frankenphp_upstream` and `frankenphp_base`
+  stay (internal).
+- **The `oliva` build context:** the public-secrets list moved from `backend/frankenphp/` to
+  `scripts/oliva/known-public-secrets.sha256`; the backend and realtime builds read it through
+  a named context (`x-backend-build` in `docker-compose.yml`). New guard `build_guard` (verify
+  step `backend`, deploys before `down`).
+- **`SYMFONY_TRUSTED_HOSTS`** declared in the manifest and `.env.example` (empty).
+- **`DATABASE_URL` without `?serverVersion=…&charset=…`** for a new `.env` (libpq and every
+  non-PHP driver refuse those parameters); the charset moved to `doctrine.yaml`. An existing
+  `.env` keeps working and is left alone. `~/infra`'s `provision-postgres.sh` still prints the
+  old form: fine for the default backend, drop the parameters for any other client.
+- **`oliva-migrate` fails fast** (0–1 s instead of about a minute) on a wrong password, an
+  unknown database or role, and prints the driver's error as its last line. An unreachable
+  host is still retried.
+- **The gateway's own 502/503/504** on `/api*` and `/health` are JSON
+  (`{"error":"backend unavailable","status":502}`) with the security headers; a 5xx the backend
+  returns passes untouched. The default backend's own errors are still HTML (friction X20).
+- **Gateway proxy trust by topology:** standalone production `127.0.0.1/32`, shared infra
+  `private_ranges`, dev unchanged; `env check` warns when a standalone production gateway is
+  widened.
+
 ## 1.11.0 — 2026-11-20
 
 > **The backend honours its own contract.** Phase A of the backend-slot epic

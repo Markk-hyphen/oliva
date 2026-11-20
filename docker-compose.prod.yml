@@ -5,14 +5,14 @@ services:
   migrate:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     environment:
       - APP_ENV=prod
 
   backend:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     restart: unless-stopped
     environment:
       - APP_ENV=prod
@@ -26,7 +26,7 @@ services:
   scheduler:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     restart: unless-stopped
     environment:
       - APP_ENV=prod
@@ -44,7 +44,7 @@ services:
   worker:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     environment:
       - APP_ENV=prod
     # The JWT key pair, read-only, like the backend: a handler that signs or reads tokens
@@ -60,7 +60,7 @@ services:
   realtime-relay:
     image: ${COMPOSE_PROJECT_NAME}-backend:prod
     build:
-      target: frankenphp_prod
+      target: prod
     environment:
       - APP_ENV=prod
     # The JWT key pair, read-only, like the backend: a handler that signs or reads tokens
@@ -83,6 +83,16 @@ services:
 
   gateway:
     image: ${COMPOSE_PROJECT_NAME}-gateway:prod
+    environment:
+      # Standalone production: the gateway IS the edge, nothing legitimate sits in front of
+      # it, so it trusts no proxy's X-Forwarded-For (loopback only, where nothing comes from).
+      # Before 1.12.0 it trusted every private address, and on a host where Docker hands the
+      # gateway a bridge address instead of the client's (a userland proxy, rootless Docker),
+      # anyone could forge their IP and login throttling was void (E-backend-slot B-F3,
+      # decision QB4). docker-compose.shared-infra.yml trusts the private ranges again: there
+      # the edge proxy is in front. A real proxy in front of a standalone stack: set
+      # GATEWAY_TRUSTED_PROXIES in the host's .env (env check warns when it is widened).
+      GATEWAY_TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-127.0.0.1/32}
     build:
       context: ./gateway
       dockerfile: Dockerfile

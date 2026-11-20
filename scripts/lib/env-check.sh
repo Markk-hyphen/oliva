@@ -25,7 +25,7 @@
 # the host, where there is no jq.
 
 OLIVA_MANIFESTS=(scripts/oliva/env.manifest env.manifest)
-OLIVA_PUBLIC_LIST="backend/frankenphp/known-public-secrets.sha256"
+OLIVA_PUBLIC_LIST="scripts/oliva/known-public-secrets.sha256"
 # Where the JWT private key can be. Since 1.11.0: ./secrets/jwt in every environment, made
 # by `./oliva env init`. backend/config/jwt is where dev kept it before; `env init` moves it.
 OLIVA_JWT_KEYS=(secrets/jwt/private.pem backend/config/jwt/private.pem)
@@ -111,6 +111,9 @@ _ec_service_env() {
 _ec_service_block() {
   awk -v s="  $1:" '/^[^ ]/ { top = $0; ins = 0; next } top == "services:" && /^  [^ ]/ { ins = ($0 == s); next } ins'
 }
+
+# _ec_matches_localhost <ERE> → 0 matches "localhost", 1 does not, 2 the pattern does not parse.
+_ec_matches_localhost() { [[ localhost =~ $1 ]]; }
 
 # Host of a URL-shaped value: scheme://user:pass@HOST:port/…
 _ec_url_host() { [[ "$1" =~ @([^@/:?]+)(:[0-9]+)?(/|\?|$) ]] && printf '%s' "${BASH_REMATCH[1]}"; }
@@ -266,6 +269,52 @@ env_check() {
   if [[ -n "${RES[SYMFONY_TRUSTED_HEADERS]+x}" && -z "${RES[SYMFONY_TRUSTED_HEADERS]:-}" ]]; then
     global_err+=("SYMFONY_TRUSTED_HEADERS is set to an empty value: Symfony throws at boot → remove the line (unset = the default: for, port, proto)")
     errors=1
+  fi
+
+  # Trusted hosts (since 1.12.0, decision QB2 of E-backend-slot): empty means any Host header
+  # is accepted, Symfony's default and Oliva's (it cannot know the app's domain). In
+  # production absolute URLs (password-reset links, redirects) are built from that header, so
+  # a forged Host ends up in them. A warning, never an error: setting it wrong answers 400 to
+  # every request, and only the app knows its domain.
+  if [[ "${RES[APP_ENV]:-}" == prod && "$services" == *" backend "* && -z "${REPLACED[backend]:-}" \
+        && -z "${RES[SYMFONY_TRUSTED_HOSTS]:-}" ]]; then
+    global_warn+=("SYMFONY_TRUSTED_HOSTS is empty in production: any Host header is accepted, and absolute URLs are built from it → set it in .env to your domain as a regex that also accepts localhost, e.g. SYMFONY_TRUSTED_HOSTS='^(localhost|example\\.org)\$'")
+  fi
+  # When set, it must accept "localhost": the backend's healthcheck is `curl http://localhost/health`
+  # (Host: localhost). Without it every healthcheck gets 400, the backend never becomes
+  # healthy, and a deploy (`up --wait`) fails AFTER `down`. An error, so the deploys stop first.
+  # Bash ERE, case-insensitive, per comma-separated pattern (Symfony anchors each as {…}i);
+  # a pattern bash cannot parse (PCRE-only syntax) is reported, not guessed.
+  if [[ -n "${RES[SYMFONY_TRUSTED_HOSTS]:-}" && "$services" == *" backend "* && -z "${REPLACED[backend]:-}" ]]; then
+    local th_ok=0 th_unparsed=0 th_pat th_rc
+    local -a th_pats=()
+    IFS=',' read -ra th_pats <<< "${RES[SYMFONY_TRUSTED_HOSTS]}"
+    shopt -s nocasematch
+    for th_pat in "${th_pats[@]}"; do
+      th_pat="${th_pat## }"; th_pat="${th_pat%% }"
+      # `|| th_rc=$?`, not a bare test: callers run under set -e. 2 = the pattern does not parse.
+      th_rc=0; _ec_matches_localhost "$th_pat" || th_rc=$?
+      if (( th_rc == 0 )); then th_ok=1; elif (( th_rc == 2 )); then th_unparsed=1; fi
+    done
+    shopt -u nocasematch
+    if (( ! th_ok && th_unparsed )); then
+      global_warn+=("SYMFONY_TRUSTED_HOSTS: could not check whether it accepts localhost (a pattern this check cannot parse). It must, or the backend's healthcheck fails: include localhost")
+    elif (( ! th_ok )); then
+      global_err+=("SYMFONY_TRUSTED_HOSTS does not accept \"localhost\": the backend's healthcheck (Host: localhost) would get 400, the backend would never be healthy and a deploy would fail after stopping the stack → add it, e.g. '^(localhost|example\\.org)\$'")
+      errors=1
+    fi
+  fi
+
+  # The gateway's proxy trust follows the topology (since 1.12.0, decision QB4): a standalone
+  # production stack trusts no proxy (prod.yml: loopback only), shared infra trusts the
+  # private ranges (its edge proxy). A standalone production gateway trusting more lets a
+  # client from those ranges forge its IP, unless a real proxy is in front: say so, every run.
+  if [[ "${RES[APP_ENV]:-}" == prod && "$services" == *" gateway "* ]] \
+     && ! _ec_service_block gateway <<< "$cfg" | grep -qE '^      proxy_net:'; then
+    case "${GW[GATEWAY_TRUSTED_PROXIES]:-}" in
+      127.0.0.1/32|"127.0.0.1/32 ::1/128"|::1/128) ;;
+      *) global_warn+=("the gateway of this standalone production stack trusts X-Forwarded-For from \"${GW[GATEWAY_TRUSTED_PROXIES]:-private_ranges}\": a client coming from there can forge its IP (login throttling). Right only if a real proxy sits in front of this host → otherwise remove GATEWAY_TRUSTED_PROXIES from .env") ;;
+    esac
   fi
 
   if [[ -n "$leaked" ]]; then

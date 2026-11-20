@@ -2,6 +2,10 @@ doctrine:
     dbal:
         url: '%env(resolve:DATABASE_URL)%'
         server_version: '15'
+        # Here, not in DATABASE_URL (since 1.12.0): the URL stays plain so any driver reads it.
+        # Without it the client takes the cluster's default client_encoding (UTF8 on Oliva's
+        # Postgres, measured; a managed one may differ).
+        charset: utf8
         profiling_collect_backtrace: '%kernel.debug%'
         use_savepoints: true
         types:

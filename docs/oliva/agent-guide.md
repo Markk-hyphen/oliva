@@ -49,6 +49,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 - `backend/` — Symfony con FrankenPHP (Doctrine ORM/Migrations, pgvector, Mercure, Messenger)
 - `frontend/` — Vite (Node), incluye demo de Mercure en vivo (`src/js/live.js`, sección "Live" de `index.html`)
 - `docs/oliva/concepts.md` — glosario técnico del framework (pgvector, RabbitMQ, AMQP, modelo de sync, etc.). Solo lectura en una app; el glosario propio de la app es `docs/concepts.md`
+- `docs/oliva/backend-contract.md` — the backend contract: what any backend (the default or a replacement) must do (image targets, `/health`, `oliva-migrate`, `oliva-seed`, signals), should do, and declares; the backend-tied slots and their valid combinations. Read it before changing the backend's lifecycle, health route or error responses. `./oliva conformance` tests this checkout's backend against it from outside (about a minute and a half; `--help`); a change to `/health`, `oliva-migrate`, `oliva-seed` or the stop behaviour is proven with it
 - `docs/oliva/qa-y-staging.md` — qué garantías ofrece el framework (verify.sh, los jobs de CI, stack de staging, seeding) y qué NO cubre. Es el doc humano de lo que acá está desperdigado en runbooks
 - `docs/oliva/` — docs **del framework** que bajan a cada fork: `actualizaciones.md` (sistema de updates) y `UPGRADING.md` (notas por versión)
 - `scripts/oliva/` — herramientas de mantenimiento y sync (`deps.sh`, `sync.sh`, `verify.sh`, `release.sh`, `owned-paths.txt`)
@@ -139,6 +140,39 @@ profile, like `queues` and `cron`. Design and reasons: `docs/roadmap/epics/E-unb
 - **One hub and one relay per app and per environment** on a shared setup, same as the worker
   (the relay reads the app's own database; nothing is shared). `./oliva init --demo` turns on the
   `realtime` profile, since the live canvas publishes through Mercure.
+
+### The backend's image and its contract (since 1.12.0)
+
+What any backend must keep doing is `docs/oliva/backend-contract.md`; `./oliva conformance`
+tests it from outside (CI job `conformance`). For the default backend, what changed in 1.12.0:
+
+- **Build targets are `dev`, `prod`, `staging`** (were `frankenphp_dev`/`_prod`/`_staging`).
+  A service of the app's own that builds `backend/Dockerfile` names one of them.
+- **The `oliva` build context.** The backend and realtime builds copy Oliva's list of publicly
+  known secrets from `scripts/oliva/` through a named context. `docker-compose.yml` passes it
+  (`x-backend-build`); a service of the app's own that builds `backend/Dockerfile` adds
+  `additional_contexts: { oliva: ./scripts/oliva }`. Without it BuildKit answers a misleading
+  "pull access denied, repository does not exist". `verify` (step `backend`) and the deploys,
+  before `down`, stop on a missing context or a target the Dockerfile does not have.
+- **`oliva-seed`** in the `dev` and `staging` images only: `doctrine:fixtures:load` with the
+  environment's group (`OLIVA_SEED_GROUP` picks another). It replaces the data. Dev:
+  `docker compose exec backend oliva-seed`.
+- **`SYMFONY_TRUSTED_HOSTS`** (`.env`, empty by default = any `Host` accepted). Production
+  should set it to the app's domain as a regex, **keeping `localhost`** (the healthcheck calls
+  it): `'^(localhost|example\.org)$'`. `env check` warns in production while it is empty, and
+  errors (deploys stop) on a value that refuses `localhost`.
+- **The gateway's proxy trust follows the topology:** a standalone production stack trusts no
+  proxy (`127.0.0.1/32`), shared infra trusts the private ranges (the edge proxy). A real proxy
+  in front of a standalone stack: set `GATEWAY_TRUSTED_PROXIES` in the host's `.env`
+  (`env check` warns that it was widened). Reasons: `docs/oliva/concepts.md`, trusted proxies.
+- **The gateway answers its own 502/503/504 as JSON** on `/api*` and `/health`
+  (`{"error":"backend unavailable","status":502}`); a 5xx from the backend passes untouched.
+  The default backend's own errors are still HTML (no serializer): the contract recommends JSON.
+- **A plain `DATABASE_URL`** (`postgresql://user:pass@host:5432/db`, no `?serverVersion=…`):
+  `env init` writes it for a new `.env`; an existing one keeps working. The server version and
+  the charset live in `doctrine.yaml`.
+- **`oliva-migrate` fails fast** on errors waiting cannot fix (wrong password, unknown database
+  or role) and prints the driver's error as its last line.
 
 ### Aislamiento por app: todo cuelga del project name
 
@@ -305,7 +339,7 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 12. **Smoke de flujos de negocio:** correr la collection Bruno de la app (`api/`,
     si existe) contra el entorno recién levantado — apuntar `{{base_url}}` al host
     correcto (público tras el paso 11, o `http://localhost` local) y verificar que
-    login + los flujos de dominio responden OK. Simétrico al `fixtures:load` del
+    login + los flujos de dominio responden OK. Simétrico al `oliva-seed` del
     runbook de staging: el health check confirma que el proceso arranca; la
     collection confirma que el dominio funciona end-to-end. Es opt-in y por app —
     Oliva no shipea la collection (los requests son 100% dominio, ver tabla de
@@ -324,8 +358,8 @@ Staging es **una app más** en el VPS: misma infra compartida, pero DB propia
 desechable y project name propio (`-p <app>-staging`). No interfiere con el
 stack de producción.
 
-> **Atajo para redeploys:** `./scripts/deploy-staging.sh` (ejecuta build + up
-> + migraciones + `fixtures:load` en una sola llamada). Los pasos de abajo
+> **Atajo para redeploys:** `./scripts/deploy-staging.sh` (build + up, which migrates
+> through the `migrate` service, + `oliva-seed`, in one call). Los pasos de abajo
 > documentan el setup inicial (una sola vez) y la lógica de cada paso.
 
 1. **Provisionar la DB de staging** en el Postgres compartido, desde `~/infra`:
@@ -346,7 +380,7 @@ stack de producción.
 3. **Build + up** (project name `-p <app>-staging` propio; staging como app en
    shared-infra). `up -d --build` buildea automáticamente cualquier servicio
    con sección `build` (backend/scheduler con tag `<app>-staging-backend:staging`,
-   target `frankenphp_staging`; frontend con tag `<app>-staging-frontend:staging`) —
+   target `staging`; frontend con tag `<app>-staging-frontend:staging`) —
    no se enumeran servicios a propósito, ver gotcha más abajo:
    ```bash
    docker compose -p <app>-staging \
@@ -361,11 +395,11 @@ stack de producción.
 5. **Migrations:** automatic, by the `migrate` service, on the staging database (`.env.staging`
    loads last). To check:
    `docker exec <app>-staging-backend-1 bin/console doctrine:migrations:status`
-6. **Seeding:** la imagen `frankenphp_staging` sí tiene `doctrine:fixtures:load`
-   (a diferencia de prod). La DB de staging es desechable — la purga es inocua:
+6. **Seeding:** `oliva-seed` (since 1.12.0, the backend contract's Seed hook) exists in the
+   staging and dev images only; the production image has neither it nor the fixtures bundle.
+   It replaces the data (fixtures purge first), harmless on the disposable staging database:
    ```bash
-   docker exec <app>-staging-backend-1 \
-     bin/console doctrine:fixtures:load --group=staging --no-interaction
+   docker exec <app>-staging-backend-1 oliva-seed
    ```
 7. **Health:** `docker exec <app>-staging-backend-1 curl -s http://localhost/health`
 
@@ -389,7 +423,7 @@ con `-v` agregado al comando de los 4 overlays.
 > Síntoma real: `fixtures:load` fallaba con "command not defined" porque
 > `prod` no está en `bundles.php`. Por eso `docker-compose.staging.yml`
 > fija `environment: [APP_ENV=staging]` explícito en backend/scheduler, y el
-> stage `frankenphp_staging` del Dockerfile borra el `.env.local.php` heredado
+> stage `staging` del Dockerfile borra el `.env.local.php` heredado
 > de prod (otra capa que pisaba el entorno). Regla general para diagnosticar
 > cualquier env var que no toma el valor esperado: primero
 > `docker exec <c> printenv VAR` + `docker compose ... config` (de qué capa
@@ -438,6 +472,7 @@ whatever was written in `.env` was ignored, with no error anywhere. Design and r
 - `GET /health` → `{"status": "ok"}` (`backend/src/Controller/HealthController.php`).
 - `.github/workflows/ci.yml`, job `env-contract` (sin build): `./oliva env init` + `env check` sobre los stacks dev y prod. Rojo si un archivo trackeado lleva un secreto real o pisa a `.env` con un placeholder o un valor públicamente conocido.
 - `.github/workflows/ci.yml`: build de imágenes, levanta los servicios (el servicio `migrate` aplica las migraciones; el CI chequea que no quede ninguna pendiente), chequea `/health` y `/.well-known/mercure`, valida el schema de Doctrine y corre PHPUnit. Job adicional de lint de Dockerfile con hadolint.
+- `.github/workflows/ci.yml`, job `conformance` (since 1.12.0): builds the `prod` and `staging` backend images and runs `./oliva conformance` on them, the backend contract tested from outside (`docs/oliva/backend-contract.md`). Red when a mandatory clause fails (a `/health` that touches the database, a migrate that is not idempotent, a seed in the production image, a server that ignores SIGTERM…). Not part of `./oliva verify`, to keep the dev loop fast: run it locally when you touch the backend's lifecycle.
 
 ## Protocolo de explicaciones conceptuales
 

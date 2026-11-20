@@ -1,3 +1,14 @@
+# Every service built from the backend image (migrate, backend, scheduler, worker, relay)
+# shares this build. `oliva` is a named build context: Oliva's list of publicly known secret
+# values lives in scripts/oliva/ (since 1.12.0; it was under backend/frankenphp/), so that an
+# app replacing the backend keeps a working `env check` and a buildable hub. The overlays
+# add only `target:` to it.
+x-backend-build: &backend-build
+  context: ./backend
+  dockerfile: Dockerfile
+  additional_contexts:
+    oliva: ./scripts/oliva
+
 services:
   database:
     image: pgvector/pgvector:pg${POSTGRES_VERSION:-15}
@@ -40,9 +51,7 @@ services:
   # success. Now `up --wait` fails with "service migrate didn't complete successfully".
   # `docker compose up -d` runs it again each time: that is how a new migration is applied.
   migrate:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: *backend-build
     command: ["oliva-migrate"]
     restart: "no"
     env_file:
@@ -59,9 +68,7 @@ services:
       - app_network
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: *backend-build
     restart: unless-stopped
     env_file:
       - .env
@@ -75,9 +82,7 @@ services:
       - app_network
 
   scheduler:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: *backend-build
     # Opt-in: solo arranca si se activa el profile `cron` (--profile cron o
     # listándolo explícito en `up`). Una app sin tareas periódicas no lo levanta
     # y no paga un container corriendo un crontab vacío. Mismo criterio que
@@ -107,9 +112,7 @@ services:
       - app_network
 
   worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: *backend-build
     # Consumidor de Messenger. Opt-in con el profile `queues`, el mismo que `rabbitmq`:
     # broker y consumidor van juntos. Hasta 1.8.0 el worker existía solo en dev, y una app
     # con colas en prod encolaba mensajes que nadie procesaba, sin ningún error.
@@ -149,9 +152,9 @@ services:
       context: ./realtime
       dockerfile: Dockerfile
       additional_contexts:
-        # The known-public-secrets list is Oliva's, kept with the backend. One copy, passed
-        # as a named build context (no duplication). bake reads it too (measured).
-        secrets: ./backend/frankenphp
+        # Oliva's list of publicly known secret values (scripts/oliva/), the same named
+        # context the backend build uses. One copy, no duplication. bake reads it (measured).
+        oliva: ./scripts/oliva
     # Opt-in, like queues and cron (Oliva's philosophy: every service optional). An app with
     # no realtime pays for neither the hub nor the relay. Both live behind this one profile.
     profiles: ["realtime"]
@@ -168,9 +171,7 @@ services:
       - app_network
 
   realtime-relay:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: *backend-build
     profiles: ["realtime"]
     restart: unless-stopped
     # The only publisher to the hub: consumes the `realtime` Doctrine transport and POSTs to

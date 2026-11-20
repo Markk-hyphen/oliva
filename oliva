@@ -20,6 +20,7 @@ Framework:
   verify                                       scripts/oliva/verify.sh
   release X.Y.Z                                scripts/oliva/release.sh
   env <init|check [--prod]>                    scripts/oliva/env.sh (.env: crearlo/repararlo, o chequear lo que resuelve Compose)
+  conformance [<image> [--staging <image>]]    scripts/oliva/conformance.sh (test a backend image against docs/oliva/backend-contract.md)
 
 Operación:
   deploy                                       scripts/deploy.sh
@@ -45,6 +46,7 @@ case "$cmd" in
   verify)        exec scripts/oliva/verify.sh "$@" ;;
   release)       exec scripts/oliva/release.sh "$@" ;;
   env)           exec scripts/oliva/env.sh "$@" ;;
+  conformance)   exec scripts/oliva/conformance.sh "$@" ;;
   deploy)        exec scripts/deploy.sh "$@" ;;
   deploy-staging) exec scripts/deploy-staging.sh "$@" ;;
   down)          exec scripts/down.sh "$@" ;;

@@ -1,0 +1,105 @@
+# The throwaway stack of the backend conformance suite (scripts/oliva/conformance.sh).
+# Never used by an app's stacks: the suite starts it under its own project name
+# (<app>-conformance), publishes no host port (a probe container talks to it from inside),
+# and always removes it, volumes included.
+#
+# Every image comes from a variable the script sets:
+#   OLIVA_CF_IMAGE          the backend image under test (its `prod` target)
+#   OLIVA_CF_STAGING_IMAGE  the same backend's `staging` target (for the Seed clause)
+#   OLIVA_CF_GATEWAY_IMAGE  this checkout's gateway (Oliva's, whatever the backend); also the
+#                           probe and the echo upstream, so the suite pulls no extra image
+#   OLIVA_CF_PG             the Postgres major, as docker-compose.yml's database
+# and the gateway's proxy trust comes from what docker-compose.prod.yml and
+# docker-compose.shared-infra.yml ship (OLIVA_CF_TRUST_PROD, OLIVA_CF_TRUST_SHARED), read
+# by the script, never written here, so the suite tests the product, not a copy of it.
+
+name: oliva-conformance
+
+x-backend-env: &backend-env
+  env_file:
+    - ${OLIVA_CF_ENV_FILE:?set by conformance.sh}
+    - ${OLIVA_CF_ENV_BACKEND:?set by conformance.sh}
+
+services:
+  database:
+    image: pgvector/pgvector:pg${OLIVA_CF_PG:-15}
+    environment:
+      POSTGRES_USER: conformance
+      POSTGRES_PASSWORD: ${OLIVA_CF_DB_PASSWORD:?set by conformance.sh}
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "conformance", "-d", "app"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  # One-shot runs of the backend image (`docker compose run`), never started by `up`.
+  migrate:
+    image: ${OLIVA_CF_IMAGE:?set by conformance.sh}
+    <<: *backend-env
+    environment:
+      APP_ENV: prod
+    command: ["oliva-migrate"]
+    profiles: ["oneshot"]
+
+  seed:
+    image: ${OLIVA_CF_STAGING_IMAGE:?set by conformance.sh}
+    <<: *backend-env
+    environment:
+      APP_ENV: staging
+    command: ["oliva-seed"]
+    profiles: ["oneshot"]
+
+  # The server, with the image's own default command. No restart policy: a backend that
+  # dies is a result, and a restart would hide it.
+  backend:
+    image: ${OLIVA_CF_IMAGE:?set by conformance.sh}
+    <<: *backend-env
+    environment:
+      APP_ENV: prod
+    restart: "no"
+
+  # Oliva's gateway in front of the backend, trusting what a standalone production stack
+  # trusts.
+  gateway:
+    image: ${OLIVA_CF_GATEWAY_IMAGE:?set by conformance.sh}
+    environment:
+      GATEWAY_TRUSTED_PROXIES: ${OLIVA_CF_TRUST_PROD:?set by conformance.sh}
+
+  # K10: the same gateway in front of an echo of the X-Forwarded-For it receives, once with
+  # the standalone production trust and once with the shared-infra one.
+  echo:
+    image: ${OLIVA_CF_GATEWAY_IMAGE:?set by conformance.sh}
+    command:
+      - sh
+      - -c
+      - |
+        printf ':80 {\n\trespond "{http.request.header.X-Forwarded-For}" 200\n}\n' > /tmp/Caddyfile
+        exec caddy run --adapter caddyfile --config /tmp/Caddyfile
+    # Never `disable: true` here: Compose 2.26's `up --wait` rejects a service whose
+    # healthcheck is disabled ("has no healthcheck configured"), measured.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      interval: 1s
+      retries: 30
+
+  gateway-standalone:
+    image: ${OLIVA_CF_GATEWAY_IMAGE:?set by conformance.sh}
+    environment:
+      GATEWAY_BACKEND_UPSTREAM: echo:80
+      GATEWAY_TRUSTED_PROXIES: ${OLIVA_CF_TRUST_PROD:?set by conformance.sh}
+
+  gateway-shared:
+    image: ${OLIVA_CF_GATEWAY_IMAGE:?set by conformance.sh}
+    environment:
+      GATEWAY_BACKEND_UPSTREAM: echo:80
+      GATEWAY_TRUSTED_PROXIES: ${OLIVA_CF_TRUST_SHARED:?set by conformance.sh}
+
+  # Where every request comes from: the gateway image (Alpine, curl), idle.
+  probe:
+    image: ${OLIVA_CF_GATEWAY_IMAGE:?set by conformance.sh}
+    command: ["sleep", "86400"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1s
+      retries: 3
