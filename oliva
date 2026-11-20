@@ -89,6 +89,23 @@ case "$cmd" in
     }
     step "app" app_state
     step "docker compose ps" docker compose ps
+    # The one-shot `migrate` service (1.11.0): `ps` hides an exited container, so its last
+    # run is shown here. A failed one keeps every PHP service from starting; say why.
+    migrate_state() {
+      local cid code
+      cid="$(docker compose ps -aq migrate 2>/dev/null)" || { echo "   (Docker is not answering; skipped)"; return 0; }
+      [[ -n "$cid" ]] || { echo "   (migrate has not run in this stack yet)"; return 0; }
+      code="$(docker inspect -f '{{.State.ExitCode}} {{.State.Status}} {{.State.FinishedAt}}' "$cid" 2>/dev/null)"
+      case "$code" in
+        "0 exited "*) echo "   last run: exit 0 (${code##* })" ;;
+        *" running "*) echo "   running now" ;;
+        *) echo "   !! last run FAILED: exit ${code%% *}. No PHP service starts until it passes."
+           echo "   !! Last lines (docker compose logs migrate):"
+           docker compose logs --no-color --tail 8 migrate 2>/dev/null | sed 's/^/      /'
+           echo "   !! Fix the migration, then: docker compose up -d --wait" ;;
+      esac
+    }
+    step "migrate (last run)" migrate_state
     step "migraciones" docker compose exec backend bin/console doctrine:migrations:status
 
     # T5 — inputs de build horneados que, editados en el host, no surten efecto sin

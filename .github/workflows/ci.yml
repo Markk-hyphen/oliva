@@ -108,8 +108,10 @@ jobs:
           [ "$code" = 200 ] && { [ "$rc" = 0 ] || [ "$rc" = 28 ]; }
 
       -
-        name: Run migrations
-        run: docker compose exec -T backend bin/console doctrine:migrations:migrate --no-interaction
+        # The one-shot `migrate` service ran them during `up --wait` (since 1.11.0, an `up`
+        # fails if it does not exit 0). This proves it left nothing pending.
+        name: Migrations applied by the migrate service
+        run: docker compose exec -T backend bin/console doctrine:migrations:up-to-date
 
       -
         # Opt-out por fork sin editar este archivo (es de Oliva): variable de repo

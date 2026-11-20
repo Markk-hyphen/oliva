@@ -167,7 +167,11 @@ RUN composer dump-autoload --optimize
 
 ENTRYPOINT ["docker-entrypoint"]
 
-HEALTHCHECK --start-period=60s CMD curl -f http://localhost:2019/metrics || exit 1
+# The app's own GET /health, through FrankenPHP and Symfony. Until 1.11.0 this was Caddy's
+# admin `:2019/metrics`, which answers while PHP or the app are broken (E-backend-slot, M6).
+# The worker, scheduler and relay override it (they serve no HTTP); migrate disables it.
+# Deploys run `up --wait`, so an unhealthy backend fails the deploy.
+HEALTHCHECK --start-period=60s CMD curl -fsS -o /dev/null http://localhost/health || exit 1
 # Never wrap this in `sh -c`: the entrypoint recognises its setup block (JWT keys, the
 # ACLs on var/) by `[ "$1" = 'frankenphp' ]`. With `sh -c "..."`, $1 becomes `sh` and the
 # whole block is skipped silently in production. Waiting for the database and migrating

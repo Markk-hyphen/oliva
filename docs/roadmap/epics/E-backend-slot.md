@@ -274,6 +274,23 @@ migrating as a side effect (grep).
 | S16 | Two plain `up -d --wait` in a row | only `migrate` runs again; backend, worker and relay are not restarted |
 | S17 | `verify` on this checkout | all green; `migrate Exited (0)` |
 
+**Step 5 — a real healthcheck, loud deploys (2026-11-20).** Measured with the real
+`deploy.sh`/`deploy-staging.sh` on a local shared-infra simulation (`proxy_net`, `data_net`,
+a `pgvector:pg15` container aliased `postgres`, a scratch app pointing `DATABASE_URL` at it).
+
+| # | Measurement | Result |
+|---|---|---|
+| S18 | `deploy.sh`, healthy path | rc 0; `migrate` waited for the external Postgres and exited 0; backend healthy through its own `/health` (healthcheck `curl … /health`) |
+| S19 | `deploy.sh`, a broken migration | rc 1, `service "migrate" didn't complete successfully: exit 7`, and the migration's SQL error printed by the script |
+| S20 | `deploy.sh`, `/health` answering 500 (the backend starts but is not healthy) | rc 1 after 132 s, `container … is unhealthy`, the backend's access log printed. Before phase A, with no dependent profile, this deployed as OK |
+| S21 | `deploy.sh` with no `/health` route | aborted **before `down`** by `backend_health_guard`; the running backend untouched (same start time) and healthy |
+| S22 | `deploy-staging.sh`, healthy path | rc 0; `migrate` migrated the **staging** database; `fixtures:load --group=staging` purged and loaded; the production database untouched |
+| S23 | `doctor`, failed and passed `migrate` | failed: exit code, the SQL error, the fix (`docker compose up -d --wait`); passed: `last run: exit 0 (<time>)` |
+| S24 | The guard against this repository and the three apps (read only) | passes on all four; fails on a copy without `HealthController` |
+
+R6 closed: every long-running service has a healthcheck except the frontend, which `--wait`
+treats as ready once running, as `verify` already did. Not a regression; noted.
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line
