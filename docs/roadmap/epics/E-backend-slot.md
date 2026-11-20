@@ -356,6 +356,18 @@ upstream (stale since 1.10.0); `concepts.md` showed `docker compose build --targ
 that command does not have; the CI table of `qa-y-staging.md` and the README missed jobs.
 Out of scope, recorded: friction X21 (`deploy.sh` stops the stack before building).
 
+**Step 9 — gates (2026-11-20).** Besides the per-step measurements (S44–S59):
+
+| # | Gate | Result |
+|---|---|---|
+| GB1 | `verify` on this checkout, final tree | 16 PASS, `ci-build` skipped (no extensions); shellcheck clean on the touched scripts |
+| GB2 | The suite on the default; every negative control | S51–S56: CONFORMANT; 22/22 controls as expected |
+| GB3 | **Shared-infra simulation** (`proxy_net`, `data_net`, `pgvector:pg15` aliased `postgres`, databases provisioned with non-superuser roles and the extension created as superuser, as `~/infra` does; a scratch app with a probe controller, never committed) | `deploy.sh` rc 0 in 25 s, `migrate` against the external Postgres as a non-superuser; an edge (`caddy`, `tls internal`, on `proxy_net`): Symfony resolves the address **the edge saw** (`172.19.0.1`) with `isSecure()` true, a forged `X-Forwarded-For` from outside is dropped by the edge; frontend off `proxy_net`, backend on `data_net`. `deploy-staging.sh` rc 0 in 28 s, seeded through `oliva-seed` on its own database, production's untouched. The trusted-hosts warning shows on the production deploy, not on staging. **`build_guard` in the real deploys** (an old target and an app service without the `oliva` context injected): both abort before `down`, the running stacks untouched and serving. **Found:** in the deploys the guard printed only `warn: command not found` (the deploys do not source `lib.sh`); fixed in `aa124e7`, then both print the service and the fix |
+| GB4 | **The declared clauses, re-measured on 1.12.0** (scratch probe) | Draining (P10), production worker mode behind the edge, ×2: the 3 s request completes (200), the stop waits 2.84–2.89 s, exit 0. Client address (P9), standalone production: host → gateway with a forged header → the peer (`172.23.0.1`; was `6.6.6.6`); a container on the app network → gateway, forged → its own address (was `6.6.6.6`); a container on the app network → backend directly, forged → `6.6.6.6` (the backend trusts the private ranges: the limit the contract states) |
+| GB5 | **Sync rehearsal**: a copy of the third app (on **1.10.0**, a double jump) against a scratch 1.12.0 cut made by the real `release.sh` (composer audit clean, `release` without Oliva's project files) | the app's own 1.10.0 `check` dies with 141 (X17, fixed since 1.11.0's script; the row already says to go to `start`); `start`: **clean merge**, the shared override taken with the new targets; `doctor`: the JWT error with its fix, and as pending only the unguarded `[host]` item; `env init`: JWT pair generated, the old `DATABASE_URL` with parameters left alone, `env check` ok; `locks`: no change; `verify`: all green, `ci-build` included (the app has `bcmath`), 2 min; `./oliva conformance` on the app's backend: CONFORMANT, 85 s (its fixtures carry the `staging` group) |
+| GB6 | Manual steps the sync needed | one: `./oliva env init`, 1.11.0's `[local, guard: env]` action. Nothing unlabelled |
+| — | Not run | CI (the branch is not pushed: the `conformance` job runs for the first time there, its GHA cache cold); a real host (there is none: the standalone NAT-vs-proxy question of B-F3 stays open); the long jump of the first app (1.5.1) |
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,
