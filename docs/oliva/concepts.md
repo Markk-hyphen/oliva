@@ -467,8 +467,10 @@ el EntityManager de Doctrine, loggers con buffer, etc.). Por defecto FrankenPHP 
 
 ### Cómo está (y cómo debería estar) en Oliva
 
-- **Dev:** clásico a propósito (`ENV FRANKENPHP_CONFIG=""` en `frankenphp_dev`): hot-reload
-  sin reiniciar workers.
+- **Dev:** worker too since 1.11.0 (`worker.dev.Caddyfile`, with `watch` on `src/`, `config/`,
+  `.env`, `public/index.php`): the watcher restarts the workers on a change. Until then dev ran
+  classic, so a request-isolation bug could only show up in staging or production. Known limit:
+  Symfony judges its caches fresh by whole seconds; `doctor`/`verify` detect a stale one.
 - **Prod:** la intención es worker — `frankenphp_prod` setea
   `FRANKENPHP_CONFIG="import worker.Caddyfile"` y el `Caddyfile` lo inyecta en el bloque
   global `frankenphp { {$FRANKENPHP_CONFIG} }`.

@@ -125,7 +125,8 @@ Y le cambia tres cosas:
 ```
 
 Hace, en orden: `git pull` (salteable con `SKIP_PULL=1`) → `down` → `up -d --build` con
-los 4 overlays → migraciones → `fixtures:load --group=staging`.
+los 4 overlays y `--wait` (el servicio `migrate` migra la base de staging antes que nada) →
+`fixtures:load --group=staging`.
 
 Para reiniciar con datos frescos sin volver a traer código: `SKIP_PULL=1 ./scripts/deploy-staging.sh`.
 

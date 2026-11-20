@@ -27,6 +27,63 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
+## 1.11.0 — unreleased
+
+> **The backend honours its own contract.** Phase A of the backend-slot epic
+> (`docs/roadmap/epics/E-backend-slot.md`). Migrations leave the server's entrypoint for a
+> one-shot `migrate` service that every PHP service waits for, so a failed migration fails
+> the deploy instead of deploying as OK with the backend in a restart loop. Deploys wait for
+> every healthcheck, and the backend's healthcheck is its own `GET /health`. Worker and relay
+> stop gracefully on SIGTERM. The JWT key pair is created by `./oliva env init`, in
+> `./secrets/jwt` in every environment. Dev runs FrankenPHP worker mode, like production.
+
+**Action required in the app**
+
+- [local, guard: env] Run `./oliva env init` once in the development checkout. It moves the
+  dev JWT key pair from `backend/config/jwt` to `secrets/jwt` (same keys, nobody is logged
+  out) and gives back a `secrets/jwt` left root-owned by an earlier local production run.
+  Until then `env check`, `verify` and `doctor` are red ("the JWT key pair is still in
+  backend/config/jwt…"). Afterwards `env check` may suggest deleting a leftover
+  `backend/config/jwt`: the backend no longer reads it.
+- [host, guard: env] The same on each host that deploys. The keys are already in
+  `secrets/jwt` there; `env init` gives them to the host user if a container created them as
+  root. `deploy*.sh` abort before `down` while the pair is missing or unreadable.
+- [local, guard: backend] Keep a `GET /health` route (Oliva's `HealthController`): it is now
+  the backend's healthcheck, and the deploys wait for it. `verify` and `deploy*.sh` stop
+  before anything else when it is gone. All known apps have it.
+- [merge] `docker-compose.override.yml` (shared) gains the `migrate` service, the
+  `./secrets/jwt` mounts and the `worker.dev.Caddyfile` mount. An app that added its own
+  services there keeps them and takes Oliva's blocks.
+- [local, guard: worker-mode] Never define `FRANKENPHP_CONFIG` in `.env`: an empty value
+  turns dev worker mode off. `verify` step `worker-mode` is red when it is off.
+
+**What changed**
+
+- **`migrate` service** (`oliva-migrate`, `backend/frankenphp/migrate.sh`): waits for the
+  database, runs `doctrine:migrations:migrate --all-or-nothing`, exits. Backend, scheduler,
+  worker and relay depend on it with `service_completed_successfully` (the scheduler waited
+  for nothing but the database until now). `docker compose up -d` runs it again: that is how
+  a new migration is applied in dev. `doctor` shows its last run. The backend's entrypoint no
+  longer waits for the database, migrates or generates keys; a `docker compose run backend
+  bin/console …` no longer migrates as a side effect.
+- **Loud deploys:** `deploy*.sh` run `up -d --build --wait` (bounded by
+  `OLIVA_DEPLOY_WAIT_TIMEOUT`, default 300 s) and print the logs of `migrate`, `backend` and
+  `gateway` on failure. `deploy-staging.sh` no longer migrates by hand.
+- **Healthcheck:** the backend image checks `GET /health`, not Caddy's admin `:2019/metrics`.
+- **Signals:** `pcntl` in the image. Worker and relay finish the message in hand on SIGTERM
+  instead of being killed after 10 s. A handler longer than `WORKER_STOP_GRACE_PERIOD`
+  (default `10s`, project `.env`) is still killed and redelivered: handlers must be
+  idempotent. A signal also cuts `sleep()` short.
+- **JWT keys:** `./secrets/jwt` in every environment, made by `env init`, owned by the host
+  user, mounted read-only into backend, worker, scheduler and relay (the worker and the
+  relay had none in production).
+- **Dev worker mode:** a watcher restarts the workers on changes under `src/`, `config/`,
+  `.env`, `public/index.php`. Code shows up in under a second. State kept between requests
+  (statics, services without `ResetInterface`) now leaks in dev, where it can be seen.
+  Symfony judges its caches fresh by whole seconds: a config file saved in the same second
+  as a recompile can be missed; `doctor` and `verify` (`dev-cache`) detect it and print the
+  fix.
+
 ## 1.10.0 — unreleased
 
 > **The Mercure hub becomes its own service.** Until now Mercure ran inside the

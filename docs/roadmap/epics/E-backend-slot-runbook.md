@@ -11,7 +11,7 @@ real, put the JWT keys under provisioning, and run dev in worker mode. **Nothing
 of a replaced backend yet** (that is phases B and C). An app that changes nothing keeps
 working after the sync.
 
-**State:** steps 0–7 done 2026-11-20 (baseline B1–B6, results S1–S43 in the epic). Next: step 8. The local shared-infra simulation (networks, `oliva-sim-pg`, scratch `simapp`) is still there for the gates. Branch `feat/backend-slot`, off `main` at `6230607` (1.10.0).
+**State:** steps 0–8 done 2026-11-20 (baseline B1–B6, results S1–S43 in the epic). Next: step 9 (gates). The UPGRADING section is "1.11.0 — unreleased". The local shared-infra simulation (networks, `oliva-sim-pg`, scratch `simapp`) is still there for the gates. Branch `feat/backend-slot`, off `main` at `6230607` (1.10.0).
 
 ## Decisions already taken (do not reopen)
 

@@ -20,7 +20,9 @@ Oliva se versiona (`OLIVA_VERSION`, tags `vX.Y.Z`) y las apps hechas con Oliva v
 ```bash
 docker compose up
 ```
-El `docker-compose.override.yml` se aplica automáticamente: monta el código fuente con hot-reload, expone el backend en `:80` y el frontend en `:3000`.
+The `docker-compose.override.yml` applies on its own: it mounts the source code (FrankenPHP worker mode with a watcher, Vite with HMR) and publishes the gateway on `${GATEWAY_PORT:-80}`.
+
+**Migrations (since 1.11.0):** a one-shot `migrate` service applies them before any PHP service starts, and `docker compose up -d` runs it again, so a migration you just generated is applied by the next `up`. If it fails, nothing PHP starts, `up --wait` and the deploys fail with `service "migrate" didn't complete successfully`, and `docker compose logs migrate` (or `./oliva doctor`) shows the error. Two runs at once are safe (one wins, the other fails, nothing half-applied) as long as the migration is transactional; one that opts out (`isTransactional(): false`, `CREATE INDEX CONCURRENTLY`) is the app's responsibility.
 
 **Dos apps a la vez en dev:** desde 1.9.0 el único puerto HTTP que publica el stack es el del `gateway` (default `:80`); backend y frontend viven en la red privada de la app. Los puertos del host (`:80`, `:5432`, y los de RabbitMQ) salen de variables con esos defaults. Una sola app no configura nada. Para levantar una segunda app Oliva en paralelo —que si no choca con *"port is already allocated"*— poné `GATEWAY_PORT`, `DB_PORT` (y, con el profile `queues`, `RABBITMQ_PORT`/`RABBITMQ_MANAGEMENT_PORT`) con otros valores en el `.env` de esa app. `BACKEND_PORT`/`FRONTEND_PORT` en un `.env` pre-1.9.0 quedaron sin uso; el guard `dev-ports` lo avisa.
 
@@ -82,8 +84,8 @@ reasons: `docs/roadmap/epics/E-queue-slot.md`.
   itself every hour or 128M; `restart:` brings it back. To change it, set
   `WORKER_CONSUME_ARGS` in `.env.backend` (the arguments after `messenger:consume`). Never
   consume the failure transport in the same loop: a poison message would be retried forever.
-- **It never migrates.** It starts once the backend is healthy, that is, migrated, and the
-  entrypoint skips its setup for any `messenger:consume`.
+- **It never migrates.** It starts once `migrate` has exited 0 and the backend is healthy;
+  the entrypoint skips its setup for any `messenger:consume`.
 - **A consumer does not reload code:** after editing a handler, `docker compose restart worker`.
 - **Stopping is graceful since 1.11.0** (`pcntl`): on SIGTERM (every deploy) the worker
   finishes the message in hand and exits. A handler longer than `WORKER_STOP_GRACE_PERIOD`
@@ -118,7 +120,7 @@ profile, like `queues` and `cron`. Design and reasons: `docs/roadmap/epics/E-unb
 - **Latency:** the relay runs `--sleep=0.01` with the transport's `get_notify_timeout: 5000`;
   both are required (either alone is ~1 s; measured p95 ≈ 9 ms). Do not change one without the
   other.
-- **The relay never migrates.** It waits for the backend healthy (migrated), then runs
+- **The relay never migrates.** It waits for `migrate` (exited 0) and the backend healthy, then runs
   `messenger:setup-transports realtime` to create `messenger_messages` and consumes. A
   `schema_filter` in `doctrine.yaml` hides that table, so an app **without** the profile has a
   green `doctrine:schema:validate` and never creates it.
@@ -285,9 +287,9 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
    el profile inerte ya excluye `database`/`rabbitmq`; el alias de `frontend`
    en `proxy_net` se deriva solo de `-p <app>`, no hace falta tocar nada):
    `docker compose -p <app> -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.shared-infra.yml up -d`.
-7. **Migraciones:** automáticas. El entrypoint del backend las corre en cada
-   boot (`doctrine:migrations:migrate`), junto con la generación de las claves
-   JWT y el wait-for-db. Solo verificar que no quedaron pendientes:
+7. **Migrations:** automatic. The one-shot `migrate` service waits for the shared Postgres
+   and applies them before anything PHP starts; a failure fails the deploy (`up --wait`)
+   with its log. To double-check nothing is pending:
    `docker exec <app>-backend-1 bin/console doctrine:migrations:status`.
 8. **JWT keys:** `./oliva env init` (step 2) creates them in `./secrets/jwt` (gitignored,
    owned by you, mounted read-only into every PHP service), encrypted with `JWT_PASSPHRASE`.
@@ -356,7 +358,8 @@ stack de producción.
    (`.env.staging` carga último y pisa `DATABASE_URL`). `APP_ENV=staging` lo
    fija `docker-compose.staging.yml` vía `environment:` (no vía env_file —
    ver gotcha de precedencia abajo).
-5. **Migraciones:** automáticas en el entrypoint. Verificar:
+5. **Migrations:** automatic, by the `migrate` service, on the staging database (`.env.staging`
+   loads last). To check:
    `docker exec <app>-staging-backend-1 bin/console doctrine:migrations:status`
 6. **Seeding:** la imagen `frankenphp_staging` sí tiene `doctrine:fixtures:load`
    (a diferencia de prod). La DB de staging es desechable — la purga es inocua:
@@ -434,7 +437,7 @@ whatever was written in `.env` was ignored, with no error anywhere. Design and r
 
 - `GET /health` → `{"status": "ok"}` (`backend/src/Controller/HealthController.php`).
 - `.github/workflows/ci.yml`, job `env-contract` (sin build): `./oliva env init` + `env check` sobre los stacks dev y prod. Rojo si un archivo trackeado lleva un secreto real o pisa a `.env` con un placeholder o un valor públicamente conocido.
-- `.github/workflows/ci.yml`: build de imágenes, levanta los servicios, chequea `/health` y `/.well-known/mercure`, corre migraciones, valida el schema de Doctrine y corre PHPUnit. Job adicional de lint de Dockerfile con hadolint.
+- `.github/workflows/ci.yml`: build de imágenes, levanta los servicios (el servicio `migrate` aplica las migraciones; el CI chequea que no quede ninguna pendiente), chequea `/health` y `/.well-known/mercure`, valida el schema de Doctrine y corre PHPUnit. Job adicional de lint de Dockerfile con hadolint.
 
 ## Protocolo de explicaciones conceptuales
 

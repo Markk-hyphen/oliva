@@ -108,7 +108,7 @@ Hot reload is on: changes to `backend/src` and `frontend/src` show up without re
 ```bash
 docker compose exec backend bin/console make:entity        # asks for the fields, writes src/Entity/
 docker compose exec backend bin/console make:migration     # diffs the schema into migrations/
-docker compose exec backend bin/console doctrine:migrations:migrate
+docker compose up -d --wait                                # the migrate service applies it
 docker compose exec backend php vendor/bin/phpunit
 ./oliva verify                                             # everything CI will check, before you push
 ```
@@ -118,7 +118,7 @@ A first integration test to copy is `backend/tests/Controller/HealthControllerTe
 Two things worth knowing before they cost you an afternoon:
 
 - **Only some backend paths are live-mounted** in dev: `src`, `tests`, `config`, `migrations`, `public`. Anything else (`composer.json`, `phpunit.dist.xml`) is baked into the image, so after editing it run `docker compose up -d --build backend`. Otherwise the container keeps the old copy and nothing tells you.
-- **Files a container writes belong to root** on your machine (a generated migration, `backend/config/jwt`). They stay editable; to delete or move them, `sudo chown -R "$USER" backend` first.
+- **A failed migration stops the stack from coming up**, by design: `up --wait` says `service "migrate" didn't complete successfully`, and `docker compose logs migrate` (or `./oliva doctor`) shows the SQL error. Fix the migration and run `docker compose up -d --wait` again.
 
 > Choosing at birth which services an app carries (`--queues`, `--no-realtime`) is on the roadmap (item 3). `init` is its first slice: identity only.
 

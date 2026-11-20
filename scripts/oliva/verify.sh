@@ -14,6 +14,9 @@
 #   [queue]       messages routed to an asynchronous transport have a worker to consume them
 #                 (profile `queues`), or OLIVA_QUEUE_CONSUMER=external says they are consumed
 #                 elsewhere (scripts/lib/queue-guard.sh). Not to be confused with prod-worker.
+#   [backend]     static, before `up`: the app answers GET /health (since 1.11.0 the backend's
+#                 healthcheck; without the route `up --wait` can never pass). Same guard as the
+#                 deploys (scripts/lib/backend-guard.sh)
 #   [up]          docker compose up -d --build --wait (respeta COMPOSE_PROFILES del .env)
 #   [php-version] el PHP que CORRE coincide con el pin de backend/Dockerfile
 #   [health]      GET /health
@@ -89,6 +92,7 @@ do_app() {
     return 1
   fi
 }
+do_backend()    { backend_health_guard && echo "GET /health route present"; }
 do_up()         { docker compose up -d --build --wait; }
 do_health()     { be curl -fsS http://localhost/health && echo; }
 # From the host, through the gateway: proves the three routes the gateway owns
@@ -209,6 +213,7 @@ do_mercure() {
 step env         do_env
 step app         do_app
 step queue       do_queue
+step backend     do_backend
 step up          do_up
 step php-version do_php_version
 step health      do_health
