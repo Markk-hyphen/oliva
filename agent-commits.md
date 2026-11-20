@@ -1406,3 +1406,36 @@ Phase 2 (realtime hub, target 1.10.0) starts at the runbook's step 1 and must de
 - *Optional, like everything in Oliva* (the maintainer's correction): a `realtime` profile, a guard for an app that uses Mercure without it, and nothing paid by an app that does not. Supersedes the plan's "always on in 1.10.0".
 - *The hub holds only its key*: `environment:` not `env_file`, so no backend/database secret reaches it (env-check enforces it). Compat mode kept (R1 measured), with modern mode a watch item tied to the `deprecated_*` build tags.
 - **Not done here:** the release (`release.sh 1.10.0`) and the push — the maintainer's call; the real crossing of an app; a fork actually exercising the relay under load.
+
+## [backend slot · phase A] the default honours its own contract (1.11.0)
+**Hash:** `f8e6024`, `776926d`, `3af800d`, `7df4666`, `f0e93f7`, `40137be`, `388cc0b`, plus this commit
+**Branch:** `feat/backend-slot`
+**Date:** 2026-11-20
+
+### Changes
+| File | Type | Description |
+|---|---|---|
+| `backend/Dockerfile` | modified | `pcntl`; installs `oliva-migrate` and `worker.dev.Caddyfile`; healthcheck `GET /health` (was Caddy's admin `:2019/metrics`); dev stage `FRANKENPHP_CONFIG="import worker.dev.Caddyfile"`. |
+| `backend/frankenphp/migrate.sh` | new | `oliva-migrate`: wait-for-db (70 s), then `migrate --all-or-nothing`, moved out of the entrypoint unchanged in behaviour. |
+| `backend/frankenphp/docker-entrypoint.sh` | modified | No longer waits for the database, migrates or generates JWT keys; keeps the production secret refusal and the `var/` ACLs. |
+| `backend/frankenphp/worker.dev.Caddyfile` | new | Dev worker block with `watch` on `src/`, `config/`, `.env`, `public/index.php` (never the default patterns: they cover `var/cache`). |
+| `docker-compose.yml` | modified | One-shot `migrate` service (healthcheck disabled); backend, scheduler, worker and relay depend on it; `WORKER_STOP_GRACE_PERIOD`. |
+| `docker-compose.override.yml`, `docker-compose.prod.yml`, `docker-compose.staging.yml`, `docker-compose.shared-infra.yml` | modified | `migrate` per environment (staging on `.env.staging`; shared infra on `data_net`, every `depends_on: !override` re-declares it); `./secrets/jwt` read-only into every PHP service; the dev worker file mounted. |
+| `scripts/oliva/env.sh` | modified | `env init` generates the JWT pair in `secrets/jwt`, moves a pre-1.11.0 dev pair, gives back a root-owned directory. |
+| `scripts/lib/env-check.sh` | modified | Errors on a missing pair, on a pair still in the old place, and on a key the backend's user cannot read; warns on a leftover old pair. |
+| `scripts/lib/backend-guard.sh` | new | `backend_health_guard` (no `/health` route → abort before `down`); `dev_cache_stale_check` (nanosecond detector of Symfony's whole-second freshness blind spot). |
+| `scripts/deploy.sh`, `scripts/deploy-staging.sh` | modified | Health guard before `down`; `up --wait` bounded by `OLIVA_DEPLOY_WAIT_TIMEOUT`; logs of migrate/backend/gateway on failure; staging no longer migrates by hand. |
+| `scripts/oliva/verify.sh` | modified | Steps `backend` (static, the route), `worker-mode` (dev runs workers), `dev-cache`. |
+| `oliva` | modified | `doctor`: last `migrate` run, and the Symfony cache line. |
+| `.github/workflows/ci.yml` | modified | `migrations:up-to-date` instead of migrating again. |
+| `.env.example` | modified | `WORKER_STOP_GRACE_PERIOD`. |
+| `docs/oliva/UPGRADING.md`, `docs/oliva/agent-guide.md`, `docs/oliva/concepts.md`, `docs/oliva/qa-y-staging.md`, `README.md`, `scripts/oliva/templates/README.md.tpl`, `docs/roadmap.md`, `docs/friction-log.md` | modified | `## 1.11.0` with labelled, guarded actions; the migrate service, dev worker mode and provisioned keys everywhere the old behaviour was described; X16 progress, X17–X19. |
+| `docs/roadmap/epics/E-backend-slot.md`, `E-backend-slot-runbook.md` | new | Analysis, decisions Q1–Q5, every measurement (B1–B6, S1–S43, G1–G4). |
+
+### Why
+- *A failed migration deployed as OK* (measured, rc 0 with a restart loop) because the database lifecycle was a side effect of the server starting. As a one-shot service it fails the `up` itself, even a plain `up -d`, and the backend never starts on a broken schema. Two concurrent runs were measured before deciding on a lock: transactional DDL plus `--all-or-nothing` already make the loser fail cleanly, so no lock.
+- *The healthcheck proved Caddy, not the app*, and deploys did not wait for it: both together make "deployed" mean "healthy". The `/health` route is guarded before `down` because without it `--wait` can only fail after the stack is stopped.
+- *PHP as PID 1 ignored SIGTERM*: every deploy SIGKILLed consumers mid-message. `pcntl` was checked harmless inside FrankenPHP's SAPI before keeping it.
+- *JWT keys out of boot*: they came out root-owned and only the server had them. Found on a real checkout: a root-owned 0600 key the dev backend could not read while every check passed, so `env check` now looks at who can read it.
+- *Dev in worker mode* (decision Q4) so isolation bugs appear where they are written. The gate stopped once on Symfony's whole-second cache freshness (≈30% of rapid edits); the maintainer chose to keep worker mode with a detector (option A). Healing it automatically is X19.
+- **Not done here:** the release and the push (the maintainer's call); the long-jump sync rehearsal on the first app; a CI run.

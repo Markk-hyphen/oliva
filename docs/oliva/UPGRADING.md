@@ -30,9 +30,10 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 ## 1.11.0 — unreleased
 
 > **The backend honours its own contract.** Phase A of the backend-slot epic
-> (`docs/roadmap/epics/E-backend-slot.md`). Migrations leave the server's entrypoint for a
-> one-shot `migrate` service that every PHP service waits for, so a failed migration fails
-> the deploy instead of deploying as OK with the backend in a restart loop. Deploys wait for
+> (`docs/roadmap/epics/E-backend-slot.md` in Oliva's repository; apps do not carry it).
+> Migrations leave the server's entrypoint for a one-shot `migrate` service that every PHP
+> service waits for, so a failed migration fails the deploy instead of deploying as OK with
+> the backend in a restart loop. Deploys wait for
 > every healthcheck, and the backend's healthcheck is its own `GET /health`. Worker and relay
 > stop gracefully on SIGTERM. The JWT key pair is created by `./oliva env init`, in
 > `./secrets/jwt` in every environment. Dev runs FrankenPHP worker mode, like production.

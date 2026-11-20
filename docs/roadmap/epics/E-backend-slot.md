@@ -327,6 +327,19 @@ detector), recorded here.
 
 Healing it on its own (rather than detecting it) is friction X19, with a design to measure.
 
+**Step 9 — gates (2026-11-20).** Besides the per-step measurements above:
+
+| # | Gate | Result |
+|---|---|---|
+| G1 | `verify` on this checkout, final tree | 16 PASS, `ci-build` skipped (no extensions) |
+| G2 | Shared-infra simulation, final tree: `deploy.sh` then `deploy-staging.sh` on a scratch app that had been deployed with the step-5 tree | `env check` caught the root-owned `secrets/jwt` the old entrypoint had left (the `[host]` action, for real); `env init` gave it back; both deploys rc 0; `lexik:jwt:check-config` correct in backend and relay; staging seeded; `secrets/jwt` still host-owned |
+| G3 | **Sync rehearsal**, a copy of the third app (1.10.0) against a scratch 1.11.0 `release` cut exactly as `release.sh` does | `check` listed the 1.11.0 notes; `start`: **clean merge**, no conflict (its shared override carries services of its own); `doctor` showed the JWT error and its fix, and no unguarded pending action (correct: both are guarded); `env init` moved the app's own pair, byte-identical; `verify` all green, `ci-build` included (the app has PHP extensions); JWT correct in worker mode |
+| G4 | Manual steps the sync needed | one: `./oliva env init`, the labelled `[local, guard: env]` action. Nothing unlabelled |
+| — | Not run | the long-jump rehearsal on the first app (1.5.1 → 1.11.0, expected to hit X17 first); no CI run (the branch is not pushed) |
+
+Found during the gates: the 1.11.0 note pointed at this epic, which apps do not carry; now
+says so.
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line
