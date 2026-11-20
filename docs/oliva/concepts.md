@@ -283,7 +283,7 @@ AppFixtures (FixtureGroupInterface)
 
 ### Guard de producción — target Docker `staging`
 
-Las dependencias de seeding son `require-dev`. La imagen prod se compila con `--no-dev`, así que **el comando `doctrine:fixtures:load` no existe en prod**. Es una garantía estructural, no una convención:
+Las dependencias de seeding son `require-dev`. La imagen prod se compila con `--no-dev`, así que **el comando `doctrine:fixtures:load` no existe en prod**. Since 1.12.0 the seed's entrypoint, `oliva-seed`, is not in the production image either (it is copied in the `dev` and `staging` stages only), and `./oliva conformance` (K6) fails if it ever appears there. Es una garantía estructural, no una convención:
 
 ```dockerfile
 # Hereda de prod (no dev): mantiene representatividad del entorno
@@ -301,15 +301,16 @@ Nunca hereda de `dev` — staging debe ser prod + tooling de seeding, no dev + t
 > `--no-dev` no protege esto. Ver Epic E, "Deuda crítica": staging debe ser una app
 > aparte a nivel infra, con su propia DB.
 
-```bash
-# 1. Construir imagen staging
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  build --target staging backend
+`./scripts/deploy-staging.sh` builds the staging stack and seeds it. By hand, against the
+**staging** container (since 1.12.0; `oliva-seed` runs `doctrine:fixtures:load` with the group
+of the environment, or `OLIVA_SEED_GROUP`):
 
-# 2. Cargar fixtures (contra la DB de STAGING, no la de prod)
-docker exec <app>-staging-backend-1 bin/console doctrine:fixtures:load \
-  --group=staging --no-interaction
+```bash
+docker exec <app>-staging-backend-1 oliva-seed
 ```
+
+(The staging image is built by the staging stack: the four overlays of the staging runbook.
+`docker compose build` has no `--target` flag; the overlays set it.)
 
 ### Cómo extender en un fork
 
@@ -520,13 +521,22 @@ users apart) and believes every request is plain `http` (`isSecure()` is false: 
 URLs and redirects in `http://`, cookies with `secure: auto` lose the `Secure` flag). None of
 it raises an error.
 
-Oliva's choice: **trust the private networks** at both hops (`PRIVATE_SUBNETS` in Symfony,
-`private_ranges` in Caddy). It works the same in dev, standalone, shared infra and staging. A
-client from the internet never has a private address, so it cannot forge the headers: the
-first proxy replaces them with what it saw. What it does trust is any container that reaches
-the backend directly over a private network (on shared infra, the other apps on `data_net`):
-acceptable within Oliva's scope, one maintainer's own apps. Pinning the exact gateway would
-need a fixed subnet per app, a new source of collisions between apps.
+Oliva's choice: **trust follows the topology** (since 1.12.0; before, both hops trusted the
+private networks everywhere). The backend trusts the private networks (`PRIVATE_SUBNETS` in
+Symfony): its only client from outside is the gateway. The gateway trusts whoever can be in
+front of it: in **shared infra** the edge proxy, on a private network (`private_ranges`); in a
+**standalone production** stack nothing, since the gateway is the edge (`127.0.0.1/32`, where
+nothing comes from). The reason for the second: whether a standalone gateway sees the client's
+address or a Docker bridge address depends on how Docker publishes the port on that host (NAT
+keeps the client's; a userland proxy or rootless Docker does not). A bridge address is
+private, so trusting private ranges there let anyone pick their own IP. Dev keeps
+`private_ranges`. A real proxy in front of a standalone stack is declared with
+`GATEWAY_TRUSTED_PROXIES` in the host's `.env`; `env check` warns when a standalone production
+gateway is widened. What the backend still trusts is any container that reaches it directly
+over a private network (on shared infra, the other apps on `data_net`): acceptable within
+Oliva's scope, one maintainer's own apps. Pinning the exact gateway would need a fixed subnet
+per app, a new source of collisions between apps. `./oliva conformance` (K10) tests both
+topologies against what the compose files ship.
 
 Symfony reads `SYMFONY_TRUSTED_PROXIES` and `SYMFONY_TRUSTED_HEADERS` with no YAML. Unset
 headers mean `for, port, proto`; **set but empty** makes the kernel throw at boot. Design:

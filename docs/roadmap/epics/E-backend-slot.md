@@ -338,6 +338,24 @@ step has no access to the cache token) and the suite on `oliva-ci-backend:prod`/
 The bakes were run locally as CI runs them (`docker-container` driver): both images build;
 the job itself runs on the first push.
 
+**Step 8 — docs and upgrade notes (2026-11-20).** `UPGRADING.md` 1.12.0 (header "unreleased"
+until step 10), three labelled actions, the linter of `release.sh` green: `[merge, guard:
+backend]` the targets and the `oliva` context, `[decision, guard: env]` trusted hosts, `[host]`
+a proxy in front of a standalone stack (not detectable: acknowledged). The guide gains "The
+backend's image and its contract"; concepts (trusted proxies now by topology, the seed),
+qa-y-staging and the README follow.
+
+| # | Measurement | Result |
+|---|---|---|
+| S57 | A build without the `oliva` context; a build of `frankenphp_dev` | `pull access denied, repository does not exist` (BuildKit takes `--from=oliva` for an image: misleading); `target stage "frankenphp_dev" could not be found`. Both after `down` in a deploy |
+| S58 | New `build_guard` (every service with a `build:`: target is a stage of its Dockerfile; `--from=oliva` needs the context), wired into verify step `backend` and both deploys before `down` | flags an override with `frankenphp_dev` (names the new target) and an app service building `backend/Dockerfile` without the context (prints the fix); passes the dev, prod and four-overlay staging stacks and an app service with the context. First version had a false positive: tab-separated fields collapsed an empty target under `read`, fixed with `\x1f` |
+| S59 | `verify` on this checkout after steps 6–8 | all green, 44 s |
+
+Found while documenting, fixed: `.env.example` still named `backend:80` as the realtime
+upstream (stale since 1.10.0); `concepts.md` showed `docker compose build --target`, a flag
+that command does not have; the CI table of `qa-y-staging.md` and the README missed jobs.
+Out of scope, recorded: friction X21 (`deploy.sh` stops the stack before building).
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,

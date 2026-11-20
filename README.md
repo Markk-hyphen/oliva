@@ -222,18 +222,21 @@ The full reasoning, the slot contracts and the sequencing are in [`docs/roadmap.
 | `deps <due\|report\|update\|audit\|scan-images>` | Oliva's maintenance cycle and CVE audit |
 | `sync <check\|start\|locks\|verify>` | pull Oliva into an app |
 | `verify` | full local smoke test (environment, migrations, schema, PHPUnit, prod build, running PHP version) |
+| `conformance [<image>]` | test a backend image against the backend contract, from outside (`--staging`, `--keep`, `--down`) |
 | `release X.Y.Z` | cut an Oliva version (refuses without its `UPGRADING.md` section) |
 | `deploy`, `deploy-staging`, `down`, `down-staging` | operate an app on a server |
 | `version` | print `OLIVA_VERSION` |
 
 ### CI
 
-`.github/workflows/ci.yml` runs on every push and PR, skipping docs-only changes. It has six jobs:
+`.github/workflows/ci.yml` runs on every push to `main` (and on demand), skipping docs-only changes. Its jobs:
 
 - **Env contract:** `./oliva env init`, then `env check` on the dev and prod stacks. Red when a tracked file carries a real secret or overrides `.env`.
 - **Tests:** build the images, bring up the stack, check `/health` and Mercure, run migrations, validate the Doctrine schema, run PHPUnit.
+- **Backend conformance:** the backend contract ([`docs/oliva/backend-contract.md`](docs/oliva/backend-contract.md)) tested from outside on the `prod` and `staging` images, `./oliva conformance`.
 - **Prod config guard:** `APP_ENV` really resolves to `prod`.
 - **Composer constraints guard.**
+- **No pipe into head:** a `| head` under `pipefail` kills a script with exit 141.
 - **Docker lint:** hadolint.
 - **Image scan:** Trivy, report-only.
 

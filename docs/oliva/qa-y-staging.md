@@ -119,6 +119,8 @@ Y le cambia tres cosas:
    borrarlo *antes* del install para que el entorno se resuelva en runtime.
 3. **Instala también las dependencias de dev.** Por eso staging tiene
    `doctrine:fixtures:load`, `phpunit` y Foundry, y prod no: viven en `require-dev`.
+4. **Trae `oliva-seed`** (since 1.12.0), the backend contract's seed entrypoint. It is copied in
+   `staging` and `dev` only, never in `prod`.
 
 ### Levantarlo
 
@@ -128,7 +130,7 @@ Y le cambia tres cosas:
 
 Hace, en orden: `git pull` (salteable con `SKIP_PULL=1`) → `down` → `up -d --build` con
 los 4 overlays y `--wait` (el servicio `migrate` migra la base de staging antes que nada) →
-`fixtures:load --group=staging`.
+`oliva-seed` (since 1.12.0: `fixtures:load` with the `staging` group, purge then load).
 
 Para reiniciar con datos frescos sin volver a traer código: `SKIP_PULL=1 ./scripts/deploy-staging.sh`.
 

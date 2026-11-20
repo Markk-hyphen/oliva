@@ -141,6 +141,39 @@ profile, like `queues` and `cron`. Design and reasons: `docs/roadmap/epics/E-unb
   (the relay reads the app's own database; nothing is shared). `./oliva init --demo` turns on the
   `realtime` profile, since the live canvas publishes through Mercure.
 
+### The backend's image and its contract (since 1.12.0)
+
+What any backend must keep doing is `docs/oliva/backend-contract.md`; `./oliva conformance`
+tests it from outside (CI job `conformance`). For the default backend, what changed in 1.12.0:
+
+- **Build targets are `dev`, `prod`, `staging`** (were `frankenphp_dev`/`_prod`/`_staging`).
+  A service of the app's own that builds `backend/Dockerfile` names one of them.
+- **The `oliva` build context.** The backend and realtime builds copy Oliva's list of publicly
+  known secrets from `scripts/oliva/` through a named context. `docker-compose.yml` passes it
+  (`x-backend-build`); a service of the app's own that builds `backend/Dockerfile` adds
+  `additional_contexts: { oliva: ./scripts/oliva }`. Without it BuildKit answers a misleading
+  "pull access denied, repository does not exist". `verify` (step `backend`) and the deploys,
+  before `down`, stop on a missing context or a target the Dockerfile does not have.
+- **`oliva-seed`** in the `dev` and `staging` images only: `doctrine:fixtures:load` with the
+  environment's group (`OLIVA_SEED_GROUP` picks another). It replaces the data. Dev:
+  `docker compose exec backend oliva-seed`.
+- **`SYMFONY_TRUSTED_HOSTS`** (`.env`, empty by default = any `Host` accepted). Production
+  should set it to the app's domain as a regex, **keeping `localhost`** (the healthcheck calls
+  it): `'^(localhost|example\.org)$'`. `env check` warns in production while it is empty, and
+  errors (deploys stop) on a value that refuses `localhost`.
+- **The gateway's proxy trust follows the topology:** a standalone production stack trusts no
+  proxy (`127.0.0.1/32`), shared infra trusts the private ranges (the edge proxy). A real proxy
+  in front of a standalone stack: set `GATEWAY_TRUSTED_PROXIES` in the host's `.env`
+  (`env check` warns that it was widened). Reasons: `docs/oliva/concepts.md`, trusted proxies.
+- **The gateway answers its own 502/503/504 as JSON** on `/api*` and `/health`
+  (`{"error":"backend unavailable","status":502}`); a 5xx from the backend passes untouched.
+  The default backend's own errors are still HTML (no serializer): the contract recommends JSON.
+- **A plain `DATABASE_URL`** (`postgresql://user:pass@host:5432/db`, no `?serverVersion=…`):
+  `env init` writes it for a new `.env`; an existing one keeps working. The server version and
+  the charset live in `doctrine.yaml`.
+- **`oliva-migrate` fails fast** on errors waiting cannot fix (wrong password, unknown database
+  or role) and prints the driver's error as its last line.
+
 ### Aislamiento por app: todo cuelga del project name
 
 Varias apps Oliva conviven en el mismo host (en dev, tu máquina; en prod, el VPS). Todo lo que Compose crea se deriva del **project name** (nombre del directorio, `-p <app>` o `COMPOSE_PROJECT_NAME`), y nada se nombra fijo:
@@ -306,7 +339,7 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
 12. **Smoke de flujos de negocio:** correr la collection Bruno de la app (`api/`,
     si existe) contra el entorno recién levantado — apuntar `{{base_url}}` al host
     correcto (público tras el paso 11, o `http://localhost` local) y verificar que
-    login + los flujos de dominio responden OK. Simétrico al `fixtures:load` del
+    login + los flujos de dominio responden OK. Simétrico al `oliva-seed` del
     runbook de staging: el health check confirma que el proceso arranca; la
     collection confirma que el dominio funciona end-to-end. Es opt-in y por app —
     Oliva no shipea la collection (los requests son 100% dominio, ver tabla de
@@ -325,8 +358,8 @@ Staging es **una app más** en el VPS: misma infra compartida, pero DB propia
 desechable y project name propio (`-p <app>-staging`). No interfiere con el
 stack de producción.
 
-> **Atajo para redeploys:** `./scripts/deploy-staging.sh` (ejecuta build + up
-> + migraciones + `fixtures:load` en una sola llamada). Los pasos de abajo
+> **Atajo para redeploys:** `./scripts/deploy-staging.sh` (build + up, which migrates
+> through the `migrate` service, + `oliva-seed`, in one call). Los pasos de abajo
 > documentan el setup inicial (una sola vez) y la lógica de cada paso.
 
 1. **Provisionar la DB de staging** en el Postgres compartido, desde `~/infra`:
