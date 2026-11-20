@@ -268,6 +268,15 @@ group; `OLIVA_SEED_GROUP=staging` switches it; an unknown group fails (rc 1, "Co
 any fixture services"), as the contract's "fail on an incompatible target" asks.
 `deploy-staging.sh` calls `oliva-seed` (measured end to end at the gates, step 9).
 
+**Step 3 — the public-secrets list leaves `backend/frankenphp/` (2026-11-20).** Now
+`scripts/oliva/known-public-secrets.sha256`, reaching the backend and hub builds through a
+named build context `oliva` (one YAML anchor shared by the five services built from the
+backend image; `verify`'s `ci-build` passes `--build-context`). Measured: every backend-image
+service and the hub carry the context in dev and prod (`config`); **bake with the
+`docker-container` driver, as CI, builds both images (RB1 closed)** and the list inside is
+byte-identical to the repository's; `env check` reads the new path (a historical
+`APP_SECRET` from git → "publicly known value", rc 1); `verify` all green.
+
 ## Phase B baseline (step 0, 2026-11-20, on 1.11.0)
 
 Scratch clone of `main` at `330c3f6`, production stack, a scratch controller (`/api/gt/ip`,

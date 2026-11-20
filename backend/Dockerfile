@@ -147,7 +147,10 @@ COPY --link --chmod=755 frankenphp/realtime-relay.sh /usr/local/bin/oliva-relay
 COPY --link --chmod=755 frankenphp/migrate.sh /usr/local/bin/oliva-migrate
 COPY --link frankenphp/Caddyfile /etc/caddy/Caddyfile
 # Read by docker-entrypoint: values a secret must never have in production.
-COPY --link frankenphp/known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
+# From the `oliva` named build context (scripts/oliva/, docker-compose.yml): Oliva's list,
+# not the backend's, so it survives an app replacing the backend.
+# hadolint ignore=DL3022
+COPY --link --from=oliva known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
 COPY --link scheduler/crontab /etc/supercronic/crontab
 
 # Install dependencies from versioned composer.json

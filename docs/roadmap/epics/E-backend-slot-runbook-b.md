@@ -14,7 +14,7 @@ three small default fixes. Still **nothing changes for an app that keeps the def
 beyond labelled upgrade actions; declaring a replaced backend is phase C.
 
 **State:** step 0 done 2026-11-20 (answers P1–P10, findings B-F1..B-F3 in the epic's "Phase B
-baseline"). B-F3 decided: **QB4, option C** (see the epic). Steps 1–2 done. Next: step 3. Branch
+baseline"). B-F3 decided: **QB4, option C** (see the epic). Steps 1–3 done. Next: step 4 (five fixes: trusted hosts, plain DATABASE_URL, JSON 502, oliva-migrate fail-fast and clear error, topology-aware gateway trust). Branch
 `feat/backend-slot-b`, off `main` at `330c3f6` (1.11.0, CI green).
 
 **Step 0 outcome, folded into the steps below:**

@@ -4,12 +4,12 @@
 # mode depends on THIS image's deprecated_* build tags (E-unbundle-roles, watch item).
 FROM dunglas/mercure:v1.1.6
 
-# The list of publicly known secrets is Oliva's, kept with the backend. It reaches this
+# The list of publicly known secrets is Oliva's (scripts/oliva/ since 1.12.0). It reaches this
 # build through a named build context (compose build.additional_contexts / bake contexts),
 # so there is one copy, not two (E-unbundle-roles, decided over duplicating it).
-# `secrets` is a named build context, not a FROM alias — DL3022 is a false positive here.
+# `oliva` is a named build context, not a FROM alias — DL3022 is a false positive here.
 # hadolint ignore=DL3022
-COPY --from=secrets known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
+COPY --from=oliva known-public-secrets.sha256 /usr/local/share/oliva/known-public-secrets.sha256
 
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/realtime-entrypoint

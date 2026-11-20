@@ -25,7 +25,7 @@
 # the host, where there is no jq.
 
 OLIVA_MANIFESTS=(scripts/oliva/env.manifest env.manifest)
-OLIVA_PUBLIC_LIST="backend/frankenphp/known-public-secrets.sha256"
+OLIVA_PUBLIC_LIST="scripts/oliva/known-public-secrets.sha256"
 # Where the JWT private key can be. Since 1.11.0: ./secrets/jwt in every environment, made
 # by `./oliva env init`. backend/config/jwt is where dev kept it before; `env init` moves it.
 OLIVA_JWT_KEYS=(secrets/jwt/private.pem backend/config/jwt/private.pem)
