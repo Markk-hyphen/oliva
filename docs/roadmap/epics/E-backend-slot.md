@@ -205,6 +205,22 @@ returns 0 when it exits 0 and 1 with `service "migrate" didn't complete successf
 it fails; a second `up` re-runs it, so `docker compose up -d` still applies a new migration
 in dev.
 
+## Phase A baseline (step 0, 2026-11-20, on 1.10.0)
+
+Scratch clone of `8239ab0`, project `m1`, this machine. The numbers phase A is compared to.
+
+| # | Measurement | Result |
+|---|---|---|
+| B1 | Prod stack, a migration that fails (`SELECT 1/0`), no profiles, `up -d --build` as `deploy.sh` runs it | **rc 0.** Backend `Restarting`, 8 restarts in 25 s, the error only in its log. Gateway `healthy`. `GET /health` through the gateway: `502` with **no content type** (input to B9) |
+| B2 | Same, `COMPOSE_PROFILES=realtime` | rc 1, `dependency failed to start: container m1-backend-1 is unhealthy` |
+| B3 | `docker compose stop`, dev | worker 10.3 s exit 137; realtime-relay 10.3 s exit 137; backend 0.2 s; gateway 0.3 s; realtime 0.2 s (all exit 0) |
+| B4 | Same, prod (worker mode) | worker 10.2 s exit 137; realtime-relay 10.3 s exit 137; backend 0.2 s exit 0 |
+| B5 | Dev reload, classic mode, three runs | a controller edit visible after 1.6 / 0.9 / 2.9 s (opcache's default `revalidate_freq` of 2 s); a `services.yaml` parameter after 0.36 / 0.37 / 0.39 s |
+| B6 | Cold `up -d --wait`, images built | dev 17.4 s (no profiles), 23.3 s (`queues,realtime`); prod 16.8 s, 22.8 s |
+
+Consequence for the runbook: step 7's reload criterion is "no worse than B5", not an
+absolute 2 s, since classic mode already reaches 2.9 s.
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line

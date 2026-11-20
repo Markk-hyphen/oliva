@@ -11,7 +11,7 @@ real, put the JWT keys under provisioning, and run dev in worker mode. **Nothing
 of a replaced backend yet** (that is phases B and C). An app that changes nothing keeps
 working after the sync.
 
-**State:** not started. Branch `feat/backend-slot`, off `main` at `6230607` (1.10.0).
+**State:** step 0 done 2026-11-20 (baseline in the epic, B1–B6). Next: step 1. Branch `feat/backend-slot`, off `main` at `6230607` (1.10.0).
 
 ## Decisions already taken (do not reopen)
 
@@ -223,7 +223,8 @@ stage), `docker-compose.override.yml` (mount it), `scripts/oliva/verify.sh`.
    FrankenPHP worker metric on `:2019/metrics`; 🔍 find its exact name in the running
    image), so a silent fallback to classic is red.
 4. **Gate (Q4: if any line fails after an honest attempt, stop and ask):**
-   - an edit to a controller shows up in < 2 s (compare with the step-0 baseline);
+   - an edit to a controller shows up no slower than baseline B5 in the epic (classic mode:
+     0.9–2.9 s, set by opcache's `revalidate_freq`), a YAML edit no slower than ~0.4 s;
    - an edit to a `config/packages/*.yaml` shows up;
    - a syntax error shows a readable error and the next good save recovers, without a
      restart;
