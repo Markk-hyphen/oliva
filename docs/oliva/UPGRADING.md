@@ -27,7 +27,7 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
 > scripts parse have an English form, **Action required in the app** and **What changed**, and
 > the place `decision` equals `decisión`. Earlier sections stay as they were written.
 
-## 1.11.0 — unreleased
+## 1.11.0 — 2026-11-20
 
 > **The backend honours its own contract.** Phase A of the backend-slot epic
 > (`docs/roadmap/epics/E-backend-slot.md` in Oliva's repository; apps do not carry it).
@@ -92,7 +92,7 @@ parece "manual" es estado que vive donde git no llega (un `.env`, otro host); es
   `scripts/oliva/sync.sh start` (it works; measured on an app 83 commits behind). After the
   sync the app has the fixed script.
 
-## 1.10.0 — unreleased
+## 1.10.0 — 2026-11-19
 
 > **The Mercure hub becomes its own service.** Until now Mercure ran inside the
 > backend (a block in its Caddyfile), always on. From 1.10.0 it is a standalone
