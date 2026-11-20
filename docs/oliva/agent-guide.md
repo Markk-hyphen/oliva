@@ -81,6 +81,11 @@ reasons: `docs/roadmap/epics/E-queue-slot.md`.
 - **It never migrates.** It starts once the backend is healthy, that is, migrated, and the
   entrypoint skips its setup for any `messenger:consume`.
 - **A consumer does not reload code:** after editing a handler, `docker compose restart worker`.
+- **Stopping is graceful since 1.11.0** (`pcntl`): on SIGTERM (every deploy) the worker
+  finishes the message in hand and exits. A handler longer than `WORKER_STOP_GRACE_PERIOD`
+  (default `10s`, project `.env`) is killed and its message redelivered, so handlers must be
+  idempotent: delivery is at least once. A signal also cuts a `sleep()`/`usleep()` short:
+  never rely on one for correctness inside a handler.
 - **One vhost per app and per environment on a shared broker.** Every app inherits the same
   queue names (`ingest`, `enrich`, `failed`): on the same vhost, a worker consumes another
   app's or environment's messages (measured: staging handled production's). See the shared

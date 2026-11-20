@@ -221,6 +221,26 @@ Scratch clone of `8239ab0`, project `m1`, this machine. The numbers phase A is c
 Consequence for the runbook: step 7's reload criterion is "no worse than B5", not an
 absolute 2 s, since classic mode already reaches 2.9 s.
 
+## Phase A results
+
+**Step 1 — `pcntl` (2026-11-20).** R1 closed: `pcntl` loads in FrankenPHP's own SAPI
+(`extension_loaded` true from a request, dev classic and prod worker mode), no new log
+lines, 50/50 and 100/100 `/health` at 200, `verify` all green on this checkout.
+
+| # | Measurement | Before (B3/B4) | After |
+|---|---|---|---|
+| S1 | Worker stopped during a handler doing a 4 s Postgres query + 3 s CPU, dev ×2 and prod | 10.2–10.3 s, exit 137 | 5.4 / 5.9 s (dev), 5.7 s (prod), exit 0; the handler ran to its end; queue 0 ready, 0 unacked |
+| S2 | Handler longer than the grace period (14 s query) | — | SIGKILL at 10.2 s, the message back in the queue, handled on restart: **at least once, never lost** |
+| S3 | Relay idle stop, ×3 dev, ×1 prod | 10.3 s, exit 137 | 0.2–0.3 s, exit 0: the LISTEN wait does not hold the signal |
+| S4 | Backend stop, prod | 0.2 s | 0.3 s |
+| S5 | A signal during `sleep()` in a handler | — | `sleep(5)` returned after ~1 s: signals cut sleeps short. Written in the guide |
+| S6 | Relay SIGKILLed mid-POST to a paused hub | — | the row stays delivered until `redeliver_timeout` (3600 s): a duplicate or a one-hour delay. Friction X18; graceful stops no longer cause it |
+
+Grace period: none of Oliva's services needs more than 10 s, so no fixed
+`stop_grace_period`. The worker gets `WORKER_STOP_GRACE_PERIOD` (default `10s`, project
+`.env`): S2 shows an app with long handlers needs a knob, and without one its only way out
+would be editing an Oliva file.
+
 ## Out of scope
 
 OpenAPI (B7); correlation ids (A8); `kid` rotation (A2); connection budget beyond one line

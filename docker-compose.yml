@@ -93,6 +93,11 @@ services:
     # menos el de fallos de la app y recicla el proceso por tiempo/memoria. La app lo cambia con
     # WORKER_CONSUME_ARGS en .env.backend; no hace falta tocar este archivo (es de Oliva).
     command: ["oliva-consume"]
+    # On SIGTERM the worker finishes the message in hand, then stops (pcntl, since 1.11.0;
+    # measured: a 7 s handler completes and is acked). A handler that outlasts this grace
+    # period is SIGKILLed and its message redelivered: at least once, never lost (measured
+    # with a 14 s handler). An app with long handlers raises it in the project's .env.
+    stop_grace_period: ${WORKER_STOP_GRACE_PERIOD:-10s}
     env_file:
       - .env
       - .env.backend

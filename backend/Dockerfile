@@ -62,11 +62,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # pecl.php.net está en phase-out (RFC adopt_pie_deprecate_pecl) y rompía el build con `exit 100`.
 COPY --from=mlocati/php-extension-installer:2.12.3 /usr/bin/install-php-extensions /usr/local/bin/install-php-extensions
 
+# pcntl: signals. PHP is PID 1 in the worker and the realtime relay (`exec php …`), and a
+# PID 1 with no handler IGNORES SIGTERM: every `docker stop`/deploy waited 10 s and then
+# SIGKILLed the consumer, mid-message if one was in flight (measured: exit 137, 10.3 s).
+# With pcntl, Messenger stops between messages. Bundled with PHP, no pecl.
+# (E-backend-slot, finding M2.)
 RUN set -eux; \
 	install-php-extensions \
 		@composer-2.10.3 \
 		intl \
 		opcache \
+		pcntl \
 		pdo_pgsql \
 		zip \
 	;
