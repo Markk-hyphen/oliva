@@ -139,7 +139,7 @@ handle_jwt_passphrase() {
 !!   If the key is owned by root, Docker must be running for this command to reach it.
 !!   Otherwise the key is unusable as it is. To start over (logs every user out):
 !!     delete the key pair (private.pem and public.pem) and run ./oliva env init again;
-!!     the backend generates a new pair on its next start."
+!!     ./oliva env init then generates a new pair."
     note JWT_PASSPHRASE "NOT changed (see below)"
     return 1
   fi
@@ -155,6 +155,53 @@ handle_jwt_passphrase() {
     env_set JWT_PASSPHRASE "$desired"; note JWT_PASSPHRASE "generated ($why)"
   fi
   return 0
+}
+
+# ── JWT key pair: where it lives, and its birth ──────────────────────────────────
+# Since 1.11.0 the pair lives in ./secrets/jwt in every environment (gitignored, mounted
+# read-only into every PHP service) and is created HERE, not by the backend at boot. At boot
+# it came out root-owned in production, only the server container had it, and an app whose
+# backend never started had none.
+JWT_DIR="secrets/jwt"
+JWT_LEGACY_DIR="backend/config/jwt"   # where dev kept it before 1.11.0
+
+# A directory the backend container created as root (older production stacks, or a
+# `docker compose up` that ran before this): give it back to the host user, through a
+# container since the host user can't. Nothing else here needs root.
+reclaim_dir() {
+  local dir="$1"
+  # Not writable, or a key in it the host user cannot read: the dev backend runs as that
+  # user, so a root-owned 0600 key there means every login fails (measured on a checkout
+  # that had run the production stack before 1.11.0).
+  [[ -d "$dir" ]] || return 0
+  if [[ -w "$dir" ]] && { [[ ! -e "$dir/private.pem" ]] || [[ -r "$dir/private.pem" && -w "$dir/private.pem" ]]; }; then
+    return 0
+  fi
+  docker run --rm -u 0 -v "$(realpath "$dir"):/k" --entrypoint chown "$(_oliva_backend_base_image)" \
+    -R "$(id -u):$(id -g)" /k </dev/null >/dev/null 2>&1 \
+    || die "$dir is owned by root and Docker could not give it back. Fix by hand: sudo chown -R $(id -u):$(id -g) $dir"
+  note "$dir" "was owned by root: given back to $(id -un)"
+}
+
+provision_jwt_keys() {
+  local pass="${ENVV[JWT_PASSPHRASE]:-}"
+  if [[ -e "$JWT_DIR/private.pem" ]]; then reclaim_dir "$JWT_DIR"; return 0; fi
+  # A dev pair from before 1.11.0: move it, same keys, nobody is logged out.
+  if [[ -f "$JWT_LEGACY_DIR/private.pem" ]]; then
+    reclaim_dir "$JWT_LEGACY_DIR"; mkdir -p "$JWT_DIR"; reclaim_dir "$JWT_DIR"
+    mv "$JWT_LEGACY_DIR/private.pem" "$JWT_DIR/private.pem"
+    [[ -f "$JWT_LEGACY_DIR/public.pem" ]] && mv "$JWT_LEGACY_DIR/public.pem" "$JWT_DIR/public.pem"
+    note "$JWT_DIR" "key pair moved here from $JWT_LEGACY_DIR (same keys)"
+    return 0
+  fi
+  oliva_unhealthy "$pass" is >/dev/null && return 0   # no usable passphrase: reported above
+  mkdir -p "$JWT_DIR"; reclaim_dir "$JWT_DIR"
+  ( umask 077
+    OLIVA_PIN="$pass" openssl genrsa -aes256 -passout env:OLIVA_PIN -out "$JWT_DIR/private.pem" 2048 2>/dev/null
+    OLIVA_PIN="$pass" openssl rsa -pubout -in "$JWT_DIR/private.pem" -passin env:OLIVA_PIN -out "$JWT_DIR/public.pem" 2>/dev/null
+  ) || die "could not generate the JWT key pair in $JWT_DIR"
+  chmod 600 "$JWT_DIR/private.pem"; chmod 644 "$JWT_DIR/public.pem"
+  note "$JWT_DIR" "key pair generated (encrypted with JWT_PASSPHRASE)"
 }
 
 # ── Data volumes ─────────────────────────────────────────────────────────────────
@@ -250,6 +297,9 @@ cmd_init() {
   done <<< "$rows"
 
   if (( ${#CHANGED[@]} )); then write_env; fi
+
+  # 4. The JWT key pair, once the passphrase is final (it encrypts the private key).
+  (( failed )) || provision_jwt_keys
 
   if (( ${#REPORT[@]} )); then
     printf '%s\n' "${REPORT[@]}"

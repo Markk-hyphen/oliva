@@ -23,6 +23,19 @@
 #       -f docker-compose.staging.yml up -d
 
 services:
+  # The one-shot migrate, like the backend: its own image (it would inherit `:prod`), APP_ENV
+  # that wins over prod.yml's, and .env.staging last so it migrates the STAGING database.
+  migrate:
+    image: ${COMPOSE_PROJECT_NAME}-backend:staging
+    build:
+      target: frankenphp_staging
+    environment:
+      - APP_ENV=staging
+    env_file: !override
+      - .env
+      - .env.backend
+      - .env.staging
+
   backend:
     image: ${COMPOSE_PROJECT_NAME}-backend:staging
     build:

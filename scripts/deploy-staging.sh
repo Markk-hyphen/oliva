@@ -23,6 +23,7 @@ source "$(dirname "$0")/lib/docker-prune.sh"
 source "$(dirname "$0")/lib/upgrade-guards.sh"
 source "$(dirname "$0")/lib/env-check.sh"
 source "$(dirname "$0")/lib/queue-guard.sh"
+source "$(dirname "$0")/lib/backend-guard.sh"
 assert_not_staging_name "$APP_NAME"
 assert_project_owned_here "$STAGING_PROJECT"
 
@@ -53,6 +54,7 @@ queue_ok=1
 queue_guard "${COMPOSE[@]}" || queue_ok=0
 realtime_guard "${COMPOSE[@]}" || queue_ok=0
 if [[ -n "$PROD_CONFIG" ]]; then queue_guard_staging "$PROD_CONFIG" "${COMPOSE[@]}" || queue_ok=0; fi
+backend_health_guard || queue_ok=0
 if (( ! queue_ok )); then
   echo "!! STAGING DEPLOY ABORTED (see above). Nothing was stopped." >&2
   exit 1
@@ -66,11 +68,15 @@ echo ">> down"
 # en finanzas-ong dejó el frontend STALE (build solo listaba backend) y se
 # pudre de nuevo en cuanto un fork agregue un servicio buildeable más. Alinea
 # además con deploy.sh (prod), que ya usa up -d --build.
-echo ">> up -d --build (target backend/scheduler: frankenphp_staging)"
-"${COMPOSE[@]}" up -d --build
-
-echo ">> migraciones"
-docker exec "${STAGING_PROJECT}-backend-1" bin/console doctrine:migrations:migrate --no-interaction
+# --wait, like deploy.sh: OK only when `migrate` exited 0 (it migrates the staging database,
+# .env.staging loads last) and every service is healthy. The explicit migrate that used to
+# follow is gone: the one-shot `migrate` service does it before anything else starts.
+echo ">> up -d --build --wait (target backend/scheduler/migrate: frankenphp_staging)"
+if ! "${COMPOSE[@]}" up -d --build --wait --wait-timeout "${OLIVA_DEPLOY_WAIT_TIMEOUT:-300}"; then
+  echo "!! up failed. Last lines of migrate, backend and gateway:" >&2
+  "${COMPOSE[@]}" logs --no-color --tail 25 migrate backend gateway >&2 || true
+  exit 1
+fi
 
 echo ">> seeding (fixtures:load --group=staging)"
 docker exec "${STAGING_PROJECT}-backend-1" bin/console doctrine:fixtures:load --group=staging --no-interaction

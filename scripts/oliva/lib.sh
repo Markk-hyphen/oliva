@@ -40,7 +40,7 @@ is_app() { [[ -f "$OLIVA_APP_MARKER" ]]; }
 local_oliva_version() { cat OLIVA_VERSION 2>/dev/null || echo "0.0.0"; }
 
 # version_lt A B → true si A < B (semver simple, sin pre-releases).
-version_lt() { [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$1" ]]; }
+version_lt() { [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -V | sed -n 1p)" == "$1" ]]; }
 
 # Imagen base del backend tal como la fija backend/Dockerfile (PHP exacto del proyecto).
 backend_base_image() { awk '/^FROM / && /frankenphp_upstream/ {print $2; exit}' backend/Dockerfile; }

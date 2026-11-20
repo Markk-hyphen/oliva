@@ -20,11 +20,17 @@ Oliva se versiona (`OLIVA_VERSION`, tags `vX.Y.Z`) y las apps hechas con Oliva v
 ```bash
 docker compose up
 ```
-El `docker-compose.override.yml` se aplica automáticamente: monta el código fuente con hot-reload, expone el backend en `:80` y el frontend en `:3000`.
+The `docker-compose.override.yml` applies on its own: it mounts the source code (FrankenPHP worker mode with a watcher, Vite with HMR) and publishes the gateway on `${GATEWAY_PORT:-80}`.
+
+**Migrations (since 1.11.0):** a one-shot `migrate` service applies them before any PHP service starts, and `docker compose up -d` runs it again, so a migration you just generated is applied by the next `up`. If it fails, nothing PHP starts, `up --wait` and the deploys fail with `service "migrate" didn't complete successfully`, and `docker compose logs migrate` (or `./oliva doctor`) shows the error. Two runs at once are safe (one wins, the other fails, nothing half-applied) as long as the migration is transactional; one that opts out (`isTransactional(): false`, `CREATE INDEX CONCURRENTLY`) is the app's responsibility.
 
 **Dos apps a la vez en dev:** desde 1.9.0 el único puerto HTTP que publica el stack es el del `gateway` (default `:80`); backend y frontend viven en la red privada de la app. Los puertos del host (`:80`, `:5432`, y los de RabbitMQ) salen de variables con esos defaults. Una sola app no configura nada. Para levantar una segunda app Oliva en paralelo —que si no choca con *"port is already allocated"*— poné `GATEWAY_PORT`, `DB_PORT` (y, con el profile `queues`, `RABBITMQ_PORT`/`RABBITMQ_MANAGEMENT_PORT`) con otros valores en el `.env` de esa app. `BACKEND_PORT`/`FRONTEND_PORT` en un `.env` pre-1.9.0 quedaron sin uso; el guard `dev-ports` lo avisa.
 
-**Usuario del host en dev:** los containers del backend corren como `${HOST_UID:-1000}:${HOST_GID:-1000}`, así lo que generan (claves JWT en `config/jwt`, la migración que creás con `migrations:diff`, el cache de `var/`) queda tuyo en el host y no root-owned (antes había que `sudo chown` para borrar el dir). Si tu `id -u` no es `1000`, poné `HOST_UID`/`HOST_GID` en tu `.env`; `./oliva doctor` lo chequea y avisa si no coinciden. Prod corre como root a propósito (no define `user:`). El frontend sigue como root (su `node_modules` es un volumen anónimo, no toca el host).
+**Usuario del host en dev:** los containers del backend corren como `${HOST_UID:-1000}:${HOST_GID:-1000}`, así lo que generan (la migración que creás con `migrations:diff`, el cache de `var/`) queda tuyo en el host y no root-owned (antes había que `sudo chown` para borrar el dir). Si tu `id -u` no es `1000`, poné `HOST_UID`/`HOST_GID` en tu `.env`; `./oliva doctor` lo chequea y avisa si no coinciden. Prod corre como root a propósito (no define `user:`). El frontend sigue como root (su `node_modules` es un volumen anónimo, no toca el host).
+
+**Dev runs FrankenPHP worker mode (since 1.11.0), like production:** a watcher restarts the workers when a file under `src/`, `config/`, `.env` or `public/index.php` changes (`backend/frankenphp/worker.dev.Caddyfile`). Code shows up in well under a second. State kept between requests (a `static` property, a service that does not implement `ResetInterface`) now leaks in dev too, where you can see it, instead of first in staging. `verify` step `worker-mode` is red if dev falls back to classic (never set `FRANKENPHP_CONFIG` in `.env`). **Known Symfony limit:** it judges its compiled caches fresh by whole seconds, so a config file saved in the same second as a recompile, right after it, is not picked up (measured: about 30% of rapid code+config edits, the way an agent writes). `doctor` and `verify` (`dev-cache`) detect it to the nanosecond and print the fix: `docker compose exec backend rm -rf var/cache/dev && docker compose restart backend`.
+
+**JWT keys (since 1.11.0):** the pair lives in `./secrets/jwt` in every environment (gitignored), created by `./oliva env init`, owned by you, and mounted read-only into every PHP service. Nothing generates it at boot any more. `env init` moves a pre-1.11.0 dev pair out of `backend/config/jwt`, and gives back a `secrets/jwt` left root-owned by an older production stack; `env check` errors when the pair is missing or unreadable by the user the backend runs as.
 
 **Archivos horneados que no se montan:** `phpunit.dist.xml` se bind-mountea, así que editarlo surte efecto sin rebuild. Los *inputs de build* (`composer.json`/`.lock`, `symfony.lock`, `php-extensions.txt`) NO se montan a propósito: cambiarlos pide `composer install` o recompilar extensiones, no copiar el archivo. `./oliva doctor` (paso "imagen vs fuente") compara sus hashes con la imagen y te dice "rebuildeá" si driftearon — así no corrés con una imagen vieja sin darte cuenta.
 
@@ -78,9 +84,14 @@ reasons: `docs/roadmap/epics/E-queue-slot.md`.
   itself every hour or 128M; `restart:` brings it back. To change it, set
   `WORKER_CONSUME_ARGS` in `.env.backend` (the arguments after `messenger:consume`). Never
   consume the failure transport in the same loop: a poison message would be retried forever.
-- **It never migrates.** It starts once the backend is healthy, that is, migrated, and the
-  entrypoint skips its setup for any `messenger:consume`.
+- **It never migrates.** It starts once `migrate` has exited 0 and the backend is healthy;
+  the entrypoint skips its setup for any `messenger:consume`.
 - **A consumer does not reload code:** after editing a handler, `docker compose restart worker`.
+- **Stopping is graceful since 1.11.0** (`pcntl`): on SIGTERM (every deploy) the worker
+  finishes the message in hand and exits. A handler longer than `WORKER_STOP_GRACE_PERIOD`
+  (default `10s`, project `.env`) is killed and its message redelivered, so handlers must be
+  idempotent: delivery is at least once. A signal also cuts a `sleep()`/`usleep()` short:
+  never rely on one for correctness inside a handler.
 - **One vhost per app and per environment on a shared broker.** Every app inherits the same
   queue names (`ingest`, `enrich`, `failed`): on the same vhost, a worker consumes another
   app's or environment's messages (measured: staging handled production's). See the shared
@@ -90,8 +101,8 @@ reasons: `docs/roadmap/epics/E-queue-slot.md`.
   vhost → `deploy*.sh` abort before `down` (the running stack keeps serving), `verify` step
   `queue` is red, `doctor` shows it. A consumer that lives outside the stack on purpose is
   declared with `OLIVA_QUEUE_CONSUMER=external` in `.env`, and announced on every run.
-- **Known limit:** the production worker does not mount the JWT keys (`./secrets/jwt`), same as
-  the scheduler. A handler that signs tokens needs that mount added in Oliva.
+- **JWT keys:** since 1.11.0 the worker, the scheduler and the relay mount `./secrets/jwt`
+  read-only, like the backend: a handler that signs or reads tokens works there too.
 
 ### The realtime hub
 
@@ -109,7 +120,7 @@ profile, like `queues` and `cron`. Design and reasons: `docs/roadmap/epics/E-unb
 - **Latency:** the relay runs `--sleep=0.01` with the transport's `get_notify_timeout: 5000`;
   both are required (either alone is ~1 s; measured p95 ≈ 9 ms). Do not change one without the
   other.
-- **The relay never migrates.** It waits for the backend healthy (migrated), then runs
+- **The relay never migrates.** It waits for `migrate` (exited 0) and the backend healthy, then runs
   `messenger:setup-transports realtime` to create `messenger_messages` and consumes. A
   `schema_filter` in `doctrine.yaml` hides that table, so an app **without** the profile has a
   green `doctrine:schema:validate` and never creates it.
@@ -276,16 +287,15 @@ compartida. El código viene del `git pull`, pero estos NO (o requieren un valor
    el profile inerte ya excluye `database`/`rabbitmq`; el alias de `frontend`
    en `proxy_net` se deriva solo de `-p <app>`, no hace falta tocar nada):
    `docker compose -p <app> -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.shared-infra.yml up -d`.
-7. **Migraciones:** automáticas. El entrypoint del backend las corre en cada
-   boot (`doctrine:migrations:migrate`), junto con la generación de las claves
-   JWT y el wait-for-db. Solo verificar que no quedaron pendientes:
+7. **Migrations:** automatic. The one-shot `migrate` service waits for the shared Postgres
+   and applies them before anything PHP starts; a failure fails the deploy (`up --wait`)
+   with its log. To double-check nothing is pending:
    `docker exec <app>-backend-1 bin/console doctrine:migrations:status`.
-8. **Claves JWT:** en el primer boot el entrypoint las genera en `./secrets/jwt`
-   (bind-mount al host, gitignored) usando `JWT_PASSPHRASE`. **Backupear**
-   `~/<app>/secrets/jwt/{private,public}.pem` + la `JWT_PASSPHRASE` al gestor de
-   claves. De ahí en más persisten y NUNCA se regeneran (recrear el container no
-   desloguea a nadie). Para restaurar en un host nuevo: poné los `.pem` ahí antes
-   del `up`.
+8. **JWT keys:** `./oliva env init` (step 2) creates them in `./secrets/jwt` (gitignored,
+   owned by you, mounted read-only into every PHP service), encrypted with `JWT_PASSPHRASE`.
+   **Back up** `~/<app>/secrets/jwt/{private,public}.pem` and `JWT_PASSPHRASE` to the
+   password manager. They persist and are never regenerated (recreating containers logs
+   nobody out). To restore on a new host: put the `.pem` files there before `env init`.
 9. **Health:** `docker exec <app>-backend-1 curl -s http://localhost/health` → `{"status":"ok"}`.
 10. **(Opt-in) Levantar el stack de staging:** staging es una app aparte en el VPS
     con su propia DB desechable. Ver **"Runbook de staging"** más abajo.
@@ -348,7 +358,8 @@ stack de producción.
    (`.env.staging` carga último y pisa `DATABASE_URL`). `APP_ENV=staging` lo
    fija `docker-compose.staging.yml` vía `environment:` (no vía env_file —
    ver gotcha de precedencia abajo).
-5. **Migraciones:** automáticas en el entrypoint. Verificar:
+5. **Migrations:** automatic, by the `migrate` service, on the staging database (`.env.staging`
+   loads last). To check:
    `docker exec <app>-staging-backend-1 bin/console doctrine:migrations:status`
 6. **Seeding:** la imagen `frankenphp_staging` sí tiene `doctrine:fixtures:load`
    (a diferencia de prod). La DB de staging es desechable — la purga es inocua:
@@ -426,7 +437,7 @@ whatever was written in `.env` was ignored, with no error anywhere. Design and r
 
 - `GET /health` → `{"status": "ok"}` (`backend/src/Controller/HealthController.php`).
 - `.github/workflows/ci.yml`, job `env-contract` (sin build): `./oliva env init` + `env check` sobre los stacks dev y prod. Rojo si un archivo trackeado lleva un secreto real o pisa a `.env` con un placeholder o un valor públicamente conocido.
-- `.github/workflows/ci.yml`: build de imágenes, levanta los servicios, chequea `/health` y `/.well-known/mercure`, corre migraciones, valida el schema de Doctrine y corre PHPUnit. Job adicional de lint de Dockerfile con hadolint.
+- `.github/workflows/ci.yml`: build de imágenes, levanta los servicios (el servicio `migrate` aplica las migraciones; el CI chequea que no quede ninguna pendiente), chequea `/health` y `/.well-known/mercure`, valida el schema de Doctrine y corre PHPUnit. Job adicional de lint de Dockerfile con hadolint.
 
 ## Protocolo de explicaciones conceptuales
 

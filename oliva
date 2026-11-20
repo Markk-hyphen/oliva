@@ -59,10 +59,18 @@ case "$cmd" in
       local label="$1"; shift
       echo
       echo "── $label ──"
-      if "$@"; then return 0; else
-        echo "   (no disponible: salió $?)"
-        return 0
+      local rc=0
+      "$@" || rc=$?
+      (( rc == 0 )) && return 0
+      # Say what the code means. A bare "exit 141" read as a network problem while it was a
+      # script killed by SIGPIPE, a bug in Oliva (friction X17).
+      if (( rc > 128 )); then
+        local sig; sig="$(kill -l $((rc - 128)) 2>/dev/null || echo "?")"
+        echo "   !! this step was killed by signal SIG$sig (exit $rc): a bug in Oliva's script, not your setup. Run it alone to see where: $*"
+      else
+        echo "   (not available: exit $rc)"
       fi
+      return 0
     }
 
     step "rama" git branch --show-current
@@ -89,6 +97,23 @@ case "$cmd" in
     }
     step "app" app_state
     step "docker compose ps" docker compose ps
+    # The one-shot `migrate` service (1.11.0): `ps` hides an exited container, so its last
+    # run is shown here. A failed one keeps every PHP service from starting; say why.
+    migrate_state() {
+      local cid code
+      cid="$(docker compose ps -aq migrate 2>/dev/null)" || { echo "   (Docker is not answering; skipped)"; return 0; }
+      [[ -n "$cid" ]] || { echo "   (migrate has not run in this stack yet)"; return 0; }
+      code="$(docker inspect -f '{{.State.ExitCode}} {{.State.Status}} {{.State.FinishedAt}}' "$cid" 2>/dev/null)"
+      case "$code" in
+        "0 exited "*) echo "   last run: exit 0 (${code##* })" ;;
+        *" running "*) echo "   running now" ;;
+        *) echo "   !! last run FAILED: exit ${code%% *}. No PHP service starts until it passes."
+           echo "   !! Last lines (docker compose logs migrate):"
+           docker compose logs --no-color --tail 8 migrate 2>/dev/null | sed 's/^/      /'
+           echo "   !! Fix the migration, then: docker compose up -d --wait" ;;
+      esac
+    }
+    step "migrate (last run)" migrate_state
     step "migraciones" docker compose exec backend bin/console doctrine:migrations:status
 
     # T5 — inputs de build horneados que, editados en el host, no surten efecto sin
@@ -111,6 +136,17 @@ case "$cmd" in
       return 0
     }
     step "imagen vs fuente" build_inputs_drift
+
+    # Dev runs FrankenPHP worker mode since 1.11.0. Symfony's freshness check for its compiled
+    # caches works in whole seconds: a file saved in the same second as a recompile, after it,
+    # is never picked up (measured: ~30% of rapid code+config edits). Nanosecond check, dev only.
+    dev_cache_board() {
+      # shellcheck source=/dev/null
+      source scripts/lib/backend-guard.sh || return 0
+      dev_cache_stale_check && echo "   every compiled Symfony cache is newer than what it tracks"
+      return 0
+    }
+    step "symfony cache (dev)" dev_cache_board
 
     # T7 — en dev el backend corre como el usuario del host (HOST_UID/HOST_GID) para que
     # lo que escribe (JWT, migración generada, var) quede tuyo y no root-owned. Avisa si

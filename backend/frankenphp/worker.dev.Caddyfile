@@ -1,0 +1,18 @@
+worker {
+	file ./public/index.php
+	env APP_RUNTIME Runtime\FrankenPhpSymfony\Runtime
+	# Dev runs worker mode too since 1.11.0, so a state leak between requests shows up where
+	# you develop, not first in staging or production (E-backend-slot, decision Q4). The
+	# watcher restarts the workers when one of these files changes.
+	#
+	# NEVER the default pattern set (./**/*.{php,yaml,...}): it covers var/cache, which
+	# Symfony rewrites on every rebuild, so each reload would trigger the next one.
+	# No templates/ or translations/ pattern: a watched directory that does not exist floods
+	# the log (FrankenPHP retries it, then gives up), and Twig in debug mode checks each
+	# template's freshness on render anyway. An app that needs more asks for it in Oliva.
+	watch /app/src/**/*.php
+	watch /app/config/**/*.{yaml,yml,php}
+	watch /app/.env
+	watch /app/public/index.php
+	env FRANKENPHP_LOOP_MAX 500
+}

@@ -33,6 +33,31 @@ services:
       retries: 5
       timeout: 5s
 
+  # The database lifecycle, one shot: wait for the database, then the migrations
+  # (oliva-migrate, backend/frankenphp/migrate.sh), then exit. Every PHP service waits for it
+  # to exit 0. Until 1.11.0 the backend's entrypoint migrated on every start: a failed
+  # migration left the backend in a restart loop while `up -d` (and so deploy.sh) reported
+  # success. Now `up --wait` fails with "service migrate didn't complete successfully".
+  # `docker compose up -d` runs it again each time: that is how a new migration is applied.
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["oliva-migrate"]
+    restart: "no"
+    env_file:
+      - .env
+      - .env.backend
+    depends_on:
+      database:
+        condition: service_healthy
+    # Not the image's HTTP healthcheck: nothing listens here, and a one-shot is judged by its
+    # exit code (service_completed_successfully), not by health.
+    healthcheck:
+      disable: true
+    networks:
+      - app_network
+
   backend:
     build:
       context: ./backend
@@ -42,8 +67,8 @@ services:
       - .env
       - .env.backend
     depends_on:
-      database:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     expose:
       - "80/tcp"
     networks:
@@ -63,9 +88,10 @@ services:
     env_file:
       - .env
       - .env.backend
+    # Until 1.11.0 only `database`: a scheduled command could run against an unmigrated schema.
     depends_on:
-      database:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     # Healthcheck propio, en el base para que lo hereden todos los overlays. Sin esto
     # hereda el HEALTHCHECK de la imagen (curl :2019/metrics), que solo pasa donde corre
     # FrankenPHP: acá corre supercronic, así que el check fallaba siempre y el scheduler
@@ -93,12 +119,18 @@ services:
     # menos el de fallos de la app y recicla el proceso por tiempo/memoria. La app lo cambia con
     # WORKER_CONSUME_ARGS en .env.backend; no hace falta tocar este archivo (es de Oliva).
     command: ["oliva-consume"]
+    # On SIGTERM the worker finishes the message in hand, then stops (pcntl, since 1.11.0;
+    # measured: a 7 s handler completes and is acked). A handler that outlasts this grace
+    # period is SIGKILLed and its message redelivered: at least once, never lost (measured
+    # with a 14 s handler). An app with long handlers raises it in the project's .env.
+    stop_grace_period: ${WORKER_STOP_GRACE_PERIOD:-10s}
     env_file:
       - .env
       - .env.backend
-    # Espera al backend sano, o sea migrado: el entrypoint del backend migra antes de
-    # levantar FrankenPHP. Por eso el worker no corre el setup (ni migra) él mismo.
+    # Waits for the schema (migrate exited 0) and for the backend healthy. It never migrates.
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       backend:
         condition: service_healthy
       rabbitmq:
@@ -148,11 +180,13 @@ services:
     env_file:
       - .env
       - .env.backend
-    # Waits for the backend (healthy = migrated), like the worker: the relay needs the
-    # database up before messenger:setup-transports. It never migrates (the entrypoint skips
-    # setup for a non-frankenphp command). No depends_on on `realtime`: a hub that is down
-    # must not stop the relay from draining the backlog once it returns.
+    # Waits for the schema (migrate exited 0) and the backend healthy, like the worker: the
+    # relay needs the database before messenger:setup-transports. It never migrates. No
+    # depends_on on `realtime`: a hub that is down must not stop the relay from draining the
+    # backlog once it returns.
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       backend:
         condition: service_healthy
     healthcheck:

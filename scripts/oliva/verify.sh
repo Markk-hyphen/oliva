@@ -14,9 +14,17 @@
 #   [queue]       messages routed to an asynchronous transport have a worker to consume them
 #                 (profile `queues`), or OLIVA_QUEUE_CONSUMER=external says they are consumed
 #                 elsewhere (scripts/lib/queue-guard.sh). Not to be confused with prod-worker.
+#   [backend]     static, before `up`: the app answers GET /health (since 1.11.0 the backend's
+#                 healthcheck; without the route `up --wait` can never pass). Same guard as the
+#                 deploys (scripts/lib/backend-guard.sh)
 #   [up]          docker compose up -d --build --wait (respeta COMPOSE_PROFILES del .env)
 #   [php-version] el PHP que CORRE coincide con el pin de backend/Dockerfile
 #   [health]      GET /health
+#   [worker-mode] the DEV backend runs FrankenPHP workers (since 1.11.0, like production): the
+#                 running config has a worker block. An empty FRANKENPHP_CONFIG in .env turns
+#                 it off silently; this makes that red
+#   [dev-cache]   no compiled Symfony cache older than a file it tracks within the same second
+#                 (Symfony checks in whole seconds; scripts/lib/backend-guard.sh)
 #   [mercure]     publish con JWT + suscriptor CON token recibe el update privado y
 #                 suscriptor anónimo NO (la regresión real de FrankenPHP 1.13.1)
 #   [migrations]  no hay migraciones pendientes
@@ -40,6 +48,7 @@ source "$(dirname "$0")/lib.sh"
 source "$(dirname "$0")/../lib/upgrade-guards.sh"
 source "$(dirname "$0")/../lib/env-check.sh"
 source "$(dirname "$0")/../lib/queue-guard.sh"
+source "$(dirname "$0")/../lib/backend-guard.sh"
 require_repo_root
 [[ -f .env ]] || die "falta .env → ./oliva env init"
 
@@ -83,6 +92,7 @@ do_app() {
     return 1
   fi
 }
+do_backend()    { backend_health_guard && echo "GET /health route present"; }
 do_up()         { docker compose up -d --build --wait; }
 do_health()     { be curl -fsS http://localhost/health && echo; }
 # From the host, through the gateway: proves the three routes the gateway owns
@@ -106,10 +116,16 @@ do_gateway() {
   [[ "$code" == 200 && "$ct" == text/html* ]] \
     || { warn "/ through the gateway = $code $ct (expected 200 text/html; is the frontend upstream reachable?)"; return 1; }
   # CSP header present (missing = the gateway stopped owning the policy).
-  hdr="$(curl -sI "$base/" | tr -d '\r' | grep -i '^content-security-policy:' | head -1)"
+  hdr="$(curl -sI "$base/" | tr -d '\r' | grep -i '^content-security-policy:' | sed -n 1p)"
   [[ -n "$hdr" ]] || { warn "no Content-Security-Policy header through the gateway"; return 1; }
   echo "/gateway-health ok; /health JSON; / HTML; CSP present"
 }
+do_worker_mode() {
+  be curl -fsS http://localhost:2019/config/apps/frankenphp | grep -q '"workers":\[{' \
+    || { warn "the dev backend runs no FrankenPHP worker (classic mode): is FRANKENPHP_CONFIG set, maybe empty, in .env? Remove it"; return 1; }
+  echo "FrankenPHP worker mode on (dev, like production)"
+}
+do_dev_cache() { dev_cache_stale_check || return 1; echo "Symfony caches fresh"; }
 do_migrations() { be bin/console doctrine:migrations:up-to-date; }
 do_schema() { be bin/console doctrine:schema:validate; }
 do_phpunit()    { scripts/lib/test-db.sh && be php vendor/bin/phpunit; }
@@ -197,9 +213,12 @@ do_mercure() {
 step env         do_env
 step app         do_app
 step queue       do_queue
+step backend     do_backend
 step up          do_up
 step php-version do_php_version
 step health      do_health
+step worker-mode do_worker_mode
+step dev-cache   do_dev_cache
 step gateway     do_gateway
 # The hub is its own service (profile `realtime`). No hub in this stack, nothing to test.
 if docker compose ps --services 2>/dev/null | grep -qx realtime; then step mercure do_mercure

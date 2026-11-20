@@ -102,7 +102,11 @@ cmd_check() {
     echo "oliva: al día (Oliva $mine)."
     return 0
   fi
-  oldest="$(git log --reverse --format=%cs HEAD.."$UP" | head -1)"
+  # `sed -n 1p`, never `head -1`: head closes the pipe after one line, git log gets SIGPIPE,
+  # and under `set -o pipefail` the 141 kills this script before it prints anything (X17,
+  # measured with a fork 76 commits behind). sed reads to the end. Same rule for every
+  # `| head` in Oliva's scripts.
+  oldest="$(git log --reverse --format=%cs HEAD.."$UP" | sed -n 1p)"
   echo "oliva: este fork está en Oliva ${mine/0.0.0/<1.1 (sin OLIVA_VERSION)} y upstream en $theirs:"
   echo "       $behind commits sin traer, el más viejo del $oldest. Sync: scripts/oliva/sync.sh start"
   local notes; notes="$(upgrade_notes "$UP" "$mine")"
@@ -170,7 +174,7 @@ cmd_start() {
             # (caso real: bcmath en backend/Dockerfile). Mostrar qué cambió el fork.
             echo "   [OLIVA]  $f  → es del framework. Lo que el FORK cambió desde el último sync:"
             git diff "$(git merge-base HEAD MERGE_HEAD)" HEAD -- "$f" \
-              | grep -E '^[+-][^+-]' | grep -vE '^[+-][[:space:]]*(#|//|$)' | head -12 | sed 's/^/              /'
+              | grep -E '^[+-][^+-]' | grep -vE '^[+-][[:space:]]*(#|//|$)' | sed -n '1,12p' | sed 's/^/              /'
             echo "            Si son solo comentarios o lo mismo que trae Oliva: git checkout --theirs -- $f"
             echo "            Si es algo que el fork necesita: moverlo a su extension point (UPGRADING.md)"
             echo "            o backportearlo a Oliva, y recién ahí tomar theirs."
